@@ -82,7 +82,7 @@ const Support = () => {
         <Box textAlign="center" mb={8}>
           <Heading size="2xl" mb={4}>Support My Work</Heading>
           <Text fontSize="xl" color="gray.600">
-            Choose your preferred way to support my projects and development work
+            Choose your preferred way to support my development work
           </Text>
         </Box>
 
@@ -108,4 +108,4 @@ const Support = () => {
   )
 }
 
-export default Support 
+export default Support
