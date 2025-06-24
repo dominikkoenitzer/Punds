@@ -100,7 +100,7 @@ const Home = () => {
             <Image
               borderRadius="0"
               boxSize="200px"
-              src="https://raw.githubusercontent.com/Punds101/Portfolio/refs/heads/main/images/Favicon.png"
+              src="https://raw.githubusercontent.com/dominikkoenitzer/Portfolio/refs/heads/main/images/Favicon.png"
               alt="Dominik Könitzer"
               filter="grayscale(100%) brightness(1.2) contrast(1.2)"
               transition="all 0.3s"
@@ -137,7 +137,7 @@ const Home = () => {
         </VStack>
 
         <HStack spacing={8} animation={animation} style={{ animationDelay: '0.3s' }}>
-          <a href="https://github.com/Punds101" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/dominikkoenitzer" target="_blank" rel="noopener noreferrer">
             <Icon 
               as={FaGithub} 
               w={8} 
