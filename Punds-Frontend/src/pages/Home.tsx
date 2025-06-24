@@ -201,23 +201,9 @@ const Home = () => {
             Visit My Website
           </Button>
         </VStack>
-
-        <Text 
-          fontSize="sm" 
-          mt={8}
-          animation={animation} 
-          style={{ animationDelay: '0.5s' }}
-          textAlign="center"
-          fontWeight="medium"
-          letterSpacing="2px"
-          color="whiteAlpha.700"
-          textShadow="0 0 5px rgba(255, 255, 255, 0.5)"
-        >
-          © 2025 Dominik Könitzer. All rights reserved.
-        </Text>
       </VStack>
     </Container>
   )
 }
 
-export default Home 
+export default Home
