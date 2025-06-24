@@ -11,7 +11,6 @@ import {
   keyframes,
 } from '@chakra-ui/react'
 import { FaGithub, FaLinkedin } from 'react-icons/fa'
-import { Link as RouterLink } from 'react-router-dom'
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
