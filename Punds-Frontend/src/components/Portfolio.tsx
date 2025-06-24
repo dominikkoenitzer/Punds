@@ -152,18 +152,18 @@ const Portfolio = () => {
     {
       title: 'Breeze Flow',
       description: 'A modern task management application built with React and TypeScript. Features include drag-and-drop task organization, real-time updates, and a clean, intuitive interface. The app helps users manage their workflow efficiently with a focus on user experience and productivity.',
-      image: 'https://raw.githubusercontent.com/Punds101/Breeze-Flow/main/preview.png',
+      image: 'https://raw.githubusercontent.com/dominikkoenitzer/Breeze-Flow/main/preview.png',
       tags: ['React', 'TypeScript', 'Chakra UI', 'React DnD', 'Firebase'],
-      githubUrl: 'https://github.com/Punds101/Breeze-Flow',
+      githubUrl: 'https://github.com/dominikkoenitzer/Breeze-Flow',
       liveUrl: 'https://breeze-flow.vercel.app',
       delay: 0,
     },
     {
       title: 'Personal Website',
       description: 'A minimalist portfolio website showcasing my work and skills. Built with vanilla HTML, CSS, and JavaScript, demonstrating proficiency in core web technologies and responsive design principles.',
-      image: 'https://raw.githubusercontent.com/Punds101/portfolio/main/preview.png',
+      image: 'https://raw.githubusercontent.com/dominikkoenitzer/portfolio/main/preview.png',
       tags: ['HTML', 'CSS', 'JavaScript', 'Responsive Design'],
-      githubUrl: 'https://github.com/Punds101/portfolio',
+      githubUrl: 'https://github.com/dominikkoenitzer/portfolio',
       liveUrl: 'https://dominikkoenitzer.ch',
       delay: 0.2,
     },
@@ -204,4 +204,4 @@ const Portfolio = () => {
   )
 }
 
-export default Portfolio 
+export default Portfolio
