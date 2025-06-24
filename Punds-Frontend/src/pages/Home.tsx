@@ -100,7 +100,7 @@ const Home = () => {
             <Image
               borderRadius="0"
               boxSize="200px"
-              src="https://raw.githubusercontent.com/dominikkoenitzer/Portfolio/refs/heads/main/images/Favicon.png"
+              src="https://avatars.githubusercontent.com/u/82450286?v=4"
               alt="Dominik Könitzer"
               filter="grayscale(100%) brightness(1.2) contrast(1.2)"
               transition="all 0.3s"
