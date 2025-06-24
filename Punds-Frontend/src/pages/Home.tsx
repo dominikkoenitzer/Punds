@@ -168,25 +168,7 @@ const Home = () => {
         </HStack>
 
         <VStack spacing={6} w="100%" animation={animation} style={{ animationDelay: '0.4s' }}>
-          <Button
-            as={RouterLink}
-            to="/portfolio"
-            size="lg"
-            w="100%"
-            variant="outline"
-            color="neon.green"
-            borderColor="neon.green"
-            textShadow="0 0 10px #00ff9f"
-            boxShadow="0 0 10px rgba(0, 255, 159, 0.2)"
-            _hover={{
-              bg: 'rgba(0, 255, 159, 0.1)',
-              boxShadow: '0 0 20px rgba(0, 255, 159, 0.4)',
-              transform: 'translateY(-3px)',
-            }}
-          >
-            My Portfolio
-          </Button>
-
+          
           <Button
             as="a"
             href="https://www.paypal.com/paypalme/dominikkoenitzer"
