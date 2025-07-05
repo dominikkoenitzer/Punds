@@ -131,7 +131,7 @@ const Home = () => {
             letterSpacing="3px"
             textTransform="uppercase"
           >
-            Fullstack Software Engineer
+            Nothing stays the same.
           </Text>
         </VStack>
 
