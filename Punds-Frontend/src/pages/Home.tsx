@@ -24,53 +24,18 @@ const float = keyframes`
   100% { transform: translateY(0px) rotate(0deg); }
 `
 
-const glitch = keyframes`
-  0% {
-    clip-path: polygon(0 2%, 100% 2%, 100% 5%, 0 5%);
-    transform: translate(0);
-  }
-  20% {
-    clip-path: polygon(0 15%, 100% 15%, 100% 15%, 0 15%);
-    transform: translate(-5px);
-  }
-  30% {
-    clip-path: polygon(0 10%, 100% 10%, 100% 20%, 0 20%);
-    transform: translate(5px);
-  }
-  40% {
-    clip-path: polygon(0 1%, 100% 1%, 100% 2%, 0 2%);
-    transform: translate(-5px);
-  }
-  50% {
-    clip-path: polygon(0 33%, 100% 33%, 100% 33%, 0 33%);
-    transform: translate(0);
-  }
-  55% {
-    clip-path: polygon(0 44%, 100% 44%, 100% 44%, 0 44%);
-    transform: translate(5px);
-  }
-  60% {
-    clip-path: polygon(0 50%, 100% 50%, 100% 20%, 0 20%);
-    transform: translate(-5px);
-  }
-  100% {
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
-    transform: translate(0);
-  }
-`
 
-const neonPulse = keyframes`
 
-`
+
 
 const geistFont = `'Geist', 'Inter', 'sans-serif'`;
 // Use only Love Letter TW as requested
 const lainFont = `'Love Letter TW', 'monospace'`;
 
 const Home = () => {
+
   const animation = `${fadeIn} 0.6s ease-out forwards`;
   const floatAnimation = `${float} 3s ease-in-out infinite`;
-  const neonAnimation = `${neonPulse} 2s ease-in-out infinite`;
 
   // Add Geist font to body for this page only
   useEffect(() => {
