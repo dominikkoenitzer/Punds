@@ -64,6 +64,8 @@ const neonPulse = keyframes`
 `
 
 const geistFont = `'Geist', 'Inter', 'sans-serif'`;
+// Use only Love Letter TW as requested
+const lainFont = `'Love Letter TW', 'monospace'`;
 
 const Home = () => {
   const animation = `${fadeIn} 0.6s ease-out forwards`;
@@ -72,7 +74,7 @@ const Home = () => {
 
   // Add Geist font to body for this page only
   useEffect(() => {
-    document.body.style.fontFamily = geistFont;
+    document.body.style.fontFamily = `${lainFont}, ${geistFont}`;
     document.body.style.background =
       'radial-gradient(ellipse at 60% 40%, #3a2c4d 60%, #1a1423 100%)';
     document.body.style.backgroundSize = 'cover';
@@ -91,6 +93,8 @@ const Home = () => {
 
   return (
     <Container maxW="container.sm" py={16} position="relative" zIndex={1}>
+      {/* Import only the exact fonts requested by the user */}
+      <link href="https://fonts.cdnfonts.com/css/love-letter-tw" rel="stylesheet" />
       {/* Lain/techno-dystopian overlays */}
       <style>{`
         body::before {
@@ -119,11 +123,31 @@ const Home = () => {
           animation: glitch 1.2s infinite linear alternate-reverse;
         }
         .lain-glass {
-          background: rgba(58, 44, 77, 0.82);
+          /* Glass effect removed */
+          background: none;
           border-radius: 1.5rem;
-          box-shadow: 0 8px 40px 0 #1a1423cc, 0 1.5px 0 #bfa7d7 inset;
-          border: 1.5px solid #bfa7d733;
-          backdrop-filter: blur(7px) brightness(1.08);
+          box-shadow: none;
+          border: none;
+          backdrop-filter: none;
+        }
+        .lain-scanline {
+          position: relative;
+          z-index: 1;
+          /* Simulated scanline effect */
+          background: repeating-linear-gradient(
+            to bottom,
+            rgba(191,167,215,0.12) 0px,
+            rgba(191,167,215,0.12) 1.5px,
+            transparent 1.5px,
+            transparent 4px
+          );
+          /* Optional: subtle text shadow for glow */
+          text-shadow: 0 1px 0 #6b5c7d, 0 0 8px #bfa7d7;
+          /* Optional: roughen font rendering for more typewriter look */
+          font-variant-ligatures: none;
+          font-smooth: never;
+          -webkit-font-smoothing: none;
+          -moz-osx-font-smoothing: grayscale;
         }
       `}</style>
       <VStack spacing={10} align="center" w="100%" className="lain-glass" p={{ base: 4, md: 8 }}>
@@ -132,92 +156,109 @@ const Home = () => {
           position="relative"
           animation={floatAnimation}
           mb={2}
-          borderRadius="xl"
+          borderRadius="full"
           overflow="hidden"
-          p={1.5}
-          bg="#2d223a"
-          /* border removed */
-          boxShadow="0 0 32px #bfa7d7, 0 0 64px #1a1423"
-          w="210px"
-          h="210px"
+          p={2.5}
+          bgGradient="linear(135deg, #bfa7d7 0%, #6b5c7d 100%)"
+          boxShadow="0 0 48px #bfa7d7, 0 0 96px #1a1423"
+          w="270px"
+          h="270px"
           display="flex"
           alignItems="center"
           justifyContent="center"
         >
           <Image
-            borderRadius="xl"
-            boxSize="192px"
+            borderRadius="full"
+            boxSize="250px"
             src="https://avatars.githubusercontent.com/u/82450286?v=4"
             alt="Dominik Könitzer"
-            filter="grayscale(100%) brightness(1.1) contrast(1.1)"
+            filter="grayscale(80%) brightness(1.12) contrast(1.13) drop-shadow(0 0 24px #bfa7d7)"
             transition="all 0.3s"
             _hover={{
-              filter: "grayscale(0%) brightness(1.2) contrast(1.2)",
+              filter: "grayscale(0%) brightness(1.2) contrast(1.2) drop-shadow(0 0 32px #bfa7d7)",
+              transform: 'scale(1.04)',
             }}
           />
         </Box>
         {/* Name and Motto */}
-        <VStack spacing={1} align="center" maxW="340px">
-          <Heading
-            as="h1"
-            size="xl"
-            color="#bfa7d7"
-            letterSpacing="4px"
-            fontWeight="extrabold"
-            textTransform="uppercase"
-            fontFamily={geistFont}
-            style={{ fontFamily: geistFont }}
-            textAlign="center"
-          >
-            Dominik Könitzer
-          </Heading>
-          <Text
-            fontSize="lg"
-            textAlign="center"
-            fontWeight="medium"
-            color="#bfa7d7"
-            fontFamily={geistFont}
-            style={{ fontFamily: geistFont }}
-            opacity={0.95}
-            letterSpacing="2px"
-          >
-            Nothing stays the same.
-          </Text>
-        </VStack>
+        <Heading
+          as="h1"
+          fontSize={{ base: '3xl', md: '5xl' }}
+          color="#bfa7d7"
+          letterSpacing="6px"
+          fontWeight={500}
+          fontStyle="italic"
+          textTransform="uppercase"
+          fontFamily={geistFont}
+          style={{ fontFamily: geistFont, fontWeight: 500, fontStyle: 'italic' }}
+          textAlign="center"
+          lineHeight={1.1}
+        >
+          Dominik Könitzer
+        </Heading>
+        <Text
+          fontSize={{ base: 'xl', md: '2xl' }}
+          textAlign="center"
+          fontWeight="semibold"
+          color="#bfa7d7"
+          fontFamily="'Special Elite', monospace"
+          opacity={0.98}
+          letterSpacing="3px"
+          mt={2}
+          style={{
+            fontFamily: 'Special Elite, monospace',
+            opacity: 0.98,
+            letterSpacing: '3px',
+            marginTop: 2,
+            textShadow: '0 1px 0 #6b5c7d, 0 0 8px #bfa7d7',
+            fontVariantLigatures: 'none',
+            WebkitFontSmoothing: 'none',
+            MozOsxFontSmoothing: 'grayscale',
+            background: 'none',
+          }}
+        >
+          Nothing stays the same.
+        </Text>
         
         {/* Remove duplicate heading/text, keep only the Lain-inspired section above */}
 
         <HStack spacing={8} animation={animation} style={{ animationDelay: '0.3s' }} justify="center">
-          <a href="https://github.com/dominikkoenitzer" target="_blank" rel="noopener noreferrer"
+          <a
+            href="https://github.com/dominikkoenitzer"
+            target="_blank"
+            rel="noopener noreferrer"
             style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'color 0.2s' }}
             onMouseOver={e => e.currentTarget.style.color = '#6b5c7d'}
             onMouseOut={e => e.currentTarget.style.color = '#bfa7d7'}
           >
-            <Icon 
-              as={FaGithub} 
-              w={8} 
-              h={8} 
-            color="inherit"
+            <Icon
+              as={FaGithub}
+              w={12}
+              h={12}
+              color="inherit"
               transition="all 0.3s"
-              _hover={{ 
-                boxShadow: '0 0 32px #bfa7d7, 0 0 64px #1a1423',
-              }} 
+              _hover={{
+                boxShadow: '0 0 24px #bfa7d7',
+              }}
             />
           </a>
-          <a href="https://www.linkedin.com/in/dominik-koenitzer/" target="_blank" rel="noopener noreferrer"
+          <a
+            href="https://www.linkedin.com/in/dominik-koenitzer/"
+            target="_blank"
+            rel="noopener noreferrer"
             style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'color 0.2s' }}
             onMouseOver={e => e.currentTarget.style.color = '#6b5c7d'}
             onMouseOut={e => e.currentTarget.style.color = '#bfa7d7'}
           >
-            <Icon 
-              as={FaLinkedin} 
-              w={8} 
-              h={8} 
-            color="inherit"
+            <Icon
+              as={FaLinkedin}
+              w={12}
+              h={12}
+              color="inherit"
               transition="all 0.3s"
-              _hover={{ 
-                boxShadow: '0 0 32px #bfa7d7, 0 0 64px #1a1423',
-              }} 
+              _hover={{
+                boxShadow: '0 0 24px #bfa7d7',
+              }}
             />
           </a>
         </HStack>
