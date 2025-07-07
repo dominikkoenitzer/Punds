@@ -3,10 +3,6 @@ import { extendTheme } from '@chakra-ui/react';
 const theme = extendTheme({
   styles: {
     global: {
-      '@import': [
-        "url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap')",
-        "url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&display=swap')",
-      ],
       body: {
         bg: 'black',
         color: 'whiteAlpha.900',
@@ -14,7 +10,7 @@ const theme = extendTheme({
         backgroundSize: 'cover',
         minHeight: '100vh',
         overflow: 'overlay',
-        fontFamily: '"Space Grotesk", sans-serif',
+        
         '&::before': {
           content: '""',
           position: 'fixed',
@@ -83,10 +79,7 @@ const theme = extendTheme({
       900: '#4a148c',
     },
   },
-  fonts: {
-    heading: '"Orbitron", sans-serif',
-    body: '"Space Grotesk", sans-serif',
-  },
+  
   components: {
     Button: {
       baseStyle: {
@@ -98,7 +91,7 @@ const theme = extendTheme({
         overflow: 'hidden',
         textTransform: 'uppercase',
         fontSize: 'sm',
-        fontFamily: '"Orbitron", sans-serif',
+        
         _before: {
           content: '""',
           position: 'absolute',
@@ -157,7 +150,7 @@ const theme = extendTheme({
     },
     Heading: {
       baseStyle: {
-        fontFamily: '"Orbitron", sans-serif',
+        
         letterSpacing: '2px',
         textShadow: '0 0 10px rgba(255, 255, 255, 0.5)',
       },

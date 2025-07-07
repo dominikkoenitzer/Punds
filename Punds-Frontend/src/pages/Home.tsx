@@ -28,18 +28,14 @@ const float = keyframes`
 
 
 
-const geistFont = `'Geist', 'Inter', 'sans-serif'`;
-// Use only Love Letter TW as requested
-const lainFont = `'Love Letter TW', 'monospace'`;
+
 
 const Home = () => {
 
   const animation = `${fadeIn} 0.6s ease-out forwards`;
   const floatAnimation = `${float} 3s ease-in-out infinite`;
 
-  // Add Geist font to body for this page only
   useEffect(() => {
-    document.body.style.fontFamily = `${lainFont}, ${geistFont}`;
     document.body.style.background =
       'radial-gradient(ellipse at 60% 40%, #3a2c4d 60%, #1a1423 100%)';
     document.body.style.backgroundSize = 'cover';
@@ -52,14 +48,12 @@ const Home = () => {
       document.body.style.backgroundRepeat = '';
       document.body.style.minHeight = '';
       document.body.style.transition = '';
-      document.body.style.fontFamily = '';
     };
   }, []);
 
   return (
     <Container maxW="container.sm" py={16} position="relative" zIndex={1}>
-      {/* Import only the exact fonts requested by the user */}
-      <link href="https://fonts.cdnfonts.com/css/love-letter-tw" rel="stylesheet" />
+      {/* Font imports removed; using fonts from index.css only */}
       {/* Lain/techno-dystopian overlays */}
       <style>{`
         body::before {
@@ -152,12 +146,10 @@ const Home = () => {
           color="#bfa7d7"
           letterSpacing="6px"
           fontWeight={500}
-          fontStyle="italic"
           textTransform="uppercase"
-          fontFamily={geistFont}
-          style={{ fontFamily: geistFont, fontWeight: 500, fontStyle: 'italic' }}
           textAlign="center"
           lineHeight={1.1}
+          style={{ fontFamily: 'TrixieCyrG, serif' }}
         >
           Dominik Könitzer
         </Heading>
@@ -166,19 +158,13 @@ const Home = () => {
           textAlign="center"
           fontWeight="semibold"
           color="#bfa7d7"
-          fontFamily="'Special Elite', monospace"
           opacity={0.98}
           letterSpacing="3px"
           mt={2}
           style={{
-            fontFamily: 'Special Elite, monospace',
-            opacity: 0.98,
-            letterSpacing: '3px',
-            marginTop: 2,
+            fontFamily: 'TrixieCyrG, serif',
             textShadow: '0 1px 0 #6b5c7d, 0 0 8px #bfa7d7',
-            fontVariantLigatures: 'none',
-            WebkitFontSmoothing: 'none',
-            MozOsxFontSmoothing: 'grayscale',
+            marginTop: 2,
             background: 'none',
           }}
         >
@@ -243,8 +229,8 @@ const Home = () => {
             borderRadius="lg"
             textShadow="0 0 10px #bfa7d7"
             boxShadow="0 0 10px #bfa7d744"
-            fontFamily={geistFont}
-            style={{ fontFamily: geistFont, fontWeight: 700, letterSpacing: 2 }}
+            fontWeight={700}
+            letterSpacing={2}
             _hover={{
               bg: '#6b5c7d',
               color: '#fff',
@@ -269,13 +255,13 @@ const Home = () => {
             borderRadius="lg"
             textShadow="0 0 10px #bfa7d7"
             boxShadow="0 0 10px #bfa7d744"
-            fontFamily={geistFont}
-            style={{ fontFamily: geistFont, fontWeight: 700, letterSpacing: 2 }}
+            fontWeight={700}
+            letterSpacing={2}
             _hover={{
-            bg: '#6b5c7d',
-            color: '#fff',
-            borderColor: '#6b5c7d',
-            boxShadow: '0 0 24px #bfa7d7',
+              bg: '#6b5c7d',
+              color: '#fff',
+              borderColor: '#6b5c7d',
+              boxShadow: '0 0 24px #bfa7d7',
               transform: 'translateY(-3px)',
             }}
           >
