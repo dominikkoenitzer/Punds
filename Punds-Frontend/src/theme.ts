@@ -1,9 +1,14 @@
 import { extendTheme } from '@chakra-ui/react';
 
 const theme = extendTheme({
+  fonts: {
+    heading: '\'TrixieCyrG\', serif',
+    body: '\'TrixieCyrG\', serif',
+  },
   styles: {
     global: {
       body: {
+        fontFamily: '\'TrixieCyrG\', serif',
         bg: 'black',
         color: 'whiteAlpha.900',
         backgroundAttachment: 'fixed',
