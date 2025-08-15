@@ -52,7 +52,7 @@ const Home = () => {
   }, []);
 
   return (
-    <Container maxW="container.sm" py={16} position="relative" zIndex={1}>
+    <Container maxW="container.sm" py={16} position="relative" zIndex={1} minH="100vh" display="flex" alignItems="center" justifyContent="center">
       {/* Font imports removed; using fonts from index.css only */}
       {/* Lain/techno-dystopian overlays */}
       <style>{`
@@ -149,7 +149,6 @@ const Home = () => {
           textTransform="uppercase"
           textAlign="center"
           lineHeight={1.1}
-          style={{ fontFamily: 'TrixieCyrG, serif' }}
         >
           Dominik Könitzer
         </Heading>
@@ -162,7 +161,6 @@ const Home = () => {
           letterSpacing="3px"
           mt={2}
           style={{
-            fontFamily: 'TrixieCyrG, serif',
             textShadow: '0 1px 0 #6b5c7d, 0 0 8px #bfa7d7',
             marginTop: 2,
             background: 'none',
