@@ -11,7 +11,7 @@ import {
   keyframes,
 } from '@chakra-ui/react'
 import { useEffect } from 'react'
-import { FaGithub, FaLinkedin } from 'react-icons/fa'
+import { FaGithub, } from 'react-icons/fa'
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
@@ -53,8 +53,7 @@ const Home = () => {
 
   return (
     <Container maxW="container.sm" py={16} position="relative" zIndex={1} minH="100vh" display="flex" alignItems="center" justifyContent="center">
-      {/* Font imports removed; using fonts from index.css only */}
-      {/* Lain/techno-dystopian overlays */}
+      
       <style>{`
         body::before {
           content: '';
@@ -110,7 +109,7 @@ const Home = () => {
         }
       `}</style>
       <VStack spacing={10} align="center" w="100%" className="lain-glass" p={{ base: 4, md: 8 }}>
-        {/* Profile Picture */}
+        
         <Box
           position="relative"
           animation={floatAnimation}
@@ -139,7 +138,7 @@ const Home = () => {
             }}
           />
         </Box>
-        {/* Name and Motto */}
+        
         <Heading
           as="h1"
           fontSize={{ base: '3xl', md: '5xl' }}
@@ -169,7 +168,7 @@ const Home = () => {
           Nothing stays the same.
         </Text>
         
-        {/* Remove duplicate heading/text, keep only the Lain-inspired section above */}
+        
 
         <HStack spacing={8} animation={animation} style={{ animationDelay: '0.3s' }} justify="center">
           <a
@@ -191,25 +190,7 @@ const Home = () => {
               }}
             />
           </a>
-          <a
-            href="https://www.linkedin.com/in/dominik-koenitzer/"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'color 0.2s' }}
-            onMouseOver={e => e.currentTarget.style.color = '#6b5c7d'}
-            onMouseOut={e => e.currentTarget.style.color = '#bfa7d7'}
-          >
-            <Icon
-              as={FaLinkedin}
-              w={12}
-              h={12}
-              color="inherit"
-              transition="all 0.3s"
-              _hover={{
-                boxShadow: '0 0 24px #bfa7d7',
-              }}
-            />
-          </a>
+          
         </HStack>
 
         <VStack spacing={4} w="100%" animation={animation} style={{ animationDelay: '0.4s' }}>
