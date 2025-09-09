@@ -11,7 +11,7 @@ import {
   keyframes,
 } from '@chakra-ui/react'
 import { useEffect } from 'react'
-import { FaGithub, } from 'react-icons/fa'
+import { FaGithub, FaPaypal } from 'react-icons/fa'
 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
@@ -175,9 +175,15 @@ const Home = () => {
             href="https://github.com/dominikkoenitzer"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'color 0.2s' }}
-            onMouseOver={e => e.currentTarget.style.color = '#6b5c7d'}
-            onMouseOut={e => e.currentTarget.style.color = '#bfa7d7'}
+            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'all 0.3s' }}
+            onMouseOver={e => {
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.textShadow = '0 0 8px #bfa7d7';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.color = '#bfa7d7';
+              e.currentTarget.style.textShadow = 'none';
+            }}
           >
             <Icon
               as={FaGithub}
@@ -186,7 +192,33 @@ const Home = () => {
               color="inherit"
               transition="all 0.3s"
               _hover={{
-                boxShadow: '0 0 24px #bfa7d7',
+                transform: 'scale(1.05)',
+              }}
+            />
+          </a>
+          
+          <a
+            href="https://www.paypal.com/paypalme/dominikkoenitzer"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'all 0.3s' }}
+            onMouseOver={e => {
+              e.currentTarget.style.color = '#fff';
+              e.currentTarget.style.textShadow = '0 0 8px #bfa7d7';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.color = '#bfa7d7';
+              e.currentTarget.style.textShadow = 'none';
+            }}
+          >
+            <Icon
+              as={FaPaypal}
+              w={12}
+              h={12}
+              color="inherit"
+              transition="all 0.3s"
+              _hover={{
+                transform: 'scale(1.05)',
               }}
             />
           </a>
@@ -194,32 +226,6 @@ const Home = () => {
         </HStack>
 
         <VStack spacing={4} w="100%" animation={animation} style={{ animationDelay: '0.4s' }}>
-          <Button
-            as="a"
-            href="https://www.paypal.com/paypalme/dominikkoenitzer"
-            target="_blank"
-            rel="noopener noreferrer"
-            size="lg"
-            w="100%"
-            variant="outline"
-            color="#bfa7d7"
-            borderColor="#bfa7d7"
-            borderWidth={2}
-            borderRadius="lg"
-            textShadow="0 0 10px #bfa7d7"
-            boxShadow="0 0 10px #bfa7d744"
-            fontWeight={700}
-            letterSpacing={2}
-            _hover={{
-              bg: '#6b5c7d',
-              color: '#fff',
-              borderColor: '#6b5c7d',
-              boxShadow: '0 0 24px #bfa7d7',
-              transform: 'translateY(-3px)',
-            }}
-          >
-            Support My Work
-          </Button>
           <Button
             as="a"
             href="https://dominikkoenitzer.ch"
