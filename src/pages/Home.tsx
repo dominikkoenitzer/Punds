@@ -25,6 +25,8 @@ const Home = () => {
   const [latency, setLatency] = useState(0)
   const [packetLoss, setPacketLoss] = useState(0.00)
   const [collapsedDirs, setCollapsedDirs] = useState<string[]>([])
+  const [audioInitialized, setAudioInitialized] = useState(false)
+  const [iframesLoaded, setIframesLoaded] = useState({ layer7: false, layer13: false })
   
   const commands = [
     'INITIALIZING NAVI SYSTEM...',
@@ -34,6 +36,55 @@ const Home = () => {
     'SYSTEM READY',
   ]
   const [commandIndex, setCommandIndex] = useState(0)
+
+  // Helper function to play audio
+  const playAudio = (audioId: string) => {
+    const iframe = document.getElementById(audioId) as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      try {
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'playVideo'
+        }), '*')
+      } catch (error) {
+        console.error('Error playing audio:', error)
+      }
+    }
+  }
+
+  const pauseAudio = (audioId: string) => {
+    const iframe = document.getElementById(audioId) as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      try {
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'pauseVideo'
+        }), '*')
+      } catch (error) {
+        console.error('Error pausing audio:', error)
+      }
+    }
+  }
+
+  const setAudioVolume = (audioId: string, vol: number) => {
+    const iframe = document.getElementById(audioId) as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      try {
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'setVolume',
+          args: [vol]
+        }), '*')
+      } catch (error) {
+        console.error('Error setting volume:', error)
+      }
+    }
+  }
+
+  // Handle iframe load events
+  const handleIframeLoad = (layer: 'layer7' | 'layer13') => {
+    setIframesLoaded(prev => ({ ...prev, [layer]: true }))
+  }
 
   const secretFiles: { [key: string]: string } = {
     'SYSTEM/NOTHING_STAYS_THE_SAME.TXT': `
@@ -182,6 +233,41 @@ The Wired and reality are one.
     return () => window.removeEventListener('mousemove', handleMouseMove)
   }, [])
 
+  // Initialize audio on first user interaction
+  useEffect(() => {
+    const areIframesReady = iframesLoaded.layer7 && iframesLoaded.layer13
+    
+    if (!areIframesReady || audioInitialized) return
+
+    const initAudio = () => {
+      if (!audioInitialized) {
+        setAudioInitialized(true)
+        // Give a small delay for iframe API to be ready
+        setTimeout(() => {
+          const activeAudio = protocolLevel === 13 ? 'lain-audio-layer13' : 'lain-audio-layer7'
+          setAudioVolume(activeAudio, protocolLevel === 13 ? 13 : 7)
+          playAudio(activeAudio)
+        }, 200)
+      }
+    }
+
+    // Trigger on ANY user interaction
+    const events = ['click', 'keydown', 'touchstart', 'scroll', 'mousemove']
+    events.forEach(event => {
+      document.addEventListener(event, initAudio, { once: true })
+    })
+
+    // Also try to play automatically after a delay (for browsers that allow it)
+    const autoplayTimer = setTimeout(initAudio, 1000)
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, initAudio)
+      })
+      clearTimeout(autoplayTimer)
+    }
+  }, [audioInitialized, protocolLevel, iframesLoaded])
+
   // Time update and network stats modulation
   useEffect(() => {
     const interval = setInterval(() => {
@@ -196,15 +282,10 @@ The Wired and reality are one.
   
   // Volume control
   useEffect(() => {
-    const iframe = document.getElementById('lain-audio') as HTMLIFrameElement
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage(JSON.stringify({
-        event: 'command',
-        func: 'setVolume',
-        args: [volume]
-      }), '*')
-    }
-  }, [volume])
+    if (!audioInitialized) return
+    const activeAudio = protocolLevel === 13 ? 'lain-audio-layer13' : 'lain-audio-layer7'
+    setAudioVolume(activeAudio, volume)
+  }, [volume, audioInitialized, protocolLevel])
   
   // Auto-adjust volume based on protocol level
   useEffect(() => {
@@ -215,24 +296,22 @@ The Wired and reality are one.
     }
   }, [protocolLevel])
   
-  // Set initial volume and ensure autoplay on mount
+  // Handle protocol level switching and audio track switching
   useEffect(() => {
-    const iframe = document.getElementById('lain-audio') as HTMLIFrameElement
-    if (iframe && iframe.contentWindow) {
-      // Wait a bit for iframe to load
-      setTimeout(() => {
-        iframe.contentWindow?.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'setVolume',
-          args: [protocolLevel === 13 ? 13 : 7]
-        }), '*')
-        iframe.contentWindow?.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'playVideo'
-        }), '*')
-      }, 1000)
-    }
-  }, [])
+    if (!audioInitialized) return
+    
+    const activeAudio = protocolLevel === 13 ? 'lain-audio-layer13' : 'lain-audio-layer7'
+    const inactiveAudio = protocolLevel === 13 ? 'lain-audio-layer7' : 'lain-audio-layer13'
+    
+    // Pause inactive audio
+    pauseAudio(inactiveAudio)
+    
+    // Play active audio
+    setTimeout(() => {
+      setAudioVolume(activeAudio, protocolLevel === 13 ? 13 : 7)
+      playAudio(activeAudio)
+    }, 100)
+  }, [protocolLevel, audioInitialized])
 
   // Typing effect
   useEffect(() => {
@@ -321,16 +400,28 @@ The Wired and reality are one.
 
   return (
     <div className={`navi-system ${protocolLevel === 13 ? 'layer13-theme' : ''}`}>
-      {/* Hidden Audio Player - Serial Experiments Lain Opening */}
+      {/* Hidden Audio Players - Different tracks for each layer */}
       <iframe 
-        id="lain-audio"
+        id="lain-audio-layer7"
         frameBorder="0"
         allow="autoplay"
-        title="Lain Audio"
+        title="Lain Audio Layer 7"
         width="0" 
         height="0" 
-        src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
+        src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=0&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
         style={{ display: 'none' }}
+        onLoad={() => handleIframeLoad('layer7')}
+      />
+      <iframe 
+        id="lain-audio-layer13"
+        frameBorder="0"
+        allow="autoplay"
+        title="Lain Audio Layer 13"
+        width="0" 
+        height="0" 
+        src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=0&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
+        style={{ display: 'none' }}
+        onLoad={() => handleIframeLoad('layer13')}
       />
       
       {/* CRT Screen Effects */}
