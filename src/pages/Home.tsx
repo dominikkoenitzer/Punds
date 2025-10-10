@@ -1,260 +1,393 @@
-import {
-  Box,
-  VStack,
-  Heading,
-  Text,
-  Button,
-  Image,
-  Container,
-  Icon,
-  HStack,
-  keyframes,
-} from '@chakra-ui/react'
-import { useEffect } from 'react'
-import { FaGithub, FaPaypal } from 'react-icons/fa'
-
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`
-
-const float = keyframes`
-  0% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-10px) rotate(2deg); }
-  100% { transform: translateY(0px) rotate(0deg); }
-`
-
-
-
-
-
-
+import { useState, useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
+import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
+import './Home.css'
 
 const Home = () => {
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 })
+  const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
+  const [time, setTime] = useState(new Date())
+  const [commandText, setCommandText] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  
+  const commands = [
+    'INITIALIZING NAVI SYSTEM...',
+    'CONNECTING TO THE WIRED...',
+    'LOADING USER DATA...',
+    'REALITY.EXE NOT FOUND',
+    'SYSTEM READY',
+  ]
+  const [commandIndex, setCommandIndex] = useState(0)
 
-  const animation = `${fadeIn} 0.6s ease-out forwards`;
-  const floatAnimation = `${float} 3s ease-in-out infinite`;
-
+  // Cursor trail effect
   useEffect(() => {
-    document.body.style.background =
-      'radial-gradient(ellipse at 60% 40%, #3a2c4d 60%, #1a1423 100%)';
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundRepeat = 'no-repeat';
-    document.body.style.minHeight = '100vh';
-    document.body.style.transition = 'background 1s';
-    return () => {
-      document.body.style.background = '';
-      document.body.style.backgroundSize = '';
-      document.body.style.backgroundRepeat = '';
-      document.body.style.minHeight = '';
-      document.body.style.transition = '';
-    };
-  }, []);
+    const handleMouseMove = (e: MouseEvent) => {
+      setCursorPos({ x: e.clientX, y: e.clientY })
+      
+      setCursorTrail(prev => {
+        const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: Date.now() }]
+        return newTrail.slice(-15) // Keep last 15 positions
+      })
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
+
+  // Time update
+  useEffect(() => {
+    const interval = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Typing effect
+  useEffect(() => {
+    if (!isTyping && commandIndex < commands.length) {
+      setIsTyping(true)
+      let currentText = ''
+      let charIndex = 0
+      const currentCommand = commands[commandIndex]
+      
+      const typeInterval = setInterval(() => {
+        if (charIndex < currentCommand.length) {
+          currentText += currentCommand[charIndex]
+          setCommandText(currentText)
+          charIndex++
+        } else {
+          clearInterval(typeInterval)
+          setTimeout(() => {
+            setIsTyping(false)
+            setCommandIndex((prev) => (prev + 1) % commands.length)
+            setCommandText('')
+          }, 2000)
+        }
+      }, 80)
+      
+      return () => clearInterval(typeInterval)
+    }
+  }, [commandIndex, isTyping])
 
   return (
-    <Container maxW="container.sm" py={16} position="relative" zIndex={1} minH="100vh" display="flex" alignItems="center" justifyContent="center">
+    <div className="navi-system">
+      {/* CRT Screen Effects */}
+      <div className="crt-overlay"></div>
+      <div className="crt-scanlines"></div>
+      <div className="static-noise"></div>
       
-      <style>{`
-        body::before {
-          content: '';
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          pointer-events: none;
-          z-index: 0;
-          background: repeating-linear-gradient(
-            to bottom,
-            rgba(255,255,255,0.03) 0px,
-            rgba(255,255,255,0.03) 1px,
-            transparent 1px,
-            transparent 4px
-          );
-        }
-        @keyframes glitch {
-          0% { text-shadow: 2px 0 #bfa7d7, -2px 0 #6b5c7d; }
-          20% { text-shadow: -2px 0 #bfa7d7, 2px 0 #6b5c7d; }
-          40% { text-shadow: 2px 2px #bfa7d7, -2px -2px #6b5c7d; }
-          60% { text-shadow: -2px 2px #bfa7d7, 2px -2px #6b5c7d; }
-          80% { text-shadow: 2px 0 #bfa7d7, -2px 0 #6b5c7d; }
-          100% { text-shadow: none; }
-        }
-        .lain-glitch {
-          animation: glitch 1.2s infinite linear alternate-reverse;
-        }
-        .lain-glass {
-          /* Glass effect removed */
-          background: none;
-          border-radius: 1.5rem;
-          box-shadow: none;
-          border: none;
-          backdrop-filter: none;
-        }
-        .lain-scanline {
-          position: relative;
-          z-index: 1;
-          /* Simulated scanline effect */
-          background: repeating-linear-gradient(
-            to bottom,
-            rgba(191,167,215,0.12) 0px,
-            rgba(191,167,215,0.12) 1.5px,
-            transparent 1.5px,
-            transparent 4px
-          );
-          /* Optional: subtle text shadow for glow */
-          text-shadow: 0 1px 0 #6b5c7d, 0 0 8px #bfa7d7;
-          /* Optional: roughen font rendering for more typewriter look */
-          font-variant-ligatures: none;
-          font-smooth: never;
-          -webkit-font-smoothing: none;
-          -moz-osx-font-smoothing: grayscale;
-        }
-      `}</style>
-      <VStack spacing={10} align="center" w="100%" className="lain-glass" p={{ base: 4, md: 8 }}>
-        
-        <Box
-          position="relative"
-          animation={floatAnimation}
-          mb={2}
-          borderRadius="full"
-          overflow="hidden"
-          p={2.5}
-          bgGradient="linear(135deg, #bfa7d7 0%, #6b5c7d 100%)"
-          boxShadow="0 0 48px #bfa7d7, 0 0 96px #1a1423"
-          w="270px"
-          h="270px"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <Image
-            borderRadius="full"
-            boxSize="250px"
-            src="https://avatars.githubusercontent.com/u/82450286?v=4"
-            alt="Dominik Könitzer"
-            filter="grayscale(80%) brightness(1.12) contrast(1.13) drop-shadow(0 0 24px #bfa7d7)"
-            transition="all 0.3s"
-            _hover={{
-              filter: "grayscale(0%) brightness(1.2) contrast(1.2) drop-shadow(0 0 32px #bfa7d7)",
-              transform: 'scale(1.04)',
-            }}
-          />
-        </Box>
-        
-        <Heading
-          as="h1"
-          fontSize={{ base: '3xl', md: '5xl' }}
-          color="#bfa7d7"
-          letterSpacing="6px"
-          fontWeight={500}
-          textTransform="uppercase"
-          textAlign="center"
-          lineHeight={1.1}
-        >
-          Dominik Könitzer
-        </Heading>
-        <Text
-          fontSize={{ base: 'xl', md: '2xl' }}
-          textAlign="center"
-          fontWeight="semibold"
-          color="#bfa7d7"
-          opacity={0.98}
-          letterSpacing="3px"
-          mt={2}
+      {/* Ghostly Cursor Trail */}
+      {cursorTrail.map((pos, index) => (
+        <div
+          key={pos.id}
+          className="cursor-ghost"
           style={{
-            textShadow: '0 1px 0 #6b5c7d, 0 0 8px #bfa7d7',
-            marginTop: 2,
-            background: 'none',
+            left: pos.x,
+            top: pos.y,
+            opacity: (index / cursorTrail.length) * 0.3,
           }}
-        >
-          Nothing stays the same.
-        </Text>
-        
-        
+        />
+      ))}
 
-        <HStack spacing={8} animation={animation} style={{ animationDelay: '0.3s' }} justify="center">
-          <a
-            href="https://github.com/dominikkoenitzer"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'all 0.3s' }}
-            onMouseOver={e => {
-              e.currentTarget.style.color = '#fff';
-              e.currentTarget.style.textShadow = '0 0 8px #bfa7d7';
-            }}
-            onMouseOut={e => {
-              e.currentTarget.style.color = '#bfa7d7';
-              e.currentTarget.style.textShadow = 'none';
-            }}
-          >
-            <Icon
-              as={FaGithub}
-              w={12}
-              h={12}
-              color="inherit"
-              transition="all 0.3s"
-              _hover={{
-                transform: 'scale(1.05)',
-              }}
-            />
-          </a>
-          
-          <a
-            href="https://www.paypal.com/paypalme/dominikkoenitzer"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#bfa7d7', textDecoration: 'none', transition: 'all 0.3s' }}
-            onMouseOver={e => {
-              e.currentTarget.style.color = '#fff';
-              e.currentTarget.style.textShadow = '0 0 8px #bfa7d7';
-            }}
-            onMouseOut={e => {
-              e.currentTarget.style.color = '#bfa7d7';
-              e.currentTarget.style.textShadow = 'none';
-            }}
-          >
-            <Icon
-              as={FaPaypal}
-              w={12}
-              h={12}
-              color="inherit"
-              transition="all 0.3s"
-              _hover={{
-                transform: 'scale(1.05)',
-              }}
-            />
-          </a>
-          
-        </HStack>
+      {/* Main Grid Layout */}
+      <div className="navi-grid">
+        {/* Header Bar */}
+        <div className="navi-header">
+          <div className="header-left">
+            <span className="navi-logo glitch-fast" data-text="NAVI">NAVI</span>
+            <span className="header-separator">://</span>
+            <span className="system-status blink-slow">ACTIVE</span>
+          </div>
+          <div className="header-right">
+            <span className="system-time">{time.toLocaleTimeString()}</span>
+            <div className="signal-indicator">
+              <span className="signal-bar"></span>
+              <span className="signal-bar"></span>
+              <span className="signal-bar"></span>
+              <span className="signal-bar blink-fast"></span>
+            </div>
+          </div>
+        </div>
 
-        <VStack spacing={4} w="100%" animation={animation} style={{ animationDelay: '0.4s' }}>
-          <Button
-            as="a"
-            href="https://dominikkoenitzer.ch"
-            target="_blank"
-            rel="noopener noreferrer"
-            size="lg"
-            w="100%"
-            variant="outline"
-            color="#bfa7d7"
-            borderColor="#bfa7d7"
-            borderWidth={2}
-            borderRadius="lg"
-            textShadow="0 0 10px #bfa7d7"
-            boxShadow="0 0 10px #bfa7d744"
-            fontWeight={700}
-            letterSpacing={2}
-            _hover={{
-              bg: '#6b5c7d',
-              color: '#fff',
-              borderColor: '#6b5c7d',
-              boxShadow: '0 0 24px #bfa7d7',
-              transform: 'translateY(-3px)',
-            }}
-          >
-            Visit My Website
-          </Button>
-        </VStack>
-      </VStack>
-    </Container>
+        {/* Main Content Area */}
+        <div className="navi-content">
+          {/* Left Column */}
+          <div className="column-left">
+            {/* Window 1: User Profile */}
+            <motion.div 
+              className="navi-window window-profile"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 0.2 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">USER_PROFILE.NAV</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body">
+                <div className="profile-image-container">
+                  <div className="image-static"></div>
+                  <img 
+                    src="https://avatars.githubusercontent.com/u/82450286?v=4" 
+                    alt="User"
+                    className="profile-image glitch-image"
+                  />
+                  <div className="image-scanline"></div>
+                </div>
+                <div className="profile-info">
+                  <h1 className="profile-name glitch-text" data-text="DOMINIK_KÖNITZER">
+                    DOMINIK_KÖNITZER
+                  </h1>
+                  <p className="profile-id">
+                    <span className="label">ID:</span> <span className="value">USER#82450286</span>
+                  </p>
+                  <p className="profile-status">
+                    <span className="label">STATUS:</span> 
+                    <span className="value blink-fast">CONNECTED_TO_WIRED</span>
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Window 2: Command Terminal */}
+            <motion.div 
+              className="navi-window window-terminal"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 0.4 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">TERMINAL.EXE</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body terminal-body">
+                <div className="terminal-lines">
+                  <p className="terminal-line">
+                    <span className="prompt">&gt;</span> NOTHING_STAYS_THE_SAME.TXT
+                  </p>
+                  <p className="terminal-line">
+                    <span className="prompt">&gt;</span> REALITY.DLL LOADED
+                  </p>
+                  <p className="terminal-line typing-line">
+                    <span className="prompt">&gt;</span> {commandText}
+                    <span className="cursor-blink">_</span>
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Center Column */}
+          <div className="column-center">
+            {/* Window 3: System Info */}
+            <motion.div 
+              className="navi-window window-system"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 1, delay: 0.6 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">SYSTEM.INFO</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body">
+                <div className="system-grid">
+                  <div className="system-item">
+                    <span className="sys-label">PROTOCOL</span>
+                    <span className="sys-value">IPv7</span>
+                  </div>
+                  <div className="system-item">
+                    <span className="sys-label">LAYER</span>
+                    <span className="sys-value blink-slow">07</span>
+                  </div>
+                  <div className="system-item">
+                    <span className="sys-label">NODE</span>
+                    <span className="sys-value">THE_WIRED</span>
+                  </div>
+                  <div className="system-item">
+                    <span className="sys-label">PRESENCE</span>
+                    <span className="sys-value blink-fast">OMNIPRESENT</span>
+                  </div>
+                </div>
+                
+                {/* ASCII Art */}
+                <div className="ascii-art">
+                  <pre>{`
+    ▲▼▲▼▲▼▲▼▲▼▲▼▲▼▲▼
+    ▼ CLOSE THE  ▲
+    ▲  WORLD,    ▼
+    ▼  OPEN THE  ▲
+    ▲   nExt     ▼
+    ▼▲▼▲▼▲▼▲▼▲▼▲▼▲▼▲
+                  `}</pre>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Window 4: Message */}
+            <motion.div 
+              className="navi-window window-message"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 1, delay: 0.8 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">MESSAGE.LOG</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body message-body">
+                <p className="message-text glitch-subtle">
+                  "No matter where you are, everyone is always connected."
+                </p>
+                <p className="message-author">— Lain Iwakura</p>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Right Column */}
+          <div className="column-right">
+            {/* Window 5: Links/Access Points */}
+            <motion.div 
+              className="navi-window window-links"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 1.0 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">ACCESS_POINTS.NAV</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body links-body">
+                <a 
+                  href="https://dominikkoenitzer.ch" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="access-link"
+                >
+                  <div className="link-icon pulse-icon">
+                    <FaGlobe />
+                  </div>
+                  <div className="link-info">
+                    <span className="link-name">PERSONAL_SITE</span>
+                    <span className="link-path">/home/web</span>
+                  </div>
+                  <span className="link-arrow blink-slow">→</span>
+                </a>
+
+                <a 
+                  href="https://github.com/dominikkoenitzer" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="access-link"
+                >
+                  <div className="link-icon pulse-icon">
+                    <FaGithub />
+                  </div>
+                  <div className="link-info">
+                    <span className="link-name">REPOSITORY</span>
+                    <span className="link-path">/git/hub</span>
+                  </div>
+                  <span className="link-arrow blink-slow">→</span>
+                </a>
+
+                <a 
+                  href="https://www.paypal.com/paypalme/dominikkoenitzer" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="access-link"
+                >
+                  <div className="link-icon pulse-icon">
+                    <FaPaypal />
+                  </div>
+                  <div className="link-info">
+                    <span className="link-name">TRANSFER</span>
+                    <span className="link-path">/pay/support</span>
+                  </div>
+                  <span className="link-arrow blink-slow">→</span>
+                </a>
+              </div>
+            </motion.div>
+
+            {/* Window 6: Network Status */}
+            <motion.div 
+              className="navi-window window-network"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 1, delay: 1.2 }}
+            >
+              <div className="window-header">
+                <div className="window-dots">
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                  <span className="dot"></span>
+                </div>
+                <span className="window-title">NETWORK.STATUS</span>
+                <span className="window-status blink-slow">●</span>
+              </div>
+              <div className="window-body network-body">
+                <div className="network-lines">
+                  <div className="network-line">
+                    <span className="net-label">PACKET_LOSS:</span>
+                    <span className="net-value">0.00%</span>
+                  </div>
+                  <div className="network-line">
+                    <span className="net-label">LATENCY:</span>
+                    <span className="net-value blink-slow">0ms</span>
+                  </div>
+                  <div className="network-line">
+                    <span className="net-label">CONNECTION:</span>
+                    <span className="net-value">STABLE</span>
+                  </div>
+                </div>
+                <div className="waveform">
+                  <div className="wave wave1"></div>
+                  <div className="wave wave2"></div>
+                  <div className="wave wave3"></div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Footer Bar */}
+        <div className="navi-footer">
+          <div className="footer-left">
+            <span className="footer-text">ALL_IS_CONNECTED</span>
+          </div>
+          <div className="footer-center">
+            <span className="glitch-subtle" data-text="PRESENT_DAY_PRESENT_TIME">
+              PRESENT_DAY_PRESENT_TIME
+            </span>
+          </div>
+          <div className="footer-right">
+            <span className="footer-text">© 2025 D.K.</span>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
