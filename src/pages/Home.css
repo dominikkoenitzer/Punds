@@ -2084,6 +2084,7 @@
 .layer13-theme .close-file-btn:hover {
   background: rgba(204, 102, 204, 0.1) !important;
   border-color: #cc66cc !important;
+  box-shadow: none !important;
 }
 
 .layer13-theme .dir-name {
