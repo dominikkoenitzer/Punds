@@ -19,6 +19,10 @@ const Home = () => {
   const [decodedMessage, setDecodedMessage] = useState('')
   const [protocolClicks, setProtocolClicks] = useState(0)
   const [lastProtocolClick, setLastProtocolClick] = useState(0)
+  const [volume, setVolume] = useState(30)
+  const [bandwidth, setBandwidth] = useState(1.21)
+  const [latency, setLatency] = useState(0)
+  const [packetLoss, setPacketLoss] = useState(0.00)
   
   const commands = [
     'INITIALIZING NAVI SYSTEM...',
@@ -93,7 +97,7 @@ LET'S ALL LOVE LAIN
 4F442E20574520415245204C41494E2E
 -----END WIRED KEY-----
 
-WARNING: Unauthorized access detected
+God is here.
     `,
     'SYSTEM/KNIGHTS.DAT': `
 > File: KNIGHTS.DAT
@@ -121,11 +125,29 @@ Or are they creating them?
     return () => window.removeEventListener('mousemove', handleMouseMove)
   }, [])
 
-  // Time update
+  // Time update and network stats modulation
   useEffect(() => {
-    const interval = setInterval(() => setTime(new Date()), 1000)
+    const interval = setInterval(() => {
+      setTime(new Date())
+      // Modulate network stats randomly
+      setBandwidth(prev => +(prev + (Math.random() - 0.5) * 0.1).toFixed(2))
+      setLatency(Math.floor(Math.random() * 3))
+      setPacketLoss(+(Math.random() * 0.01).toFixed(2))
+    }, 1000)
     return () => clearInterval(interval)
   }, [])
+  
+  // Volume control
+  useEffect(() => {
+    const iframe = document.getElementById('lain-audio') as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'setVolume',
+        args: [volume]
+      }), '*')
+    }
+  }, [volume])
 
   // Typing effect
   useEffect(() => {
@@ -226,6 +248,20 @@ Or are they creating them?
         src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
         style={{ display: 'none' }}
       />
+      
+      {/* Volume Control */}
+      <div className="volume-control">
+        <div className="volume-icon">🔊</div>
+        <input 
+          type="range" 
+          min="0" 
+          max="100" 
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+          className="volume-slider"
+        />
+        <span className="volume-value">{volume}%</span>
+      </div>
       
       {/* CRT Screen Effects */}
       <div className="crt-overlay"></div>
@@ -540,7 +576,7 @@ Or are they creating them?
                       value={hexInput}
                       onChange={(e) => setHexInput(e.target.value)}
                       placeholder="4E 6F 20 6D 61 74 74 65 72..."
-                      rows={3}
+                      rows={5}
                     />
                   </div>
                   <button 
@@ -675,22 +711,22 @@ Or are they creating them?
                   </div>
                   <div className="stat-box">
                     <span className="stat-label-small">BANDWIDTH</span>
-                    <span className="stat-value-large">1.21 GB/s</span>
+                    <span className="stat-value-large">{bandwidth.toFixed(2)} GB/s</span>
                   </div>
                 </div>
                 <div className="network-lines">
                   <div className="network-line">
                     <span className="net-label">PACKET_LOSS:</span>
-                    <span className="net-value">0.00%</span>
+                    <span className="net-value">{packetLoss.toFixed(2)}%</span>
                     <div className="mini-bar">
-                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                      <div className="bar-fill" style={{ width: `${100 - packetLoss * 100}%` }}></div>
                     </div>
                   </div>
                   <div className="network-line">
                     <span className="net-label">LATENCY:</span>
-                    <span className="net-value blink-slow">0ms</span>
+                    <span className="net-value">{latency}ms</span>
                     <div className="mini-bar">
-                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                      <div className="bar-fill" style={{ width: `${Math.max(0, 100 - latency * 10)}%` }}></div>
                     </div>
                   </div>
                   <div className="network-line">
