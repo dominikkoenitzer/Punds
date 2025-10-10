@@ -9,8 +9,6 @@ const Home = () => {
   const [commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [openFile, setOpenFile] = useState<string | null>(null)
-  const [secretRevealed, setSecretRevealed] = useState(false)
-  const [clickCount, setClickCount] = useState(0)
   const [matrixMode, setMatrixMode] = useState(false)
   const [hexInput, setHexInput] = useState('')
   const [decodedMessage, setDecodedMessage] = useState('')
@@ -311,16 +309,6 @@ The Wired and reality are one.
     }
   }
 
-  const handleSecretClick = () => {
-    setClickCount(prev => prev + 1)
-    if (clickCount >= 6) {
-      setSecretRevealed(true)
-      setMatrixMode(true)
-      setTimeout(() => {
-        setMatrixMode(false)
-      }, 5000)
-    }
-  }
 
   const toggleDirectory = (dirName: string) => {
     setCollapsedDirs(prev => 
@@ -456,7 +444,7 @@ The Wired and reality are one.
                   <span className="dot"></span>
                   <span className="dot"></span>
                 </div>
-                <span className="window-title">TERMINAL.EXE</span>
+                <span className="window-title">DIRECTORY.NAV</span>
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body terminal-body">
@@ -469,10 +457,6 @@ The Wired and reality are one.
                       exit={{ opacity: 0 }}
                       className="terminal-lines"
                     >
-                      <p className="terminal-line dir-header">
-                        <span className="prompt">$</span> ls -la
-                      </p>
-                      <p className="terminal-line dir-separator">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
                       
                       <p 
                         className="terminal-line dir-folder"
@@ -607,10 +591,6 @@ The Wired and reality are one.
                           )}
                         </>
                       )}
-                      <p className="terminal-line typing-line">
-                        <span className="prompt">&gt;</span> {commandText}
-                        <span className="cursor-blink">_</span>
-                      </p>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -894,26 +874,12 @@ The Wired and reality are one.
                     </div>
                   </div>
                 </div>
-                <div 
-                  className="secret-trigger"
-                  onClick={handleSecretClick}
-                >
-                  <div className="waveform">
-                    <div className="wave wave1"></div>
-                    <div className="wave wave2"></div>
-                    <div className="wave wave3"></div>
-                    <div className="wave wave4"></div>
-                    <div className="wave wave5"></div>
-                  </div>
-                  {secretRevealed && (
-                    <motion.p 
-                      className="secret-revealed"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                    >
-                      LET'S ALL LOVE LAIN
-                    </motion.p>
-                  )}
+                <div className="waveform">
+                  <div className="wave wave1"></div>
+                  <div className="wave wave2"></div>
+                  <div className="wave wave3"></div>
+                  <div className="wave wave4"></div>
+                  <div className="wave wave5"></div>
                 </div>
               </div>
             </motion.div>
