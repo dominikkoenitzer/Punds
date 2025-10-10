@@ -13,6 +13,66 @@
   cursor: crosshair;
 }
 
+/* Volume Control */
+.volume-control {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 20, 0, 0.95);
+  border: 2px solid #00ff00;
+  border-radius: 4px;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.volume-icon {
+  font-size: 1.2rem;
+}
+
+.volume-slider {
+  width: 100px;
+  height: 4px;
+  background: rgba(0, 255, 0, 0.2);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #00ff00;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px #00ff00;
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #00ff00;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 10px #00ff00;
+}
+
+.volume-value {
+  font-size: 0.75rem;
+  color: #00ff00;
+  font-family: 'TrixieCyrG', monospace;
+  letter-spacing: 0.05rem;
+  min-width: 40px;
+}
+
 /* CRT Screen Effects */
 .crt-overlay {
   position: fixed;
@@ -753,7 +813,7 @@
   font-family: 'TrixieCyrG', monospace;
   font-size: 0.7rem;
   resize: vertical;
-  min-height: 80px;
+  min-height: 100px;
   transition: all 0.3s ease;
 }
 
@@ -1543,6 +1603,45 @@
   color: #cc00cc !important;
   border-color: #cc00cc !important;
   background: rgba(255, 0, 255, 0.1) !important;
+}
+
+.layer13-theme .volume-control {
+  border-color: #ff00ff !important;
+  background: rgba(50, 0, 50, 0.95) !important;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.4) !important;
+}
+
+.layer13-theme .volume-slider {
+  background: rgba(255, 0, 255, 0.2) !important;
+}
+
+.layer13-theme .volume-slider::-webkit-slider-thumb {
+  background: #ff00ff !important;
+  box-shadow: 0 0 10px #ff00ff !important;
+}
+
+.layer13-theme .volume-slider::-moz-range-thumb {
+  background: #ff00ff !important;
+  box-shadow: 0 0 10px #ff00ff !important;
+}
+
+.layer13-theme .volume-value {
+  color: #ff00ff !important;
+}
+
+.layer13-theme .secret-revealed {
+  color: #ff00ff !important;
+  border-color: #ff00ff !important;
+  background: rgba(255, 0, 255, 0.1) !important;
+  text-shadow: 0 0 15px #ff00ff !important;
+}
+
+.layer13-theme .glitch-subtle::before {
+  text-shadow: -1px 0 rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .footer-text {
+  color: #ff00ff !important;
 }
 
 /* Network Monitor Stats */
