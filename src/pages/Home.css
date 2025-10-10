@@ -13,6 +13,10 @@
   cursor: crosshair;
 }
 
+.layer13-theme.navi-system {
+  background: #0f0015 !important;
+}
+
 /* Network Volume Slider */
 .volume-bar {
   position: relative;
@@ -1261,6 +1265,11 @@
   z-index: 2;
 }
 
+.layer13-theme .access-link::after {
+  background: #cc66cc !important;
+  box-shadow: 0 0 10px #cc66cc !important;
+}
+
 .access-link:hover::before {
   left: 100%;
 }
@@ -1278,31 +1287,26 @@
   transform: translateX(5px);
 }
 
+.layer13-theme .access-link:hover {
+  border-color: #ff00ff !important;
+  background: rgba(255, 0, 255, 0.1) !important;
+  box-shadow: none !important;
+}
+
 .access-link > * {
   position: relative;
   z-index: 3;
 }
 
 .layer13-theme .access-link {
-  background: rgba(255, 0, 255, 0.05) !important;
+  background: rgba(204, 102, 204, 0.05) !important;
+  border: 2px solid #cc00cc !important;
   border-color: #cc00cc !important;
-}
-
-.layer13-theme .access-link:hover {
-  border-color: #ff00ff !important;
-  background: rgba(255, 0, 255, 0.1) !important;
-  box-shadow: 
-    0 0 20px rgba(255, 0, 255, 0.5) !important,
-    inset 0 0 20px rgba(255, 0, 255, 0.15) !important;
+  box-shadow: 0 0 0 rgba(204, 102, 204, 0) !important;
 }
 
 .layer13-theme .access-link::before {
   background: linear-gradient(90deg, transparent, rgba(255, 0, 255, 0.3), transparent) !important;
-}
-
-.layer13-theme .access-link::after {
-  background: #ff00ff !important;
-  box-shadow: 0 0 10px #ff00ff !important;
 }
 
 .link-icon {
@@ -1737,6 +1741,28 @@
     padding: 0.5rem;
   }
 
+  .profile-large-content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .profile-image-wrapper {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 1rem;
+  }
+
+  .profile-name-large {
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  .profile-stats-grid {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
   .profile-image-container {
     width: 80px;
     height: 80px;
@@ -1769,6 +1795,32 @@
   .footer-left, .footer-center, .footer-right {
     font-size: 0.6rem;
   }
+
+  .protocol-value {
+    font-size: 1.5rem;
+    padding: 0.4rem 1rem;
+  }
+
+  .protocol-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hex-input {
+    min-height: 150px;
+    font-size: 0.75rem;
+  }
+
+  .decoder-container {
+    padding: 0.5rem;
+  }
+
+  .monitor-section {
+    padding: 0.5rem;
+  }
+
+  .network-monitor-grid {
+    gap: 0.5rem;
+  }
 }
 
 @media (max-width: 480px) {
@@ -1782,6 +1834,51 @@
 
   .system-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-name-large {
+    font-size: 0.9rem;
+    letter-spacing: 0.1rem;
+  }
+
+  .stat-item {
+    padding: 0.4rem;
+  }
+
+  .stat-label {
+    font-size: 0.6rem;
+  }
+
+  .stat-value {
+    font-size: 0.75rem;
+  }
+
+  .protocol-value {
+    font-size: 1.2rem;
+    padding: 0.3rem 0.8rem;
+  }
+
+  .file-badge {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.3rem;
+  }
+
+  .folder-name, .file-name {
+    font-size: 0.7rem;
+  }
+
+  .link-name {
+    font-size: 0.7rem;
+    letter-spacing: 0.1rem;
+  }
+
+  .link-path {
+    font-size: 0.6rem;
+  }
+
+  .access-link {
+    padding: 0.4rem;
+    gap: 0.5rem;
   }
 }
 
@@ -2589,4 +2686,104 @@
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+/* ========================================
+   LAYER 13 - NUCLEAR OVERRIDE
+   FORCE ALL GREEN TO PURPLE
+   ======================================== */
+.layer13-theme.navi-system .access-link,
+.layer13-theme.navi-system .access-link:not(:hover),
+.layer13-theme.navi-system .access-link:link,
+.layer13-theme.navi-system .access-link:visited {
+  background: rgba(204, 102, 204, 0.05) !important;
+  border: 2px solid #cc00cc !important;
+  border-color: #cc00cc !important;
+  box-shadow: none !important;
+  outline: 3px solid #cc00cc !important;
+}
+
+.layer13-theme.navi-system .access-link:hover,
+.layer13-theme.navi-system .access-link:active,
+.layer13-theme.navi-system .access-link:focus {
+  border: 2px solid #ff00ff !important;
+  border-color: #ff00ff !important;
+  background: rgba(255, 0, 255, 0.1) !important;
+  box-shadow: none !important;
+  outline: 3px solid #ff00ff !important;
+}
+
+.layer13-theme.navi-system .access-link::before {
+  background: linear-gradient(90deg, transparent, rgba(204, 102, 204, 0.3), transparent) !important;
+}
+
+.layer13-theme.navi-system .access-link::after {
+  background: #cc66cc !important;
+  box-shadow: 0 0 10px #cc66cc !important;
+}
+
+.layer13-theme.navi-system .pulse-icon,
+.layer13-theme.navi-system .access-link .pulse-icon,
+.layer13-theme.navi-system .link-icon {
+  animation: pulse-glow-purple 2s infinite !important;
+  color: #cc66cc !important;
+}
+
+/* Force all text colors in access links to purple */
+.layer13-theme.navi-system .access-link * {
+  color: #cc66cc !important;
+}
+
+.layer13-theme.navi-system .access-link:hover * {
+  color: #ff00ff !important;
+}
+
+/* ========================================
+   LAYER 13 - PROTOCOL SECTION OVERRIDE
+   ======================================== */
+.layer13-theme.navi-system .protocol-main {
+  background: rgba(40, 0, 40, 0.5) !important;
+  border: 1px solid #cc00cc !important;
+}
+
+.layer13-theme.navi-system .protocol-label {
+  color: #cc00cc !important;
+}
+
+.layer13-theme.navi-system .protocol-value {
+  background: rgba(204, 102, 204, 0.1) !important;
+  border: 2px solid #cc00cc !important;
+  color: #cc00cc !important;
+  text-shadow: 
+    0 0 10px #cc00cc,
+    0 0 20px #cc00cc,
+    0 0 30px rgba(204, 102, 204, 0.5) !important;
+  box-shadow: 
+    0 0 15px rgba(204, 102, 204, 0.3),
+    inset 0 0 15px rgba(204, 102, 204, 0.1) !important;
+}
+
+.layer13-theme.navi-system .protocol-value::before {
+  background: rgba(204, 102, 204, 0.3) !important;
+}
+
+.layer13-theme.navi-system .protocol-value:hover {
+  background: rgba(204, 102, 204, 0.2) !important;
+  box-shadow: 
+    0 0 40px rgba(204, 102, 204, 0.7),
+    inset 0 0 25px rgba(204, 102, 204, 0.2) !important;
+  transform: scale(1.08) !important;
+}
+
+.layer13-theme.navi-system .protocol-item {
+  background: rgba(204, 102, 204, 0.05) !important;
+  border-left: 2px solid #cc00cc !important;
+}
+
+.layer13-theme.navi-system .proto-label {
+  color: #cc00cc !important;
+}
+
+.layer13-theme.navi-system .proto-value {
+  color: #cc00cc !important;
 }
