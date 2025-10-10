@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
+import { motion, AnimatePresence } from 'framer-motion'
+import { FaGithub, FaPaypal, FaGlobe, FaEye, FaEyeSlash } from 'react-icons/fa'
 import './Home.css'
 
 const Home = () => {
@@ -9,6 +9,16 @@ const Home = () => {
   const [time, setTime] = useState(new Date())
   const [commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [openFile, setOpenFile] = useState<string | null>(null)
+  const [protocolLevel, setProtocolLevel] = useState(7)
+  const [secretRevealed, setSecretRevealed] = useState(false)
+  const [clickCount, setClickCount] = useState(0)
+  const [matrixMode, setMatrixMode] = useState(false)
+  const [hiddenMessageFound, setHiddenMessageFound] = useState(false)
+  const [hexInput, setHexInput] = useState('')
+  const [decodedMessage, setDecodedMessage] = useState('')
+  const [protocolClicks, setProtocolClicks] = useState(0)
+  const [lastProtocolClick, setLastProtocolClick] = useState(0)
   
   const commands = [
     'INITIALIZING NAVI SYSTEM...',
@@ -19,17 +29,71 @@ const Home = () => {
   ]
   const [commandIndex, setCommandIndex] = useState(0)
 
+  const secretFiles = {
+    'NOTHING_STAYS_THE_SAME.TXT': `
+> File: NOTHING_STAYS_THE_SAME.TXT
+> Last Modified: PRESENT_DAY
+> Author: UNKNOWN
+
+Everything changes.
+The only constant is change itself.
+Who you were yesterday is not who you are today.
+And tomorrow... who knows?
+
+[HINT: Seven knocks on the door...]
+[TIP: Some things require patience and persistence]
+    `,
+    'REALITY.DLL': `
+> File: REALITY.DLL
+> Status: CORRUPTED
+> Type: SYSTEM_CRITICAL
+
+ERROR: Reality module not responding
+WARNING: Consensus breach detected
+INFO: Multiple realities detected
+
+Question: Which reality is real?
+Answer: All of them. None of them.
+
+The Wired is as real as the real world.
+    `,
+    'MESSAGE.HEX': `
+> File: MESSAGE.HEX
+> Encoding: HEXADECIMAL
+> Decoder: MESSAGE.DECODER
+
+4E 6F 20 6D 61 74 74 65 72 20 77 68 65 72 65 20 
+79 6F 75 20 61 72 65 2C 20 65 76 65 72 79 6F 6E 
+65 20 69 73 20 61 6C 77 61 79 73 20 63 6F 6E 6E 
+65 63 74 65 64 2E
+
+TIP: Use MESSAGE.DECODER to reveal
+    `,
+    'LAIN.LOG': `
+> File: LAIN.LOG  
+> Access Level: RESTRICTED
+> Location: THE_WIRED
+
+"No matter where you are,
+everyone is always connected."
+
+You are not alone.
+You have never been alone.
+The network remembers everything.
+
+LET'S ALL LOVE LAIN
+    `
+  }
+
   // Cursor trail effect
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       setCursorPos({ x: e.clientX, y: e.clientY })
-      
       setCursorTrail(prev => {
         const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: Date.now() }]
-        return newTrail.slice(-15) // Keep last 15 positions
+        return newTrail.slice(-15)
       })
     }
-
     window.addEventListener('mousemove', handleMouseMove)
     return () => window.removeEventListener('mousemove', handleMouseMove)
   }, [])
@@ -42,7 +106,7 @@ const Home = () => {
 
   // Typing effect
   useEffect(() => {
-    if (!isTyping && commandIndex < commands.length) {
+    if (!isTyping && commandIndex < commands.length && !openFile) {
       setIsTyping(true)
       let currentText = ''
       let charIndex = 0
@@ -65,7 +129,66 @@ const Home = () => {
       
       return () => clearInterval(typeInterval)
     }
-  }, [commandIndex, isTyping])
+  }, [commandIndex, isTyping, openFile])
+
+  const handleFileClick = (filename: string) => {
+    setOpenFile(filename)
+    setCommandText('')
+    setIsTyping(false)
+  }
+
+  const handleProtocolClick = () => {
+    const now = Date.now()
+    const timeSinceLastClick = now - lastProtocolClick
+    
+    // Reset if too much time passed (more than 1.5 seconds)
+    if (timeSinceLastClick > 1500) {
+      setProtocolClicks(1)
+      setLastProtocolClick(now)
+      return
+    }
+    
+    // Increment clicks
+    const newClicks = protocolClicks + 1
+    setProtocolClicks(newClicks)
+    setLastProtocolClick(now)
+    
+    // Need to click exactly 7 times quickly to unlock Layer 13
+    if (newClicks === 7) {
+      setProtocolLevel(13)
+      setProtocolClicks(0)
+    }
+  }
+
+  const handleHexDecode = () => {
+    try {
+      // Remove spaces and newlines from hex input
+      const cleanHex = hexInput.replace(/\s+/g, '')
+      
+      // Convert hex to string
+      let decoded = ''
+      for (let i = 0; i < cleanHex.length; i += 2) {
+        const hexChar = cleanHex.substr(i, 2)
+        decoded += String.fromCharCode(parseInt(hexChar, 16))
+      }
+      
+      setDecodedMessage(decoded)
+      setHiddenMessageFound(true)
+    } catch (error) {
+      setDecodedMessage('ERROR: Invalid hex format')
+    }
+  }
+
+  const handleSecretClick = () => {
+    setClickCount(prev => prev + 1)
+    if (clickCount >= 6) {
+      setSecretRevealed(true)
+      setMatrixMode(true)
+      setTimeout(() => {
+        setMatrixMode(false)
+      }, 5000)
+    }
+  }
 
   return (
     <div className="navi-system">
@@ -73,6 +196,9 @@ const Home = () => {
       <div className="crt-overlay"></div>
       <div className="crt-scanlines"></div>
       <div className="static-noise"></div>
+      
+      {/* Matrix Mode */}
+      {matrixMode && <div className="matrix-overlay"></div>}
       
       {/* Ghostly Cursor Trail */}
       {cursorTrail.map((pos, index) => (
@@ -111,9 +237,9 @@ const Home = () => {
         <div className="navi-content">
           {/* Left Column */}
           <div className="column-left">
-            {/* Window 1: User Profile */}
+            {/* Window 1: User Profile - LARGER */}
             <motion.div 
-              className="navi-window window-profile"
+              className="navi-window window-profile-large"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1, delay: 0.2 }}
@@ -128,31 +254,54 @@ const Home = () => {
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body">
-                <div className="profile-image-container">
-                  <div className="image-static"></div>
-                  <img 
-                    src="https://avatars.githubusercontent.com/u/82450286?v=4" 
-                    alt="User"
-                    className="profile-image glitch-image"
-                  />
-                  <div className="image-scanline"></div>
-                </div>
-                <div className="profile-info">
-                  <h1 className="profile-name glitch-text" data-text="DOMINIK_KÖNITZER">
-                    DOMINIK_KÖNITZER
-                  </h1>
-                  <p className="profile-id">
-                    <span className="label">ID:</span> <span className="value">USER#82450286</span>
-                  </p>
-                  <p className="profile-status">
-                    <span className="label">STATUS:</span> 
-                    <span className="value blink-fast">CONNECTED_TO_WIRED</span>
-                  </p>
+                <div className="profile-large-content">
+                  <div className="profile-image-wrapper">
+                    <div className="image-static"></div>
+                    <img 
+                      src="https://avatars.githubusercontent.com/u/82450286?v=4" 
+                      alt="User"
+                      className="profile-image-large glitch-image"
+                    />
+                    <div className="image-scanline"></div>
+                  </div>
+                  <div className="profile-details">
+                    <h1 className="profile-name-large">
+                      DOMINIK_KÖNITZER
+                    </h1>
+                    <div className="profile-stats-grid">
+                      <div className="stat-item">
+                        <span className="stat-label">USER_ID:</span>
+                        <span className="stat-value">82450286</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">STATUS:</span>
+                        <span className="stat-value blink-fast">ONLINE</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">PROTOCOL:</span>
+                        <span className="stat-value">IPv{protocolLevel}</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">NODE:</span>
+                        <span className="stat-value">{protocolLevel === 13 ? 'LAYER_13' : 'WIRED'}</span>
+                      </div>
+                    </div>
+                    {protocolLevel === 13 && (
+                      <motion.div 
+                        className="profile-bio layer13-unlocked"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                      >
+                        <p className="glitch-fast" data-text="LAYER 13 ACCESS GRANTED">LAYER 13 ACCESS GRANTED</p>
+                        <span className="bio-subtext">You've reached the outer layer...</span>
+                      </motion.div>
+                    )}
+                  </div>
                 </div>
               </div>
             </motion.div>
 
-            {/* Window 2: Command Terminal */}
+            {/* Window 2: Interactive Terminal */}
             <motion.div 
               className="navi-window window-terminal"
               initial={{ opacity: 0, y: 20 }}
@@ -169,25 +318,82 @@ const Home = () => {
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body terminal-body">
-                <div className="terminal-lines">
-                  <p className="terminal-line">
-                    <span className="prompt">&gt;</span> NOTHING_STAYS_THE_SAME.TXT
-                  </p>
-                  <p className="terminal-line">
-                    <span className="prompt">&gt;</span> REALITY.DLL LOADED
-                  </p>
-                  <p className="terminal-line typing-line">
-                    <span className="prompt">&gt;</span> {commandText}
-                    <span className="cursor-blink">_</span>
-                  </p>
-                </div>
+                <AnimatePresence mode="wait">
+                  {!openFile ? (
+                    <motion.div 
+                      key="files"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="terminal-lines"
+                    >
+                      <p className="terminal-line">
+                        <span className="prompt">&gt;</span> DIR /FILES
+                      </p>
+                      <p 
+                        className="terminal-line clickable-file"
+                        onClick={() => handleFileClick('NOTHING_STAYS_THE_SAME.TXT')}
+                      >
+                        <span className="prompt">&gt;</span> 
+                        <span className="file-name">NOTHING_STAYS_THE_SAME.TXT</span>
+                      </p>
+                      <p 
+                        className="terminal-line clickable-file"
+                        onClick={() => handleFileClick('REALITY.DLL')}
+                      >
+                        <span className="prompt">&gt;</span> 
+                        <span className="file-name">REALITY.DLL</span>
+                      </p>
+                      <p 
+                        className="terminal-line clickable-file"
+                        onClick={() => handleFileClick('MESSAGE.HEX')}
+                      >
+                        <span className="prompt">&gt;</span> 
+                        <span className="file-name">MESSAGE.HEX</span>
+                        <span className="file-badge">ENCODED</span>
+                      </p>
+                      {protocolLevel === 13 && (
+                        <motion.p 
+                          className="terminal-line clickable-file layer13-file"
+                          onClick={() => handleFileClick('LAIN.LOG')}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                        >
+                          <span className="prompt">&gt;</span> 
+                          <span className="file-name">LAIN.LOG</span>
+                          <span className="file-badge secret">LAYER_13</span>
+                        </motion.p>
+                      )}
+                      <p className="terminal-line typing-line">
+                        <span className="prompt">&gt;</span> {commandText}
+                        <span className="cursor-blink">_</span>
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="content"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="terminal-lines file-content"
+                    >
+                      <button 
+                        className="close-file-btn"
+                        onClick={() => setOpenFile(null)}
+                      >
+                        [CLOSE FILE]
+                      </button>
+                      <pre className="file-text">{secretFiles[openFile as keyof typeof secretFiles]}</pre>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           </div>
 
           {/* Center Column */}
           <div className="column-center">
-            {/* Window 3: System Info */}
+            {/* Window 3: Protocol Switcher */}
             <motion.div 
               className="navi-window window-system"
               initial={{ opacity: 0, scale: 0.9 }}
@@ -200,44 +406,61 @@ const Home = () => {
                   <span className="dot"></span>
                   <span className="dot"></span>
                 </div>
-                <span className="window-title">SYSTEM.INFO</span>
+                <span className="window-title">PROTOCOL.SWITCH</span>
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body">
-                <div className="system-grid">
-                  <div className="system-item">
-                    <span className="sys-label">PROTOCOL</span>
-                    <span className="sys-value">IPv7</span>
+                <div className="protocol-display">
+                  <div className="protocol-main">
+                    <span className="protocol-label">ACTIVE PROTOCOL:</span>
+                    <button 
+                      className="protocol-value"
+                      onClick={handleProtocolClick}
+                    >
+                      IPv{protocolLevel}
+                    </button>
+                    {protocolClicks > 0 && protocolLevel === 7 && (
+                      <motion.span 
+                        className="click-hint"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        {protocolClicks}/7
+                      </motion.span>
+                    )}
                   </div>
-                  <div className="system-item">
-                    <span className="sys-label">LAYER</span>
-                    <span className="sys-value blink-slow">07</span>
+                  <div className="protocol-grid">
+                    <div className="protocol-item">
+                      <span className="proto-label">LAYER:</span>
+                      <span className="proto-value blink-slow">{String(protocolLevel).padStart(2, '0')}</span>
+                    </div>
+                    <div className="protocol-item">
+                      <span className="proto-label">NODE:</span>
+                      <span className="proto-value">{protocolLevel === 13 ? 'OUTER_LAYER' : 'THE_WIRED'}</span>
+                    </div>
+                    <div className="protocol-item">
+                      <span className="proto-label">PRESENCE:</span>
+                      <span className="proto-value blink-fast">{protocolLevel === 13 ? 'TRANSCENDENT' : 'OMNIPRESENT'}</span>
+                    </div>
                   </div>
-                  <div className="system-item">
-                    <span className="sys-label">NODE</span>
-                    <span className="sys-value">THE_WIRED</span>
-                  </div>
-                  <div className="system-item">
-                    <span className="sys-label">PRESENCE</span>
-                    <span className="sys-value blink-fast">OMNIPRESENT</span>
-                  </div>
-                </div>
-                
-                {/* ASCII Art */}
-                <div className="ascii-art">
-                  <pre>{`
-    ▲▼▲▼▲▼▲▼▲▼▲▼▲▼▲▼
-    ▼ CLOSE THE  ▲
-    ▲  WORLD,    ▼
-    ▼  OPEN THE  ▲
-    ▲   nExt     ▼
-    ▼▲▼▲▼▲▼▲▼▲▼▲▼▲▼▲
-                  `}</pre>
+                  {protocolLevel === 13 && (
+                    <motion.div 
+                      className="secret-message"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      <p className="glitch-fast" data-text="LAYER 13 UNLOCKED">LAYER 13 UNLOCKED</p>
+                      <p className="secret-text">You've reached the outer layer...</p>
+                      <p className="secret-hint">• LAIN.LOG file unlocked in TERMINAL</p>
+                      <p className="secret-hint">• Profile stats updated</p>
+                      <p className="secret-hint">• Hidden access granted</p>
+                    </motion.div>
+                  )}
                 </div>
               </div>
             </motion.div>
 
-            {/* Window 4: Message */}
+            {/* Window 4: Hidden Message Decoder */}
             <motion.div 
               className="navi-window window-message"
               initial={{ opacity: 0, x: -20 }}
@@ -250,14 +473,56 @@ const Home = () => {
                   <span className="dot"></span>
                   <span className="dot"></span>
                 </div>
-                <span className="window-title">MESSAGE.LOG</span>
+                <span className="window-title">MESSAGE.DECODER</span>
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body message-body">
-                <p className="message-text glitch-subtle">
-                  "No matter where you are, everyone is always connected."
-                </p>
-                <p className="message-author">— Lain Iwakura</p>
+                <div className="decoder-container">
+                  <div className="hex-input-group">
+                    <label className="input-label">PASTE HEX CODE:</label>
+                    <textarea 
+                      className="hex-input"
+                      value={hexInput}
+                      onChange={(e) => setHexInput(e.target.value)}
+                      placeholder="4E 6F 20 6D 61 74 74 65 72..."
+                      rows={3}
+                    />
+                  </div>
+                  <button 
+                    className="decode-btn"
+                    onClick={handleHexDecode}
+                  >
+                    <FaEye />
+                    <span>DECODE MESSAGE</span>
+                  </button>
+                  <AnimatePresence>
+                    {decodedMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="decoded-output"
+                      >
+                        <div className="output-header">
+                          <span className="output-label">DECODED:</span>
+                          <button 
+                            className="clear-btn"
+                            onClick={() => {
+                              setDecodedMessage('')
+                              setHexInput('')
+                              setHiddenMessageFound(false)
+                            }}
+                          >
+                            CLEAR
+                          </button>
+                        </div>
+                        <p className="decoded-text">
+                          {decodedMessage}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -297,10 +562,10 @@ const Home = () => {
                   <span className="link-arrow blink-slow">→</span>
                 </a>
 
-                <a 
-                  href="https://github.com/dominikkoenitzer" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
+          <a
+            href="https://github.com/dominikkoenitzer"
+            target="_blank"
+            rel="noopener noreferrer"
                   className="access-link"
                 >
                   <div className="link-icon pulse-icon">
@@ -311,12 +576,12 @@ const Home = () => {
                     <span className="link-path">/git/hub</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
-                </a>
-
-                <a 
-                  href="https://www.paypal.com/paypalme/dominikkoenitzer" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
+          </a>
+          
+          <a
+            href="https://www.paypal.com/paypalme/dominikkoenitzer"
+            target="_blank"
+            rel="noopener noreferrer"
                   className="access-link"
                 >
                   <div className="link-icon pulse-icon">
@@ -331,7 +596,7 @@ const Home = () => {
               </div>
             </motion.div>
 
-            {/* Window 6: Network Status */}
+            {/* Window 6: Secret Counter */}
             <motion.div 
               className="navi-window window-network"
               initial={{ opacity: 0, x: 20 }}
@@ -344,7 +609,7 @@ const Home = () => {
                   <span className="dot"></span>
                   <span className="dot"></span>
                 </div>
-                <span className="window-title">NETWORK.STATUS</span>
+                <span className="window-title">NETWORK.MONITOR</span>
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body network-body">
@@ -362,10 +627,27 @@ const Home = () => {
                     <span className="net-value">STABLE</span>
                   </div>
                 </div>
-                <div className="waveform">
-                  <div className="wave wave1"></div>
-                  <div className="wave wave2"></div>
-                  <div className="wave wave3"></div>
+                <div 
+                  className="secret-trigger"
+                  onClick={handleSecretClick}
+                >
+                  <div className="waveform">
+                    <div className="wave wave1"></div>
+                    <div className="wave wave2"></div>
+                    <div className="wave wave3"></div>
+                  </div>
+                  {secretRevealed && (
+                    <motion.p 
+                      className="secret-revealed"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                    >
+                      LET'S ALL LOVE LAIN
+                    </motion.p>
+                  )}
+                  {!secretRevealed && clickCount > 0 && (
+                    <p className="click-counter">{clickCount}/7</p>
+                  )}
                 </div>
               </div>
             </motion.div>
