@@ -221,7 +221,7 @@
 .window-system { flex: 1; }
 .window-message { flex: 0.7; }
 .window-links { flex: 1; }
-.window-network { flex: 0.8; }
+.window-network { flex: 0.9; }
 
 /* Window Headers */
 .window-header {
@@ -602,6 +602,26 @@
   color: #ff00ff;
 }
 
+/* Terminal Directory Structure */
+.directory-line {
+  color: #00ff00;
+  font-weight: bold;
+}
+
+.dir-name {
+  color: #00ff00;
+  text-transform: uppercase;
+}
+
+.dir-name.secret {
+  color: #ff00ff;
+  text-shadow: 0 0 10px #ff00ff;
+}
+
+.file-indent {
+  padding-left: 2rem;
+}
+
 /* Protocol Switcher */
 .protocol-display {
   display: flex;
@@ -643,19 +663,6 @@
   background: rgba(0, 255, 0, 0.2);
   box-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
   transform: scale(1.05);
-}
-
-.click-hint {
-  position: absolute;
-  top: -25px;
-  right: 0;
-  font-size: 0.7rem;
-  color: #00aa00;
-  background: rgba(0, 0, 0, 0.9);
-  padding: 0.25rem 0.5rem;
-  border: 1px solid #00aa00;
-  border-radius: 2px;
-  pointer-events: none;
 }
 
 .protocol-grid {
@@ -700,15 +707,7 @@
 .secret-text {
   font-size: 0.8rem;
   font-style: italic;
-  margin-bottom: 0.75rem;
-}
-
-.secret-hint {
-  font-size: 0.7rem;
-  color: #00aa00;
-  margin: 0.25rem 0;
-  text-align: left;
-  padding-left: 1rem;
+  margin: 0;
 }
 
 .layer13-unlocked {
@@ -754,7 +753,7 @@
   font-family: 'TrixieCyrG', monospace;
   font-size: 0.7rem;
   resize: vertical;
-  min-height: 60px;
+  min-height: 80px;
   transition: all 0.3s ease;
 }
 
@@ -1396,6 +1395,211 @@
   .system-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Layer 13 Theme - Purple Mode */
+.layer13-theme {
+  --neon-cyan: #ff00ff !important;
+  --neon-magenta: #ff00ff !important;
+  --neon-green: #ff00ff !important;
+  --neon-blue: #ff00ff !important;
+  --glitch-1: #ff00ff !important;
+  --glitch-2: #ff00ff !important;
+}
+
+.layer13-theme .navi-header,
+.layer13-theme .navi-footer {
+  border-color: #ff00ff !important;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.4) !important;
+}
+
+.layer13-theme .navi-window {
+  border-color: #ff00ff !important;
+  box-shadow: 
+    0 0 20px rgba(255, 0, 255, 0.3),
+    inset 0 0 20px rgba(255, 0, 255, 0.05) !important;
+}
+
+.layer13-theme .window-header {
+  border-bottom-color: #ff00ff !important;
+  background: rgba(50, 0, 50, 0.6) !important;
+}
+
+.layer13-theme .signal-bar,
+.layer13-theme .navi-logo,
+.layer13-theme .system-status,
+.layer13-theme .window-title,
+.layer13-theme .window-status,
+.layer13-theme .terminal-line,
+.layer13-theme .file-name,
+.layer13-theme .link-name,
+.layer13-theme .net-label,
+.layer13-theme .net-value,
+.layer13-theme .stat-value,
+.layer13-theme .profile-name-large,
+.layer13-theme .stat-label-small {
+  color: #ff00ff !important;
+}
+
+.layer13-theme .window-dots .dot,
+.layer13-theme .access-link,
+.layer13-theme .terminal-box,
+.layer13-theme .link-card,
+.layer13-theme .hex-input,
+.layer13-theme .decode-btn {
+  border-color: #ff00ff !important;
+}
+
+.layer13-theme .prompt,
+.layer13-theme .label,
+.layer13-theme .stat-label,
+.layer13-theme .proto-label {
+  color: #cc00cc !important;
+}
+
+.layer13-theme .profile-image-large,
+.layer13-theme .access-link:hover,
+.layer13-theme .link-button:hover {
+  box-shadow: 0 0 30px rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .hex-input:focus {
+  border-color: #ff00ff !important;
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .crt-scanlines {
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 0, 255, 0.15),
+    rgba(255, 0, 255, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  ) !important;
+}
+
+.layer13-theme .cursor-ghost {
+  background: #ff00ff !important;
+  box-shadow: 0 0 10px #ff00ff !important;
+}
+
+.layer13-theme .wave,
+.layer13-theme .bar-fill {
+  background: #ff00ff !important;
+  box-shadow: 0 0 5px #ff00ff !important;
+}
+
+.layer13-theme .stat-box,
+.layer13-theme .mini-bar {
+  border-color: #ff00ff !important;
+}
+
+.layer13-theme .stat-box {
+  background: rgba(255, 0, 255, 0.05) !important;
+}
+
+.layer13-theme .stat-value-large {
+  color: #ff00ff !important;
+  text-shadow: 0 0 10px rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .decoded-output {
+  border-color: #ff00ff !important;
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.2) !important;
+}
+
+.layer13-theme .decoded-text {
+  color: #ff00ff !important;
+  text-shadow: 0 0 5px rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .protocol-value {
+  color: #ff00ff !important;
+  border-color: #ff00ff !important;
+  text-shadow: 0 0 15px #ff00ff !important;
+}
+
+.layer13-theme .secret-message {
+  border-color: #ff00ff !important;
+  box-shadow: 0 0 20px rgba(255, 0, 255, 0.5) !important;
+}
+
+.layer13-theme .file-text,
+.layer13-theme .close-file-btn {
+  color: #ff00ff !important;
+  border-color: #cc00cc !important;
+}
+
+.layer13-theme .dir-name {
+  color: #ff00ff !important;
+}
+
+.layer13-theme .input-label,
+.layer13-theme .output-label {
+  color: #cc00cc !important;
+}
+
+.layer13-theme .file-badge:not(.secret) {
+  color: #cc00cc !important;
+  border-color: #cc00cc !important;
+  background: rgba(255, 0, 255, 0.1) !important;
+}
+
+/* Network Monitor Stats */
+.network-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-box {
+  background: rgba(0, 255, 0, 0.05);
+  border: 1px solid #00aa00;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stat-label-small {
+  font-size: 0.6rem;
+  color: #00aa00;
+  letter-spacing: 0.1rem;
+}
+
+.stat-value-large {
+  font-size: 1.2rem;
+  color: #00ff00;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.mini-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.5);
+  margin-top: 0.25rem;
+  border: 1px solid #00aa00;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: #00ff00;
+  box-shadow: 0 0 5px #00ff00;
+  transition: width 0.3s ease;
+}
+
+.wave4 {
+  height: 25px;
+  animation: wave-bounce 0.8s infinite ease-in-out 0.3s;
+}
+
+.wave5 {
+  height: 18px;
+  animation: wave-bounce 0.8s infinite ease-in-out 0.4s;
 }
 
 /* Performance */
