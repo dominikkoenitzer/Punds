@@ -29,8 +29,8 @@ const Home = () => {
   ]
   const [commandIndex, setCommandIndex] = useState(0)
 
-  const secretFiles = {
-    'NOTHING_STAYS_THE_SAME.TXT': `
+  const secretFiles: { [key: string]: string } = {
+    'SYSTEM/NOTHING_STAYS_THE_SAME.TXT': `
 > File: NOTHING_STAYS_THE_SAME.TXT
 > Last Modified: PRESENT_DAY
 > Author: UNKNOWN
@@ -43,7 +43,7 @@ And tomorrow... who knows?
 [HINT: Seven knocks on the door...]
 [TIP: Some things require patience and persistence]
     `,
-    'REALITY.DLL': `
+    'SYSTEM/REALITY.DLL': `
 > File: REALITY.DLL
 > Status: CORRUPTED
 > Type: SYSTEM_CRITICAL
@@ -57,7 +57,7 @@ Answer: All of them. None of them.
 
 The Wired is as real as the real world.
     `,
-    'MESSAGE.HEX': `
+    'DATA/MESSAGE.HEX': `
 > File: MESSAGE.HEX
 > Encoding: HEXADECIMAL
 > Decoder: MESSAGE.DECODER
@@ -69,7 +69,7 @@ The Wired is as real as the real world.
 
 TIP: Use MESSAGE.DECODER to reveal
     `,
-    'LAIN.LOG': `
+    'SECRETS/LAIN.LOG': `
 > File: LAIN.LOG  
 > Access Level: RESTRICTED
 > Location: THE_WIRED
@@ -82,6 +82,29 @@ You have never been alone.
 The network remembers everything.
 
 LET'S ALL LOVE LAIN
+    `,
+    'DATA/WIRED_ACCESS.KEY': `
+> File: WIRED_ACCESS.KEY
+> Type: CRYPTOGRAPHIC_KEY
+> Access: RESTRICTED
+
+-----BEGIN WIRED KEY-----
+4C41494E2049574B5552412049532047
+4F442E20574520415245204C41494E2E
+-----END WIRED KEY-----
+
+WARNING: Unauthorized access detected
+    `,
+    'SYSTEM/KNIGHTS.DAT': `
+> File: KNIGHTS.DAT
+> Organization: THE_KNIGHTS
+> Status: ENCRYPTED
+
+The Knights of the Eastern Calculus
+Protecting the barriers between
+The Wired and reality...
+
+Or are they creating them?
     `
   }
 
@@ -153,9 +176,9 @@ LET'S ALL LOVE LAIN
     setProtocolClicks(newClicks)
     setLastProtocolClick(now)
     
-    // Need to click exactly 7 times quickly to unlock Layer 13
+    // Toggle between Layer 7 and Layer 13 with 7 clicks
     if (newClicks === 7) {
-      setProtocolLevel(13)
+      setProtocolLevel(prev => prev === 7 ? 13 : 7)
       setProtocolClicks(0)
     }
   }
@@ -191,7 +214,19 @@ LET'S ALL LOVE LAIN
   }
 
   return (
-    <div className="navi-system">
+    <div className={`navi-system ${protocolLevel === 13 ? 'layer13-theme' : ''}`}>
+      {/* Hidden Audio Player - Serial Experiments Lain Opening */}
+      <iframe 
+        id="lain-audio"
+        frameBorder="0"
+        allow="autoplay"
+        title="Lain Audio"
+        width="0" 
+        height="0" 
+        src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
+        style={{ display: 'none' }}
+      />
+      
       {/* CRT Screen Effects */}
       <div className="crt-overlay"></div>
       <div className="crt-scanlines"></div>
@@ -328,41 +363,73 @@ LET'S ALL LOVE LAIN
                       className="terminal-lines"
                     >
                       <p className="terminal-line">
-                        <span className="prompt">&gt;</span> DIR /FILES
+                        <span className="prompt">&gt;</span> DIR /
+                      </p>
+                      <p className="terminal-line directory-line">
+                        <span className="prompt">&gt;</span> 
+                        <span className="dir-name">/SYSTEM</span>
                       </p>
                       <p 
-                        className="terminal-line clickable-file"
-                        onClick={() => handleFileClick('NOTHING_STAYS_THE_SAME.TXT')}
+                        className="terminal-line clickable-file file-indent"
+                        onClick={() => handleFileClick('SYSTEM/NOTHING_STAYS_THE_SAME.TXT')}
                       >
                         <span className="prompt">&gt;</span> 
                         <span className="file-name">NOTHING_STAYS_THE_SAME.TXT</span>
                       </p>
                       <p 
-                        className="terminal-line clickable-file"
-                        onClick={() => handleFileClick('REALITY.DLL')}
+                        className="terminal-line clickable-file file-indent"
+                        onClick={() => handleFileClick('SYSTEM/REALITY.DLL')}
                       >
                         <span className="prompt">&gt;</span> 
                         <span className="file-name">REALITY.DLL</span>
                       </p>
                       <p 
-                        className="terminal-line clickable-file"
-                        onClick={() => handleFileClick('MESSAGE.HEX')}
+                        className="terminal-line clickable-file file-indent"
+                        onClick={() => handleFileClick('SYSTEM/KNIGHTS.DAT')}
+                      >
+                        <span className="prompt">&gt;</span> 
+                        <span className="file-name">KNIGHTS.DAT</span>
+                      </p>
+                      <p className="terminal-line directory-line">
+                        <span className="prompt">&gt;</span> 
+                        <span className="dir-name">/DATA</span>
+                      </p>
+                      <p 
+                        className="terminal-line clickable-file file-indent"
+                        onClick={() => handleFileClick('DATA/MESSAGE.HEX')}
                       >
                         <span className="prompt">&gt;</span> 
                         <span className="file-name">MESSAGE.HEX</span>
                         <span className="file-badge">ENCODED</span>
                       </p>
+                      <p 
+                        className="terminal-line clickable-file file-indent"
+                        onClick={() => handleFileClick('DATA/WIRED_ACCESS.KEY')}
+                      >
+                        <span className="prompt">&gt;</span> 
+                        <span className="file-name">WIRED_ACCESS.KEY</span>
+                      </p>
                       {protocolLevel === 13 && (
-                        <motion.p 
-                          className="terminal-line clickable-file layer13-file"
-                          onClick={() => handleFileClick('LAIN.LOG')}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                        >
-                          <span className="prompt">&gt;</span> 
-                          <span className="file-name">LAIN.LOG</span>
-                          <span className="file-badge secret">LAYER_13</span>
-                        </motion.p>
+                        <>
+                          <motion.p 
+                            className="terminal-line directory-line"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                          >
+                            <span className="prompt">&gt;</span> 
+                            <span className="dir-name secret">/SECRETS</span>
+                          </motion.p>
+                          <motion.p 
+                            className="terminal-line clickable-file file-indent layer13-file"
+                            onClick={() => handleFileClick('SECRETS/LAIN.LOG')}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                          >
+                            <span className="prompt">&gt;</span> 
+                            <span className="file-name">LAIN.LOG</span>
+                            <span className="file-badge secret">LAYER_13</span>
+                          </motion.p>
+                        </>
                       )}
                       <p className="terminal-line typing-line">
                         <span className="prompt">&gt;</span> {commandText}
@@ -419,15 +486,6 @@ LET'S ALL LOVE LAIN
                     >
                       IPv{protocolLevel}
                     </button>
-                    {protocolClicks > 0 && protocolLevel === 7 && (
-                      <motion.span 
-                        className="click-hint"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                      >
-                        {protocolClicks}/7
-                      </motion.span>
-                    )}
                   </div>
                   <div className="protocol-grid">
                     <div className="protocol-item">
@@ -449,11 +507,8 @@ LET'S ALL LOVE LAIN
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                     >
-                      <p className="glitch-fast" data-text="LAYER 13 UNLOCKED">LAYER 13 UNLOCKED</p>
+                      <p className="glitch-fast" data-text="LAYER 13 ACCESS GRANTED">LAYER 13 ACCESS GRANTED</p>
                       <p className="secret-text">You've reached the outer layer...</p>
-                      <p className="secret-hint">• LAIN.LOG file unlocked in TERMINAL</p>
-                      <p className="secret-hint">• Profile stats updated</p>
-                      <p className="secret-hint">• Hidden access granted</p>
                     </motion.div>
                   )}
                 </div>
@@ -596,7 +651,7 @@ LET'S ALL LOVE LAIN
               </div>
             </motion.div>
 
-            {/* Window 6: Secret Counter */}
+            {/* Window 6: Network Monitor with Stats */}
             <motion.div 
               className="navi-window window-network"
               initial={{ opacity: 0, x: 20 }}
@@ -613,18 +668,37 @@ LET'S ALL LOVE LAIN
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body network-body">
+                <div className="network-stats-grid">
+                  <div className="stat-box">
+                    <span className="stat-label-small">UPTIME</span>
+                    <span className="stat-value-large">{Math.floor(time.getSeconds() + time.getMinutes() * 60)}s</span>
+                  </div>
+                  <div className="stat-box">
+                    <span className="stat-label-small">BANDWIDTH</span>
+                    <span className="stat-value-large">1.21 GB/s</span>
+                  </div>
+                </div>
                 <div className="network-lines">
                   <div className="network-line">
                     <span className="net-label">PACKET_LOSS:</span>
                     <span className="net-value">0.00%</span>
+                    <div className="mini-bar">
+                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                    </div>
                   </div>
                   <div className="network-line">
                     <span className="net-label">LATENCY:</span>
                     <span className="net-value blink-slow">0ms</span>
+                    <div className="mini-bar">
+                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                    </div>
                   </div>
                   <div className="network-line">
                     <span className="net-label">CONNECTION:</span>
-                    <span className="net-value">STABLE</span>
+                    <span className="net-value">{protocolLevel === 13 ? 'TRANSCENDENT' : 'STABLE'}</span>
+                    <div className="mini-bar">
+                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                    </div>
                   </div>
                 </div>
                 <div 
@@ -635,6 +709,8 @@ LET'S ALL LOVE LAIN
                     <div className="wave wave1"></div>
                     <div className="wave wave2"></div>
                     <div className="wave wave3"></div>
+                    <div className="wave wave4"></div>
+                    <div className="wave wave5"></div>
                   </div>
                   {secretRevealed && (
                     <motion.p 
@@ -644,9 +720,6 @@ LET'S ALL LOVE LAIN
                     >
                       LET'S ALL LOVE LAIN
                     </motion.p>
-                  )}
-                  {!secretRevealed && clickCount > 0 && (
-                    <p className="click-counter">{clickCount}/7</p>
                   )}
                 </div>
               </div>
@@ -665,7 +738,7 @@ LET'S ALL LOVE LAIN
             </span>
           </div>
           <div className="footer-right">
-            <span className="footer-text">© 2025 D.K.</span>
+            <span className="footer-text">IP: {protocolLevel === 13 ? '13.13.13.13' : '127.0.0.1'}</span>
           </div>
         </div>
       </div>
