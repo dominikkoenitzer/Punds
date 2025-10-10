@@ -10,7 +10,6 @@ const Home = () => {
   const [commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [openFile, setOpenFile] = useState<string | null>(null)
-  const [protocolLevel, setProtocolLevel] = useState(7)
   const [secretRevealed, setSecretRevealed] = useState(false)
   const [clickCount, setClickCount] = useState(0)
   const [matrixMode, setMatrixMode] = useState(false)
@@ -19,7 +18,12 @@ const Home = () => {
   const [decodedMessage, setDecodedMessage] = useState('')
   const [protocolClicks, setProtocolClicks] = useState(0)
   const [lastProtocolClick, setLastProtocolClick] = useState(0)
-  const [volume, setVolume] = useState(30)
+  // Load saved protocol level from localStorage
+  const [protocolLevel, setProtocolLevel] = useState(() => {
+    const saved = localStorage.getItem('protocolLevel')
+    return saved ? parseInt(saved) : 7
+  })
+  const [volume, setVolume] = useState(7)
   const [bandwidth, setBandwidth] = useState(1.21)
   const [latency, setLatency] = useState(0)
   const [packetLoss, setPacketLoss] = useState(0.00)
@@ -93,11 +97,8 @@ LET'S ALL LOVE LAIN
 > Access: RESTRICTED
 
 -----BEGIN WIRED KEY-----
-4C41494E2049574B5552412049532047
-4F442E20574520415245204C41494E2E
+476F6420697320686572652E
 -----END WIRED KEY-----
-
-God is here.
     `,
     'SYSTEM/KNIGHTS.DAT': `
 > File: KNIGHTS.DAT
@@ -129,10 +130,10 @@ Or are they creating them?
   useEffect(() => {
     const interval = setInterval(() => {
       setTime(new Date())
-      // Modulate network stats randomly
-      setBandwidth(prev => +(prev + (Math.random() - 0.5) * 0.1).toFixed(2))
-      setLatency(Math.floor(Math.random() * 3))
-      setPacketLoss(+(Math.random() * 0.01).toFixed(2))
+      // Modulate network stats randomly with bigger fluctuations
+      setBandwidth(prev => +(prev + (Math.random() - 0.5) * 0.5).toFixed(2))
+      setLatency(Math.floor(Math.random() * 50))
+      setPacketLoss(+(Math.random() * 5).toFixed(2))
     }, 1000)
     return () => clearInterval(interval)
   }, [])
@@ -148,6 +149,30 @@ Or are they creating them?
       }), '*')
     }
   }, [volume])
+  
+  // Auto-adjust volume based on protocol level
+  useEffect(() => {
+    if (protocolLevel === 13) {
+      setVolume(13)
+    } else if (protocolLevel === 7) {
+      setVolume(7)
+    }
+  }, [protocolLevel])
+  
+  // Set initial volume to 7 on mount
+  useEffect(() => {
+    const iframe = document.getElementById('lain-audio') as HTMLIFrameElement
+    if (iframe && iframe.contentWindow) {
+      // Wait a bit for iframe to load
+      setTimeout(() => {
+        iframe.contentWindow?.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'setVolume',
+          args: [7]
+        }), '*')
+      }, 1000)
+    }
+  }, [])
 
   // Typing effect
   useEffect(() => {
@@ -200,7 +225,9 @@ Or are they creating them?
     
     // Toggle between Layer 7 and Layer 13 with 7 clicks
     if (newClicks === 7) {
-      setProtocolLevel(prev => prev === 7 ? 13 : 7)
+      const newLevel = protocolLevel === 7 ? 13 : 7
+      setProtocolLevel(newLevel)
+      localStorage.setItem('protocolLevel', newLevel.toString())
       setProtocolClicks(0)
     }
   }
@@ -248,20 +275,6 @@ Or are they creating them?
         src="https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w"
         style={{ display: 'none' }}
       />
-      
-      {/* Volume Control */}
-      <div className="volume-control">
-        <div className="volume-icon">🔊</div>
-        <input 
-          type="range" 
-          min="0" 
-          max="100" 
-          value={volume}
-          onChange={(e) => setVolume(Number(e.target.value))}
-          className="volume-slider"
-        />
-        <span className="volume-value">{volume}%</span>
-      </div>
       
       {/* CRT Screen Effects */}
       <div className="crt-overlay"></div>
@@ -576,7 +589,7 @@ Or are they creating them?
                       value={hexInput}
                       onChange={(e) => setHexInput(e.target.value)}
                       placeholder="4E 6F 20 6D 61 74 74 65 72..."
-                      rows={5}
+                      rows={12}
                     />
                   </div>
                   <button 
@@ -704,36 +717,55 @@ Or are they creating them?
                 <span className="window-status blink-slow">●</span>
               </div>
               <div className="window-body network-body">
-                <div className="network-stats-grid">
-                  <div className="stat-box">
-                    <span className="stat-label-small">UPTIME</span>
-                    <span className="stat-value-large">{Math.floor(time.getSeconds() + time.getMinutes() * 60)}s</span>
-                  </div>
-                  <div className="stat-box">
-                    <span className="stat-label-small">BANDWIDTH</span>
-                    <span className="stat-value-large">{bandwidth.toFixed(2)} GB/s</span>
-                  </div>
-                </div>
-                <div className="network-lines">
-                  <div className="network-line">
-                    <span className="net-label">PACKET_LOSS:</span>
-                    <span className="net-value">{packetLoss.toFixed(2)}%</span>
-                    <div className="mini-bar">
-                      <div className="bar-fill" style={{ width: `${100 - packetLoss * 100}%` }}></div>
+                <div className="network-monitor-grid">
+                  <div className="monitor-section">
+                    <div className="monitor-header">SYSTEM METRICS</div>
+                    <div className="metric-row">
+                      <span className="metric-label">UPTIME</span>
+                      <span className="metric-value">{Math.floor(time.getSeconds() + time.getMinutes() * 60)}s</span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">BANDWIDTH</span>
+                      <span className="metric-value">{bandwidth.toFixed(2)} GB/s</span>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">PACKET_LOSS</span>
+                      <span className="metric-value">{packetLoss.toFixed(2)}%</span>
+                      <div className="metric-bar">
+                        <div className="metric-fill" style={{ width: `${Math.max(0, 100 - packetLoss * 20)}%` }}></div>
+                      </div>
+                    </div>
+                    <div className="metric-row">
+                      <span className="metric-label">LATENCY</span>
+                      <span className="metric-value">{latency}ms</span>
+                      <div className="metric-bar">
+                        <div className="metric-fill" style={{ width: `${Math.max(0, 100 - latency * 2)}%` }}></div>
+                      </div>
                     </div>
                   </div>
-                  <div className="network-line">
-                    <span className="net-label">LATENCY:</span>
-                    <span className="net-value">{latency}ms</span>
-                    <div className="mini-bar">
-                      <div className="bar-fill" style={{ width: `${Math.max(0, 100 - latency * 10)}%` }}></div>
+                  
+                  <div className="monitor-section">
+                    <div className="monitor-header">AUDIO CONTROL</div>
+                    <div className="metric-row volume-control-row">
+                      <span className="metric-label">VOLUME</span>
+                      <span className="metric-value">{volume}%</span>
+                      <div className="volume-slider-container">
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="100" 
+                          value={volume}
+                          onChange={(e) => setVolume(Number(e.target.value))}
+                          className="volume-range-input"
+                        />
+                        <div className="volume-track">
+                          <div className="volume-fill" style={{ width: `${volume}%` }}></div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="network-line">
-                    <span className="net-label">CONNECTION:</span>
-                    <span className="net-value">{protocolLevel === 13 ? 'TRANSCENDENT' : 'STABLE'}</span>
-                    <div className="mini-bar">
-                      <div className="bar-fill" style={{ width: '100%' }}></div>
+                    <div className="metric-row">
+                      <span className="metric-label">STATUS</span>
+                      <span className="metric-value">{protocolLevel === 13 ? 'TRANSCENDENT' : 'STABLE'}</span>
                     </div>
                   </div>
                 </div>
@@ -766,7 +798,7 @@ Or are they creating them?
         {/* Footer Bar */}
         <div className="navi-footer">
           <div className="footer-left">
-            <span className="footer-text">ALL_IS_CONNECTED</span>
+            <span className="footer-text">{time.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
           </div>
           <div className="footer-center">
             <span className="glitch-subtle" data-text="PRESENT_DAY_PRESENT_TIME">
