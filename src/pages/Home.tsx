@@ -6,10 +6,11 @@ import './Home.css'
 const Home = () => {
   const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
   const [time, setTime] = useState(new Date())
+  // @ts-ignore - commandText is set but not read, used for side effects only
   const [commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [openFile, setOpenFile] = useState<string | null>(null)
-  const [matrixMode, setMatrixMode] = useState(false)
+  const [matrixMode] = useState(false)
   const [hexInput, setHexInput] = useState('')
   const [decodedMessage, setDecodedMessage] = useState('')
   const [protocolClicks, setProtocolClicks] = useState(0)
