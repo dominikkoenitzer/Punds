@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe, FaEye, FaEyeSlash } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
 import './Home.css'
 
 const Home = () => {
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 })
   const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
   const [time, setTime] = useState(new Date())
   const [commandText, setCommandText] = useState('')
@@ -13,7 +12,6 @@ const Home = () => {
   const [secretRevealed, setSecretRevealed] = useState(false)
   const [clickCount, setClickCount] = useState(0)
   const [matrixMode, setMatrixMode] = useState(false)
-  const [hiddenMessageFound, setHiddenMessageFound] = useState(false)
   const [hexInput, setHexInput] = useState('')
   const [decodedMessage, setDecodedMessage] = useState('')
   const [protocolClicks, setProtocolClicks] = useState(0)
@@ -27,6 +25,7 @@ const Home = () => {
   const [bandwidth, setBandwidth] = useState(1.21)
   const [latency, setLatency] = useState(0)
   const [packetLoss, setPacketLoss] = useState(0.00)
+  const [collapsedDirs, setCollapsedDirs] = useState<string[]>([])
   
   const commands = [
     'INITIALIZING NAVI SYSTEM...',
@@ -110,13 +109,71 @@ Protecting the barriers between
 The Wired and reality...
 
 Or are they creating them?
+    `,
+    'SYSTEM/PROTOCOL_7.SYS': `
+> File: PROTOCOL_7.SYS
+> Status: ACTIVE
+> Layer: PHYSICAL_WORLD
+
+CURRENT_LAYER: 7
+NETWORK_STATUS: CONNECTED
+REALITY_ANCHOR: STABLE
+
+Protocol 7 maintains separation between
+the real and the Wired.
+
+Click deeper to transcend...
+    `,
+    'SYSTEM/NAVI_CORE.EXE': `
+> File: NAVI_CORE.EXE
+> Type: SYSTEM_EXECUTABLE
+> Version: 13.0.7
+
+NAVI Operating System
+Initializing...
+Connecting to the Wired...
+Loading consciousness protocols...
+
+Welcome to Layer 7.
+Your presence is everywhere.
+    `,
+    'SECRETS/PSYCHE.DAT': `
+> File: PSYCHE.DAT
+> Type: PSYCHOLOGICAL_PROFILE
+> Access: RESTRICTED
+
+SUBJECT: LAIN_IWAKURA
+LAYER_ACCESS: 13
+NETWORK_PRESENCE: OMNIPRESENT
+
+ANALYSIS:
+Reality boundary: DISSOLVED
+Identity coherence: FRAGMENTED
+Wired integration: COMPLETE
+
+The body is merely a vessel.
+The mind transcends physical limitations.
+    `,
+    'SECRETS/PROPHECY.LOG': `
+> File: PROPHECY.LOG
+> Type: SYSTEM_PREDICTION
+> Last Modified: [REDACTED]
+
+WIRED_EVENT_001: Network consciousness achieved
+WIRED_EVENT_002: Boundary collapse imminent  
+WIRED_EVENT_003: Layer 13 convergence detected
+
+WARNING: Reality anchors destabilizing
+WARNING: Identity merge protocols active
+WARNING: No one is alone anymore
+
+The Wired and reality are one.
     `
   }
 
   // Cursor trail effect
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      setCursorPos({ x: e.clientX, y: e.clientY })
       setCursorTrail(prev => {
         const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: Date.now() }]
         return newTrail.slice(-15)
@@ -159,7 +216,7 @@ Or are they creating them?
     }
   }, [protocolLevel])
   
-  // Set initial volume to 7 on mount
+  // Set initial volume and ensure autoplay on mount
   useEffect(() => {
     const iframe = document.getElementById('lain-audio') as HTMLIFrameElement
     if (iframe && iframe.contentWindow) {
@@ -168,7 +225,11 @@ Or are they creating them?
         iframe.contentWindow?.postMessage(JSON.stringify({
           event: 'command',
           func: 'setVolume',
-          args: [7]
+          args: [protocolLevel === 13 ? 13 : 7]
+        }), '*')
+        iframe.contentWindow?.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'playVideo'
         }), '*')
       }, 1000)
     }
@@ -245,7 +306,6 @@ Or are they creating them?
       }
       
       setDecodedMessage(decoded)
-      setHiddenMessageFound(true)
     } catch (error) {
       setDecodedMessage('ERROR: Invalid hex format')
     }
@@ -260,6 +320,14 @@ Or are they creating them?
         setMatrixMode(false)
       }, 5000)
     }
+  }
+
+  const toggleDirectory = (dirName: string) => {
+    setCollapsedDirs(prev => 
+      prev.includes(dirName) 
+        ? prev.filter(d => d !== dirName)
+        : [...prev, dirName]
+    )
   }
 
   return (
@@ -370,16 +438,6 @@ Or are they creating them?
                         <span className="stat-value">{protocolLevel === 13 ? 'LAYER_13' : 'WIRED'}</span>
                       </div>
                     </div>
-                    {protocolLevel === 13 && (
-                      <motion.div 
-                        className="profile-bio layer13-unlocked"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                      >
-                        <p className="glitch-fast" data-text="LAYER 13 ACCESS GRANTED">LAYER 13 ACCESS GRANTED</p>
-                        <span className="bio-subtext">You've reached the outer layer...</span>
-                      </motion.div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -411,73 +469,142 @@ Or are they creating them?
                       exit={{ opacity: 0 }}
                       className="terminal-lines"
                     >
-                      <p className="terminal-line">
-                        <span className="prompt">&gt;</span> DIR /
+                      <p className="terminal-line dir-header">
+                        <span className="prompt">$</span> ls -la
                       </p>
-                      <p className="terminal-line directory-line">
-                        <span className="prompt">&gt;</span> 
-                        <span className="dir-name">/SYSTEM</span>
-                      </p>
+                      <p className="terminal-line dir-separator">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</p>
+                      
                       <p 
-                        className="terminal-line clickable-file file-indent"
-                        onClick={() => handleFileClick('SYSTEM/NOTHING_STAYS_THE_SAME.TXT')}
+                        className="terminal-line dir-folder"
+                        onClick={() => toggleDirectory('SYSTEM')}
+                        style={{ cursor: 'pointer' }}
                       >
-                        <span className="prompt">&gt;</span> 
-                        <span className="file-name">NOTHING_STAYS_THE_SAME.TXT</span>
+                        <span className="folder-icon">{collapsedDirs.includes('SYSTEM') ? '📁' : '📂'}</span>
+                        <span className="folder-name">SYSTEM/</span>
+                        <span className="folder-count">({5} files)</span>
                       </p>
+                      {!collapsedDirs.includes('SYSTEM') && (
+                        <div className="file-list">
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('SYSTEM/NOTHING_STAYS_THE_SAME.TXT')}
+                          >
+                            <span className="file-icon">📄</span>
+                            <span className="file-name">NOTHING_STAYS_THE_SAME.TXT</span>
+                          </p>
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('SYSTEM/REALITY.DLL')}
+                          >
+                            <span className="file-icon">⚙️</span>
+                            <span className="file-name">REALITY.DLL</span>
+                          </p>
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('SYSTEM/KNIGHTS.DAT')}
+                          >
+                            <span className="file-icon">🗡️</span>
+                            <span className="file-name">KNIGHTS.DAT</span>
+                          </p>
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('SYSTEM/PROTOCOL_7.SYS')}
+                          >
+                            <span className="file-icon">🔧</span>
+                            <span className="file-name">PROTOCOL_7.SYS</span>
+                            <span className="file-badge">CORE</span>
+                          </p>
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('SYSTEM/NAVI_CORE.EXE')}
+                          >
+                            <span className="file-icon">⚡</span>
+                            <span className="file-name">NAVI_CORE.EXE</span>
+                            <span className="file-badge">EXEC</span>
+                          </p>
+                        </div>
+                      )}
+                      
                       <p 
-                        className="terminal-line clickable-file file-indent"
-                        onClick={() => handleFileClick('SYSTEM/REALITY.DLL')}
+                        className="terminal-line dir-folder"
+                        onClick={() => toggleDirectory('DATA')}
+                        style={{ cursor: 'pointer' }}
                       >
-                        <span className="prompt">&gt;</span> 
-                        <span className="file-name">REALITY.DLL</span>
+                        <span className="folder-icon">{collapsedDirs.includes('DATA') ? '📁' : '📂'}</span>
+                        <span className="folder-name">DATA/</span>
+                        <span className="folder-count">({2} files)</span>
                       </p>
-                      <p 
-                        className="terminal-line clickable-file file-indent"
-                        onClick={() => handleFileClick('SYSTEM/KNIGHTS.DAT')}
-                      >
-                        <span className="prompt">&gt;</span> 
-                        <span className="file-name">KNIGHTS.DAT</span>
-                      </p>
-                      <p className="terminal-line directory-line">
-                        <span className="prompt">&gt;</span> 
-                        <span className="dir-name">/DATA</span>
-                      </p>
-                      <p 
-                        className="terminal-line clickable-file file-indent"
-                        onClick={() => handleFileClick('DATA/MESSAGE.HEX')}
-                      >
-                        <span className="prompt">&gt;</span> 
-                        <span className="file-name">MESSAGE.HEX</span>
-                        <span className="file-badge">ENCODED</span>
-                      </p>
-                      <p 
-                        className="terminal-line clickable-file file-indent"
-                        onClick={() => handleFileClick('DATA/WIRED_ACCESS.KEY')}
-                      >
-                        <span className="prompt">&gt;</span> 
-                        <span className="file-name">WIRED_ACCESS.KEY</span>
-                      </p>
+                      {!collapsedDirs.includes('DATA') && (
+                        <div className="file-list">
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('DATA/MESSAGE.HEX')}
+                          >
+                            <span className="file-icon">🔐</span>
+                            <span className="file-name">MESSAGE.HEX</span>
+                            <span className="file-badge">ENCODED</span>
+                          </p>
+                          <p 
+                            className="terminal-line file-entry"
+                            onClick={() => handleFileClick('DATA/WIRED_ACCESS.KEY')}
+                          >
+                            <span className="file-icon">🔑</span>
+                            <span className="file-name">WIRED_ACCESS.KEY</span>
+                          </p>
+                        </div>
+                      )}
+                      
                       {protocolLevel === 13 && (
                         <>
                           <motion.p 
-                            className="terminal-line directory-line"
+                            className="terminal-line dir-folder layer13-folder"
+                            onClick={() => toggleDirectory('SECRETS')}
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
+                            style={{ cursor: 'pointer' }}
                           >
-                            <span className="prompt">&gt;</span> 
-                            <span className="dir-name secret">/SECRETS</span>
+                            <span className="folder-icon">{collapsedDirs.includes('SECRETS') ? '🔒' : '🔓'}</span>
+                            <span className="folder-name secret">SECRETS/</span>
+                            <span className="folder-count">({3} files)</span>
                           </motion.p>
-                          <motion.p 
-                            className="terminal-line clickable-file file-indent layer13-file"
-                            onClick={() => handleFileClick('SECRETS/LAIN.LOG')}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                          >
-                            <span className="prompt">&gt;</span> 
-                            <span className="file-name">LAIN.LOG</span>
-                            <span className="file-badge secret">LAYER_13</span>
-                          </motion.p>
+                          {!collapsedDirs.includes('SECRETS') && (
+                            <motion.div 
+                              className="file-list"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                            >
+                              <motion.p 
+                                className="terminal-line file-entry layer13-file"
+                                onClick={() => handleFileClick('SECRETS/LAIN.LOG')}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                              >
+                                <span className="file-icon">👁️</span>
+                                <span className="file-name">LAIN.LOG</span>
+                                <span className="file-badge secret">LAYER_13</span>
+                              </motion.p>
+                              <motion.p 
+                                className="terminal-line file-entry layer13-file"
+                                onClick={() => handleFileClick('SECRETS/PSYCHE.DAT')}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                              >
+                                <span className="file-icon">🧠</span>
+                                <span className="file-name">PSYCHE.DAT</span>
+                                <span className="file-badge secret">RESTRICTED</span>
+                              </motion.p>
+                              <motion.p 
+                                className="terminal-line file-entry layer13-file"
+                                onClick={() => handleFileClick('SECRETS/PROPHECY.LOG')}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                              >
+                                <span className="file-icon">🔮</span>
+                                <span className="file-name">PROPHECY.LOG</span>
+                                <span className="file-badge secret">PROPHECY</span>
+                              </motion.p>
+                            </motion.div>
+                          )}
                         </>
                       )}
                       <p className="terminal-line typing-line">
@@ -550,17 +677,17 @@ Or are they creating them?
                       <span className="proto-value blink-fast">{protocolLevel === 13 ? 'TRANSCENDENT' : 'OMNIPRESENT'}</span>
                     </div>
                   </div>
-                  {protocolLevel === 13 && (
-                    <motion.div 
-                      className="secret-message"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                    >
-                      <p className="glitch-fast" data-text="LAYER 13 ACCESS GRANTED">LAYER 13 ACCESS GRANTED</p>
-                      <p className="secret-text">You've reached the outer layer...</p>
-                    </motion.div>
-                  )}
                 </div>
+                {protocolLevel === 13 && (
+                  <motion.div 
+                    className="layer13-access-bottom"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <p className="access-title">LAYER 13 ACCESS GRANTED</p>
+                    <p className="access-subtitle">You've reached the outer layer...</p>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
 
@@ -596,8 +723,7 @@ Or are they creating them?
                     className="decode-btn"
                     onClick={handleHexDecode}
                   >
-                    <FaEye />
-                    <span>DECODE MESSAGE</span>
+                    <span>◈ DECODE MESSAGE</span>
                   </button>
                   <AnimatePresence>
                     {decodedMessage && (
@@ -614,7 +740,6 @@ Or are they creating them?
                             onClick={() => {
                               setDecodedMessage('')
                               setHexInput('')
-                              setHiddenMessageFound(false)
                             }}
                           >
                             CLEAR
