@@ -7,3 +7,13 @@
   top: 0;
   left: 0;
 }
+
+/* Allow normal flow and scrolling on mobile */
+@media (max-width: 768px) {
+  #root {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    position: static;
+  }
+}
