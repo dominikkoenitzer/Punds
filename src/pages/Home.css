@@ -2850,3 +2850,79 @@
     line-height: 1.6;
   }
 }
+
+/* Profile Nav - horizontal scrollable, mobile-friendly */
+.profile-nav {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgba(0, 10, 0, 0.95);
+  border-top: none;
+  border-bottom: none;
+  padding: 0.15rem 0;
+  -webkit-mask-image: none;
+  mask-image: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.profile-nav-inner {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding: 0.15rem 0.25rem;
+  scroll-snap-type: none;
+  -webkit-overflow-scrolling: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and old Edge */
+  outline: none;
+  box-shadow: none;
+}
+
+.profile-nav-inner::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.profile-nav-inner::-webkit-scrollbar-track { background: transparent; }
+.profile-nav-inner::-webkit-scrollbar-thumb { background: transparent; }
+
+.profile-nav-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  min-width: 90px;
+  border: 1px solid #00aa00;
+  color: #00ff00;
+  background: rgba(0, 20, 0, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform 0.1s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.profile-nav-item:focus,
+.profile-nav-item:hover,
+.profile-nav-item:active {
+  outline: none;
+  border-color: #00ff00;
+  background: rgba(0, 40, 0, 0.7);
+  transform: translateY(-1px);
+}
+
+.profile-nav-icon { display: inline-flex; font-size: 0.95rem; line-height: 1; }
+.profile-nav-label { white-space: nowrap; }
+
+@media (min-width: 769px) {
+  .profile-nav-inner { overflow-x: visible; flex-wrap: wrap; justify-content: flex-start; }
+  .profile-nav-item { min-width: 0; }
+}
+
+@media (max-width: 768px) {
+  .profile-nav { margin-top: 0.25rem; }
+  .profile-nav-inner { padding: 0.3rem 0.4rem; gap: 0.4rem; }
+  .profile-nav-item { min-width: 100px; padding: 0.45rem 0.6rem; }
+  .profile-nav-icon { font-size: 0.95rem; }
+  .profile-nav-label { font-size: 0.8rem; }
+}
