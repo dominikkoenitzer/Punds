@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe, FaUser, FaFolderOpen, FaStream, FaStar, FaCog } from 'react-icons/fa'
 import './Home.css'
 
 const Home = () => {
@@ -497,13 +497,11 @@ The Wired and reality are one.
                     <div className="image-scanline"></div>
                   </div>
                   <div className="profile-details">
-                    <h1 className="profile-name-large">
-                      DOMINIK_KÖNITZER
-                    </h1>
+                    
                     <div className="profile-stats-grid">
                       <div className="stat-item">
                         <span className="stat-label">USER_ID:</span>
-                        <span className="stat-value">82450286</span>
+                        <span className="stat-value">Lain_Iwakura</span>
                       </div>
                       <div className="stat-item">
                         <span className="stat-label">STATUS:</span>
@@ -520,6 +518,7 @@ The Wired and reality are one.
                     </div>
                   </div>
                 </div>
+                
               </div>
             </motion.div>
 
@@ -787,7 +786,7 @@ The Wired and reality are one.
                       className="hex-input"
                       value={hexInput}
                       onChange={(e) => setHexInput(e.target.value)}
-                      placeholder="4E 6F 20 6D 61 74 74 65 72..."
+                      placeholder="57 68 79 20 61 72 65 20 79 6F 75 20 68 65 72 65 3F"
                       rows={12}
                     />
                   </div>
