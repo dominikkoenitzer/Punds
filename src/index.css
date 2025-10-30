@@ -151,3 +151,25 @@ a {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--neon-magenta);
 }
+
+/* Mobile overrides for natural vertical scrolling */
+@media (max-width: 768px) {
+  html, body {
+    height: auto;
+    width: 100%;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    position: static;
+  }
+
+  body {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  img, video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+}
