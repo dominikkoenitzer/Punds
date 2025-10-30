@@ -1,2 +1,38 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Vite/Tooling caches
+.vite/
+.cache/
+.turbo/
+
+# TypeScript build info
+*.tsbuildinfo
+tsconfig.*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files
+.env
+.env.*
+
+# Editor/OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Tests/coverage
+coverage/
+
+# ESLint/Prettier caches
+.eslintcache
+.prettier-cache

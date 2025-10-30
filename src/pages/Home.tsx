@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe, FaUser, FaFolderOpen, FaStream, FaStar, FaCog } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
 import './Home.css'
 
 const Home = () => {
