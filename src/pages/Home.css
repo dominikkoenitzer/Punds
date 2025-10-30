@@ -2788,3 +2788,65 @@
 .layer13-theme.navi-system .proto-value {
   color: #cc00cc !important;
 }
+
+/* =====================
+   Mobile vertical layout
+   ===================== */
+@media (max-width: 768px) {
+  .navi-system {
+    position: static;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .navi-grid {
+    display: block;
+    padding: 1rem;
+    gap: 0;
+  }
+
+  .navi-header { margin-bottom: 1rem; }
+  .navi-footer { margin-top: 1rem; }
+
+  .navi-content {
+    display: block;
+    grid-template-columns: none;
+    overflow: visible;
+  }
+
+  .column-left,
+  .column-center,
+  .column-right {
+    display: block;
+  }
+
+  .navi-window { margin-bottom: 1rem; }
+
+  .window-body {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .protocol-value,
+  .decode-btn,
+  .access-link,
+  .close-file-btn {
+    min-height: 44px;
+    padding: 0.9rem 1rem;
+  }
+
+  .profile-image-large,
+  .profile-image {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .message-text,
+  .file-text,
+  .decoded-text,
+  .stat-value,
+  .proto-value {
+    line-height: 1.6;
+  }
+}
