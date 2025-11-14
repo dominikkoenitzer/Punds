@@ -864,6 +864,22 @@ The Wired and reality are one.
                 </a>
 
           <a
+            href="https://senbon.ch"
+            target="_blank"
+            rel="noopener noreferrer"
+                  className="access-link"
+                >
+                  <div className="link-icon pulse-icon">
+                    <FaBook />
+                  </div>
+                  <div className="link-info">
+                    <span className="link-name">JOURNAL</span>
+                    <span className="link-path">/senbon/journal</span>
+                  </div>
+                  <span className="link-arrow blink-slow">→</span>
+                </a>
+
+          <a
             href="https://github.com/dominikkoenitzer"
             target="_blank"
             rel="noopener noreferrer"
@@ -891,22 +907,6 @@ The Wired and reality are one.
                   <div className="link-info">
                     <span className="link-name">TRANSFER</span>
                     <span className="link-path">/pay/support</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-
-          <a
-            href="https://senbon.ch"
-            target="_blank"
-            rel="noopener noreferrer"
-                  className="access-link"
-                >
-                  <div className="link-icon pulse-icon">
-                    <FaBook />
-                  </div>
-                  <div className="link-info">
-                    <span className="link-name">JOURNAL</span>
-                    <span className="link-path">/senbon/journal</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
