@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
 import './Home.css'
@@ -6,8 +6,9 @@ import './Home.css'
 const Home = () => {
   const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
   const [time, setTime] = useState(new Date())
-  // @ts-ignore - commandText is set but not read, used for side effects only
-  const [commandText, setCommandText] = useState('')
+  // @ts-expect-error - commandText is set but not read, used for side effects only
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [openFile, setOpenFile] = useState<string | null>(null)
   const [matrixMode] = useState(false)
@@ -28,13 +29,13 @@ const Home = () => {
   const [audioInitialized, setAudioInitialized] = useState(false)
   const [iframesLoaded, setIframesLoaded] = useState({ layer7: false, layer13: false })
   
-  const commands = [
+  const commands = useMemo(() => [
     'INITIALIZING NAVI SYSTEM...',
     'CONNECTING TO THE WIRED...',
     'LOADING USER DATA...',
     'REALITY.EXE NOT FOUND',
     'SYSTEM READY',
-  ]
+  ], [])
   const [commandIndex, setCommandIndex] = useState(0)
 
   // Helper function to play audio
@@ -338,7 +339,7 @@ The Wired and reality are one.
       
       return () => clearInterval(typeInterval)
     }
-  }, [commandIndex, isTyping, openFile])
+  }, [commandIndex, isTyping, openFile, commands])
 
   const handleFileClick = (filename: string) => {
     setOpenFile(filename)
@@ -384,7 +385,7 @@ The Wired and reality are one.
       }
       
       setDecodedMessage(decoded)
-    } catch (error) {
+    } catch {
       setDecodedMessage('ERROR: Invalid hex format')
     }
   }
