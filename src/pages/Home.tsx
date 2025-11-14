@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe, FaBook } from 'react-icons/fa'
 import './Home.css'
 
 const Home = () => {
@@ -891,6 +891,22 @@ The Wired and reality are one.
                   <div className="link-info">
                     <span className="link-name">TRANSFER</span>
                     <span className="link-path">/pay/support</span>
+                  </div>
+                  <span className="link-arrow blink-slow">→</span>
+                </a>
+
+          <a
+            href="https://senbon.ch"
+            target="_blank"
+            rel="noopener noreferrer"
+                  className="access-link"
+                >
+                  <div className="link-icon pulse-icon">
+                    <FaBook />
+                  </div>
+                  <div className="link-info">
+                    <span className="link-name">JOURNAL</span>
+                    <span className="link-path">/senbon/ch</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
