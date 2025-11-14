@@ -6,8 +6,8 @@ import './Home.css'
 const Home = () => {
   const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
   const [time, setTime] = useState(new Date())
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // commandText is set but not read, used for side effects only
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_commandText, setCommandText] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [openFile, setOpenFile] = useState<string | null>(null)
