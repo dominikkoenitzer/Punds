@@ -906,7 +906,7 @@ The Wired and reality are one.
                   </div>
                   <div className="link-info">
                     <span className="link-name">JOURNAL</span>
-                    <span className="link-path">/senbon/ch</span>
+                    <span className="link-path">/senbon/journal</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
