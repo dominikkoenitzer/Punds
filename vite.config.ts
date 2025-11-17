@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 1000,
+    host: true, // Enable network access
   },
   build: {
     rollupOptions: {
