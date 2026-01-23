@@ -68,7 +68,7 @@ Or are they creating them?
   `,
 }
 
-const AUDIO_IFRAME_SRC = 'https://www.youtube.com/embed/_W1P7AvV17w?autoplay=0&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w'
+const AUDIO_IFRAME_SRC = 'https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w'
 
 // ============================================================================
 // COMPONENT
@@ -93,7 +93,7 @@ const Home = () => {
   const [packetLoss, setPacketLoss] = useState(0.00)
   
   // Audio
-  const [volume, setVolume] = useState(7)
+  const [volume, setVolume] = useState(50)
   const [audioInitialized, setAudioInitialized] = useState(false)
   const [iframesLoaded, setIframesLoaded] = useState(false)
   
@@ -194,9 +194,9 @@ const Home = () => {
       if (!audioInitialized) {
         setAudioInitialized(true)
         setTimeout(() => {
-          setAudioVolume('lain-audio', 7)
+          setAudioVolume('lain-audio', 50)
           playAudio('lain-audio')
-        }, 200)
+        }, 100)
       }
     }
 
@@ -205,7 +205,7 @@ const Home = () => {
       document.addEventListener(event, initAudio, { once: true })
     })
 
-    const autoplayTimer = setTimeout(initAudio, 1000)
+    const autoplayTimer = setTimeout(initAudio, 100)
 
     return () => {
       events.forEach(event => {
@@ -297,9 +297,6 @@ const Home = () => {
             {/* User Profile */}
             <motion.div 
               className="navi-window window-profile-large"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, delay: 0.2 }}
             >
               <div className="window-header">
                 <div className="window-dots">
@@ -341,9 +338,6 @@ const Home = () => {
             {/* Directory */}
             <motion.div 
               className="navi-window window-terminal"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, delay: 0.4 }}
             >
               <div className="window-header">
                 <div className="window-dots">
@@ -446,9 +440,6 @@ const Home = () => {
             {/* Message Decoder */}
             <motion.div 
               className="navi-window window-message"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 1, delay: 0.8 }}
             >
               <div className="window-header">
                 <div className="window-dots">
@@ -508,9 +499,6 @@ const Home = () => {
             {/* File Viewer */}
             <motion.div 
               className="navi-window window-file-viewer"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, delay: 1.0 }}
             >
               <div className="window-header">
                 <div className="window-dots">
@@ -552,9 +540,6 @@ const Home = () => {
             {/* Access Points */}
             <motion.div 
               className="navi-window window-links"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, delay: 1.0 }}
             >
               <div className="window-header">
                 <div className="window-dots">
@@ -635,9 +620,6 @@ const Home = () => {
             {/* Network Monitor */}
             <motion.div 
               className="navi-window window-network"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 1, delay: 1.2 }}
             >
               <div className="window-header">
                 <div className="window-dots">
