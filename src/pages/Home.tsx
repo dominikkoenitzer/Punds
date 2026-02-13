@@ -1,693 +1,763 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaGithub, FaPaypal, FaGlobe, FaBook } from 'react-icons/fa'
+import {
+  FiGithub,
+  FiGlobe,
+  FiBook,
+  FiDollarSign,
+  FiCopy,
+  FiCheck,
+  FiX,
+  FiFolder,
+  FiExternalLink,
+  FiMapPin,
+  FiZap,
+  FiLayers,
+  FiTerminal,
+  FiCode,
+  FiArrowUpRight,
+  FiCommand,
+} from 'react-icons/fi'
+import FileTree, { TreeNode, TreeFile } from '../components/FileTree'
+import SyntaxHighlighter from '../components/SyntaxHighlighter'
+import Panel from '../components/Panel'
 import './Home.css'
 
 // ============================================================================
-// CONSTANTS
+// DATA
 // ============================================================================
 
-const SECRET_FILES: { [key: string]: string } = {
-  'SYSTEM/REALITY.DLL': `
-> File: REALITY.DLL
-> Status: CORRUPTED
-> Type: SYSTEM_CRITICAL
+const FILE_TREE_DATA: TreeNode[] = [
+  {
+    name: 'src',
+    type: 'folder',
+    defaultOpen: true,
+    children: [
+      {
+        name: 'fibonacci.ts',
+        type: 'file',
+        icon: 'code',
+        content: `// Fibonacci sequence generators
+// Comparing iterative vs recursive approaches
 
-ERROR: Reality module not responding
-WARNING: Consensus breach detected
-INFO: Multiple realities detected
-
-Question: Which reality is real?
-Answer: All of them. None of them.
-
-The Wired is as real as the real world.
-  `,
-  'DATA/MESSAGE.HEX': `
-> File: MESSAGE.HEX
-> Encoding: HEXADECIMAL
-> Decoder: MESSAGE.DECODER
-
-4E 6F 20 6D 61 74 74 65 72 20 77 68 65 72 65 20 
-79 6F 75 20 61 72 65 2C 20 65 76 65 72 79 6F 6E 
-65 20 69 73 20 61 6C 77 61 79 73 20 63 6F 6E 6E 
-65 63 74 65 64 2E
-  `,
-  'SECRETS/LAIN.LOG': `
-> File: LAIN.LOG  
-> Access Level: RESTRICTED
-> Location: THE_WIRED
-
-"No matter where you are,
-everyone is always connected."
-
-You are not alone.
-You have never been alone.
-The network remembers everything.
-
-LET'S ALL LOVE LAIN
-  `,
-  'DATA/WIRED_ACCESS.KEY': `
-> File: WIRED_ACCESS.KEY
-> Type: CRYPTOGRAPHIC_KEY
-> Access: RESTRICTED
-
------BEGIN WIRED KEY-----
-476F6420697320686572652E
------END WIRED KEY-----
-  `,
-  'SYSTEM/KNIGHTS.DAT': `
-> File: KNIGHTS.DAT
-> Organization: THE_KNIGHTS
-> Status: ENCRYPTED
-
-The Knights of the Eastern Calculus
-Protecting the barriers between
-The Wired and reality...
-
-Or are they creating them?
-  `,
+interface FibResult {
+  value: number;
+  computeTime: number;
 }
 
-const AUDIO_IFRAME_SRC = 'https://www.youtube.com/embed/_W1P7AvV17w?autoplay=1&mute=0&enablejsapi=1&loop=1&playlist=_W1P7AvV17w'
+function fibIterative(n: number): FibResult {
+  const start = performance.now();
+
+  if (n <= 1) return { value: n, computeTime: 0 };
+
+  let prev = 0;
+  let curr = 1;
+
+  for (let i = 2; i <= n; i++) {
+    const next = prev + curr;
+    prev = curr;
+    curr = next;
+  }
+
+  return {
+    value: curr,
+    computeTime: performance.now() - start,
+  };
+}
+
+// Memoized recursive version
+const memo = new Map<number, number>();
+
+function fibMemo(n: number): number {
+  if (n <= 1) return n;
+  if (memo.has(n)) return memo.get(n)!;
+
+  const result = fibMemo(n - 1) + fibMemo(n - 2);
+  memo.set(n, result);
+  return result;
+}
+
+// Generator for lazy evaluation
+function* fibGenerator(): Generator<number> {
+  let a = 0;
+  let b = 1;
+
+  while (true) {
+    yield a;
+    [a, b] = [b, a + b];
+  }
+}
+
+// Take first N fibonacci numbers
+function take(gen: Generator<number>, n: number): number[] {
+  const result: number[] = [];
+  for (const val of gen) {
+    if (result.length >= n) break;
+    result.push(val);
+  }
+  return result;
+}
+
+const first20 = take(fibGenerator(), 20);
+console.log("First 20:", first20);
+console.log("Fib(40):", fibIterative(40));`,
+      },
+      // notes.txt removed
+      {
+        name: 'http-server.ts',
+        type: 'file',
+        icon: 'code',
+        content: `// Minimal HTTP server with routing
+// No external dependencies required
+
+import { createServer, IncomingMessage, ServerResponse } from "http";
+
+type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+
+interface Route {
+  method: Method;
+  path: string;
+  handler: Handler;
+}
+
+const routes: Route[] = [];
+
+function route(method: Method, path: string, handler: Handler) {
+  routes.push({ method, path, handler });
+}
+
+function json(res: ServerResponse, data: unknown, status = 200) {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data, null, 2));
+}
+
+  json(res, {
+    status: "healthy",
+    uptime: process.uptime(),
+    memory: process.memoryUsage().heapUsed,
+  });
+});
+
+route("GET", "/api/users", (_, res) => {
+  const users = [
+    { id: 1, name: "Alice", role: "admin" },
+    { id: 2, name: "Bob", role: "user" },
+    { id: 3, name: "Charlie", role: "user" },
+  ];
+  json(res, { users, total: users.length });
+});
+
+route("POST", "/api/echo", (req, res) => {
+  let body = "";
+  req.on("data", (chunk) => (body += chunk));
+  req.on("end", () => {
+    json(res, { echo: JSON.parse(body) });
+  });
+});
+
+// Start server
+const server = createServer((req, res) => {
+  const match = routes.find(
+    (r) => r.method === req.method && r.path === req.url
+  );
+
+  if (match) {
+    match.handler(req, res);
+  } else {
+    json(res, { error: "Not Found" }, 404);
+  }
+});
+
+const PORT = Number(process.env.PORT) || 3000;
+server.listen(PORT, () => {
+  console.log(\`Server running on http://localhost:\${PORT}\`);
+});`,
+      },
+      {
+        name: 'utils.ts',
+        type: 'file',
+        icon: 'code',
+        content: `// Collection of useful utility functions
+
+export function debounce<T extends (...args: unknown[]) => void>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timer: ReturnType<typeof setTimeout>;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+export function throttle<T extends (...args: unknown[]) => void>(
+  fn: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle = false;
+  return (...args) => {
+    if (!inThrottle) {
+      fn(...args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  };
+}
+
+export function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") return obj;
+  if (obj instanceof Date) return new Date(obj.getTime()) as T;
+  if (Array.isArray(obj)) return obj.map(deepClone) as T;
+
+  const cloned = {} as T;
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      cloned[key] = deepClone(obj[key]);
+    }
+  }
+  return cloned;
+}
+
+export function groupBy<T>(
+  arr: T[],
+  keyFn: (item: T) => string
+): Record<string, T[]> {
+  return arr.reduce((acc, item) => {
+    const key = keyFn(item);
+    (acc[key] ||= []).push(item);
+    return acc;
+  }, {} as Record<string, T[]>);
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) {
+    bytes /= 1024;
+    i++;
+  }
+  return \`\${bytes.toFixed(1)} \${units[i]}\`;
+}
+
+// Retry with exponential backoff
+export async function retry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelay = 1000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      await sleep(delay);
+    }
+  }
+  throw new Error("Unreachable");
+}`,
+      },
+    ],
+  },
+  {
+    name: 'config',
+    type: 'folder',
+    children: [
+      {
+        name: 'settings.json',
+        type: 'file',
+        icon: 'settings',
+        label: 'CONFIG',
+        content: `{
+  "editor": {
+    "fontFamily": "JetBrains Mono, monospace",
+    "fontSize": 14,
+    "lineHeight": 1.7,
+    "tabSize": 2,
+    "wordWrap": "on",
+    "minimap": false,
+    "bracketPairColorization": true,
+    "cursorBlinking": "smooth",
+    "smoothScrolling": true,
+    "renderWhitespace": "boundary"
+  },
+  "theme": {
+    "name": "One Dark Pro",
+    "type": "dark",
+    "colors": {
+      "background": "#1e1e2e",
+      "foreground": "#cdd6f4",
+      "accent": "#89b4fa",
+      "selection": "#45475a",
+      "cursor": "#f5e0dc"
+    }
+  },
+  "terminal": {
+    "shell": "/bin/zsh",
+    "fontSize": 13,
+    "scrollback": 10000,
+    "cursorStyle": "bar"
+  },
+  "git": {
+    "autofetch": true,
+    "confirmSync": false,
+    "enableSmartCommit": true
+  },
+  "formatOnSave": true,
+  "autoSave": "afterDelay",
+  "autoSaveDelay": 1000
+}`,
+      },
+      {
+        name: 'docker.yml',
+        type: 'file',
+        icon: 'settings',
+        content: `# Docker Compose configuration
+# Multi-service development stack
+
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgres://user:pass@db:5432/mydb
+      - REDIS_URL=redis://cache:6379
+    volumes:
+      - ./src:/app/src
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cache:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 128mb
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+    driver: local`,
+      },
+    ],
+  },
+  {
+    name: 'docs',
+    type: 'folder',
+    children: [
+      {
+        name: 'README.md',
+        type: 'file',
+        icon: 'text',
+        content: `# Quantum Engine
+
+**A high-performance physics simulation framework**
+
+## Overview
+
+Quantum Engine is a lightweight, GPU-accelerated physics engine
+built for real-time particle simulations and fluid dynamics.
+It supports both 2D and 3D environments with customizable
+force fields and collision detection.
+
+## Quick Start
+
+\`\`\`bash
+npm install quantum-engine
+\`\`\`
+
+## Features
+
+- **Particle Systems** — Up to 1M particles at 60fps
+- **Fluid Dynamics** — SPH-based fluid simulation
+- **Collision Detection** — Broad & narrow phase
+- **Force Fields** — Gravity, wind, attractors, turbulence
+- **GPU Compute** — WebGPU shader support
+- **Deterministic** — Frame-perfect replay
+
+## Architecture
+
+The engine uses an Entity-Component-System (ECS) architecture
+for maximum cache efficiency and parallelism.
+
+## License
+
+MIT — Free for personal and commercial use.`,
+      },
+      {
+        name: 'changelog.md',
+        type: 'file',
+        icon: 'text',
+        content: `# Changelog
+
+All notable changes to this project.
+
+## [3.2.0] — 2025-06-15
+
+### Added
+- WebGPU compute shader pipeline
+- Spatial hashing for collision broadphase
+- New turbulence force field type
+- Debug visualization overlay
+
+### Changed
+- Improved memory allocator performance by 40%
+- Migrated from Float32Array to SharedArrayBuffer
+- Updated particle renderer to use instancing
+
+### Fixed
+- Memory leak in constraint solver
+- Incorrect angular velocity integration
+- Z-fighting in debug wireframes
+
+## [3.1.0] — 2025-04-22
+
+### Added
+- Fluid surface reconstruction
+- Verlet integration option
+- Custom shader hook API
+
+### Changed
+- Reduced bundle size by 35%
+- Switched to vitest for testing
+
+### Fixed
+- Race condition in worker pool
+- NaN propagation in force calculations`,
+      },
+    ],
+  },
+  // notes.txt removed
+]
+
+const LINKS = [
+  {
+    name: 'Website',
+    url: 'https://dominikkoenitzer.ch',
+    description: 'Portfolio & blog',
+    icon: FiGlobe,
+    color: 'cyan' as const,
+  },
+  {
+    name: 'GitHub',
+    url: 'https://github.com/dominikkoenitzer',
+    description: 'Code & repositories',
+    icon: FiGithub,
+    color: 'violet' as const,
+  },
+  {
+    name: 'Journal',
+    url: 'https://senbon.ch',
+    description: 'Writing & thoughts',
+    icon: FiBook,
+    color: 'emerald' as const,
+  },
+  {
+    name: 'Support',
+    url: 'https://www.paypal.com/paypalme/dominikkoenitzer',
+    description: 'Buy me a coffee',
+    icon: FiDollarSign,
+    color: 'amber' as const,
+  },
+]
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
 const Home = () => {
-  // ==========================================================================
-  // STATE
-  // ==========================================================================
-  
-  // UI State
-  const [openFile, setOpenFile] = useState<string | null>(null)
-  const [collapsedDirs, setCollapsedDirs] = useState<string[]>([])
-  
-  // Visual Effects
-  const [cursorTrail, setCursorTrail] = useState<Array<{ x: number; y: number; id: number }>>([])
-  
-  // Time & Network
+  const [selectedFile, setSelectedFile] = useState<TreeFile | null>(null)
+  const [copied, setCopied] = useState(false)
   const [time, setTime] = useState(new Date())
-  const [bandwidth, setBandwidth] = useState(1.21)
-  const [latency, setLatency] = useState(0)
-  const [packetLoss, setPacketLoss] = useState(0.00)
-  
-  // Audio
-  const [volume, setVolume] = useState(50)
-  const [audioInitialized, setAudioInitialized] = useState(false)
-  const [iframesLoaded, setIframesLoaded] = useState(false)
-  
-  // Message Decoder
-  const [hexInput, setHexInput] = useState('')
-  const [decodedMessage, setDecodedMessage] = useState('')
-  
+  const [lineCol, setLineCol] = useState({ line: 1, col: 1 })
 
-  // ==========================================================================
-  // AUDIO HELPERS
-  // ==========================================================================
-
-  const playAudio = (audioId: string) => {
-    const iframe = document.getElementById(audioId) as HTMLIFrameElement
-    if (iframe?.contentWindow) {
-      try {
-        iframe.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'playVideo'
-        }), '*')
-      } catch (error) {
-        console.error('Error playing audio:', error)
-      }
-    }
-  }
-
-
-  const setAudioVolume = (audioId: string, vol: number) => {
-    const iframe = document.getElementById(audioId) as HTMLIFrameElement
-    if (iframe?.contentWindow) {
-      try {
-        iframe.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'setVolume',
-          args: [vol]
-        }), '*')
-      } catch (error) {
-        console.error('Error setting volume:', error)
-      }
-    }
-  }
-
-  // ==========================================================================
-  // EVENT HANDLERS
-  // ==========================================================================
-
-  const handleIframeLoad = () => {
-    setIframesLoaded(true)
-  }
-
-  const handleFileClick = (filename: string) => {
-    setOpenFile(filename)
-  }
-
-  const handleHexDecode = () => {
-    try {
-      const cleanHex = hexInput.replace(/\s+/g, '')
-      let decoded = ''
-      for (let i = 0; i < cleanHex.length; i += 2) {
-        const hexChar = cleanHex.substr(i, 2)
-        decoded += String.fromCharCode(parseInt(hexChar, 16))
-      }
-      setDecodedMessage(decoded)
-    } catch {
-      setDecodedMessage('ERROR: Invalid hex format')
-    }
-  }
-
-  const toggleDirectory = (dirName: string) => {
-    setCollapsedDirs(prev => 
-      prev.includes(dirName) 
-        ? prev.filter(d => d !== dirName)
-        : [...prev, dirName]
-    )
-  }
-
-  // ==========================================================================
-  // EFFECTS
-  // ==========================================================================
-
-  // Cursor trail effect
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setCursorTrail(prev => {
-        const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: Date.now() }]
-        return newTrail.slice(-15)
-      })
-    }
-    window.addEventListener('mousemove', handleMouseMove)
-    return () => window.removeEventListener('mousemove', handleMouseMove)
-  }, [])
-
-  // Initialize audio on first user interaction
-  useEffect(() => {
-    if (!iframesLoaded || audioInitialized) return
-
-    const initAudio = () => {
-      if (!audioInitialized) {
-        setAudioInitialized(true)
-        setTimeout(() => {
-          setAudioVolume('lain-audio', 50)
-          playAudio('lain-audio')
-        }, 100)
-      }
-    }
-
-    const events = ['click', 'keydown', 'touchstart', 'scroll', 'mousemove']
-    events.forEach(event => {
-      document.addEventListener(event, initAudio, { once: true })
-    })
-
-    const autoplayTimer = setTimeout(initAudio, 100)
-
-    return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, initAudio)
-      })
-      clearTimeout(autoplayTimer)
-    }
-  }, [audioInitialized, iframesLoaded])
-
-  // Time update and network stats modulation
+  // Clock
   useEffect(() => {
     const interval = setInterval(() => {
       setTime(new Date())
-      setBandwidth(prev => +(prev + (Math.random() - 0.5) * 0.5).toFixed(2))
-      setLatency(Math.floor(Math.random() * 50))
-      setPacketLoss(+(Math.random() * 5).toFixed(2))
     }, 1000)
     return () => clearInterval(interval)
   }, [])
-  
-  // Volume control
-  useEffect(() => {
-    if (!audioInitialized) return
-    setAudioVolume('lain-audio', volume)
-  }, [volume, audioInitialized])
 
+  const handleFileSelect = (file: TreeFile) => {
+    setSelectedFile(file)
+    // Simulate cursor position
+    if (file.content) {
+      // open at the top of the file by default
+      setLineCol({ line: 1, col: 1 })
+    }
+  }
 
-  // ==========================================================================
+  const handleCopyContent = () => {
+    if (selectedFile?.content) {
+      navigator.clipboard.writeText(selectedFile.content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  // ============================================================================
   // RENDER
-  // ==========================================================================
+  // ============================================================================
 
   return (
-    <div className="navi-system">
-      {/* Hidden Audio Player */}
-      <iframe 
-        id="lain-audio"
-        frameBorder="0"
-        allow="autoplay"
-        title="Lain Audio"
-        width="0" 
-        height="0" 
-        src={AUDIO_IFRAME_SRC}
-        style={{ display: 'none' }}
-        onLoad={handleIframeLoad}
-      />
-      
-      {/* CRT Screen Effects */}
-      <div className="crt-overlay"></div>
-      <div className="crt-scanlines"></div>
-      <div className="static-noise"></div>
-      
-      {/* Ghostly Cursor Trail */}
-      {cursorTrail.map((pos, index) => (
-        <div
-          key={pos.id}
-          className="cursor-ghost"
-          style={{
-            left: pos.x,
-            top: pos.y,
-            opacity: (index / cursorTrail.length) * 0.3,
-          }}
-        />
-      ))}
-
-      {/* Main Grid Layout */}
-      <div className="navi-grid">
-        {/* Header Bar */}
-        <div className="navi-header">
-          <div className="header-left">
-            <span className="navi-logo glitch-fast" data-text="NAVI">NAVI</span>
-            <span className="header-separator">://</span>
-            <span className="system-status blink-slow">ACTIVE</span>
-          </div>
-          <div className="header-right">
-            <span className="system-time">{time.toLocaleTimeString()}</span>
-            <div className="signal-indicator">
-              <span className="signal-bar"></span>
-              <span className="signal-bar"></span>
-              <span className="signal-bar"></span>
-              <span className="signal-bar blink-fast"></span>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="navi-content">
-          {/* Left Column */}
-          <div className="column-left">
-            {/* User Profile */}
-            <motion.div 
-              className="navi-window window-profile-large"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">USER_PROFILE.NAV</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body">
-                <div className="profile-large-content">
-                  <div className="profile-image-wrapper">
-                    <div className="image-static"></div>
-                    <img 
-                      src="https://avatars.githubusercontent.com/u/82450286?v=4" 
-                      alt="User"
-                      className="profile-image-large glitch-image"
-                    />
-                    <div className="image-scanline"></div>
-                  </div>
-                  <div className="profile-username">Lain_Iwakura</div>
-                  <div className="profile-details">
-                    <div className="profile-stats-grid">
-                      <div className="stat-item">
-                        <span className="stat-label">STATUS:</span>
-                        <span className="stat-value blink-fast">ONLINE</span>
-                      </div>
-                      <div className="stat-item">
-                        <span className="stat-label">NODE:</span>
-                        <span className="stat-value">WIRED</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Directory */}
-            <motion.div 
-              className="navi-window window-terminal"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">DIRECTORY.NAV</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body terminal-body">
-                <div className="terminal-lines">
-                  {/* SYSTEM Folder */}
-                  <p 
-                    className="terminal-line dir-folder"
-                    onClick={() => toggleDirectory('SYSTEM')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <span className="folder-icon">{collapsedDirs.includes('SYSTEM') ? '📁' : '📂'}</span>
-                    <span className="folder-name">SYSTEM/</span>
-                    <span className="folder-count">(2 files)</span>
-                  </p>
-                  {!collapsedDirs.includes('SYSTEM') && (
-                    <div className="file-list">
-                      <p 
-                        className="terminal-line file-entry"
-                        onClick={() => handleFileClick('SYSTEM/REALITY.DLL')}
-                      >
-                        <span className="file-icon">⚙️</span>
-                        <span className="file-name">REALITY.DLL</span>
-                      </p>
-                      <p 
-                        className="terminal-line file-entry"
-                        onClick={() => handleFileClick('SYSTEM/KNIGHTS.DAT')}
-                      >
-                        <span className="file-icon">🗡️</span>
-                        <span className="file-name">KNIGHTS.DAT</span>
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* DATA Folder */}
-                  <p 
-                    className="terminal-line dir-folder"
-                    onClick={() => toggleDirectory('DATA')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <span className="folder-icon">{collapsedDirs.includes('DATA') ? '📁' : '📂'}</span>
-                    <span className="folder-name">DATA/</span>
-                    <span className="folder-count">(2 files)</span>
-                  </p>
-                  {!collapsedDirs.includes('DATA') && (
-                    <div className="file-list">
-                      <p 
-                        className="terminal-line file-entry"
-                        onClick={() => handleFileClick('DATA/MESSAGE.HEX')}
-                      >
-                        <span className="file-icon">🔐</span>
-                        <span className="file-name">MESSAGE.HEX</span>
-                        <span className="file-badge">ENCODED</span>
-                      </p>
-                      <p 
-                        className="terminal-line file-entry"
-                        onClick={() => handleFileClick('DATA/WIRED_ACCESS.KEY')}
-                      >
-                        <span className="file-icon">🔑</span>
-                        <span className="file-name">WIRED_ACCESS.KEY</span>
-                      </p>
-                    </div>
-                  )}
-                  
-                  {/* SECRETS Folder */}
-                  <p 
-                    className="terminal-line dir-folder"
-                    onClick={() => toggleDirectory('SECRETS')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <span className="folder-icon">{collapsedDirs.includes('SECRETS') ? '📁' : '📂'}</span>
-                    <span className="folder-name">SECRETS/</span>
-                    <span className="folder-count">(1 file)</span>
-                  </p>
-                  {!collapsedDirs.includes('SECRETS') && (
-                    <div className="file-list">
-                      <p 
-                        className="terminal-line file-entry"
-                        onClick={() => handleFileClick('SECRETS/LAIN.LOG')}
-                      >
-                        <span className="file-icon">👁️</span>
-                        <span className="file-name">LAIN.LOG</span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Center Column */}
-          <div className="column-center">
-            {/* Message Decoder */}
-            <motion.div 
-              className="navi-window window-message"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">MESSAGE.DECODER</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body message-body">
-                <div className="decoder-container">
-                  <div className="hex-input-group">
-                    <label className="input-label">PASTE HEX CODE:</label>
-                    <textarea 
-                      className="hex-input"
-                      value={hexInput}
-                      onChange={(e) => setHexInput(e.target.value)}
-                      placeholder="57 68 79 20 61 72 65 20 79 6F 75 20 68 65 72 65 3F"
-                      rows={8}
-                    />
-                  </div>
-                  <button 
-                    className="decode-btn"
-                    onClick={handleHexDecode}
-                  >
-                    <span>◈ DECODE MESSAGE</span>
-                  </button>
-                  <AnimatePresence>
-                    {decodedMessage && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="decoded-output"
-                      >
-                        <div className="output-header">
-                          <span className="output-label">DECODED:</span>
-                          <button 
-                            className="clear-btn"
-                            onClick={() => {
-                              setDecodedMessage('')
-                              setHexInput('')
-                            }}
-                          >
-                            CLEAR
-                          </button>
-                        </div>
-                        <p className="decoded-text">{decodedMessage}</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* File Viewer */}
-            <motion.div 
-              className="navi-window window-file-viewer"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">FILE_VIEWER.NAV</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body file-viewer-body">
-                <div className="file-viewer-content">
-                  {openFile ? (
-                    <>
-                      <div className="file-viewer-header">
-                        <span className="file-viewer-name">{openFile}</span>
-                        <button 
-                          className="close-file-btn"
-                          onClick={() => setOpenFile(null)}
-                        >
-                          [CLOSE]
-                        </button>
-                      </div>
-                      <pre className="file-text">{SECRET_FILES[openFile as keyof typeof SECRET_FILES]}</pre>
-                    </>
-                  ) : (
-                    <div className="file-viewer-empty">
-                      <p className="empty-message">No file selected</p>
-                      <p className="empty-hint">Click a file in DIRECTORY.NAV to view its contents</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Right Column */}
-          <div className="column-right">
-            {/* Access Points */}
-            <motion.div 
-              className="navi-window window-links"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">ACCESS_POINTS.NAV</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body links-body">
-                <a 
-                  href="https://dominikkoenitzer.ch" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="access-link"
-                >
-                  <div className="link-icon pulse-icon">
-                    <FaGlobe />
-                  </div>
-                  <div className="link-info">
-                    <span className="link-name">PERSONAL_SITE</span>
-                    <span className="link-path">/home/web</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-
-                <a
-                  href="https://senbon.ch"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="access-link"
-                >
-                  <div className="link-icon pulse-icon">
-                    <FaBook />
-                  </div>
-                  <div className="link-info">
-                    <span className="link-name">JOURNAL</span>
-                    <span className="link-path">/senbon/journal</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-
-                <a
-                  href="https://github.com/dominikkoenitzer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="access-link"
-                >
-                  <div className="link-icon pulse-icon">
-                    <FaGithub />
-                  </div>
-                  <div className="link-info">
-                    <span className="link-name">REPOSITORY</span>
-                    <span className="link-path">/git/hub</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                
-                <a
-                  href="https://www.paypal.com/paypalme/dominikkoenitzer"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="access-link"
-                >
-                  <div className="link-icon pulse-icon">
-                    <FaPaypal />
-                  </div>
-                  <div className="link-info">
-                    <span className="link-name">TRANSFER</span>
-                    <span className="link-path">/pay/support</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-              </div>
-            </motion.div>
-
-            {/* Network Monitor */}
-            <motion.div 
-              className="navi-window window-network"
-            >
-              <div className="window-header">
-                <div className="window-dots">
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                  <span className="dot"></span>
-                </div>
-                <span className="window-title">NETWORK.MONITOR</span>
-                <span className="window-status blink-slow">●</span>
-              </div>
-              <div className="window-body network-body">
-                <div className="network-monitor-grid">
-                  <div className="monitor-section">
-                    <div className="monitor-header">SYSTEM METRICS</div>
-                    <div className="metric-row">
-                      <span className="metric-label">UPTIME</span>
-                      <span className="metric-value">{Math.floor(time.getSeconds() + time.getMinutes() * 60)}s</span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">BANDWIDTH</span>
-                      <span className="metric-value">{bandwidth.toFixed(2)} GB/s</span>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">PACKET_LOSS</span>
-                      <span className="metric-value">{packetLoss.toFixed(2)}%</span>
-                      <div className="metric-bar">
-                        <div className="metric-fill" style={{ width: `${Math.max(0, 100 - packetLoss * 20)}%` }}></div>
-                      </div>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">LATENCY</span>
-                      <span className="metric-value">{latency}ms</span>
-                      <div className="metric-bar">
-                        <div className="metric-fill" style={{ width: `${Math.max(0, 100 - latency * 2)}%` }}></div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="monitor-section">
-                    <div className="monitor-header">AUDIO CONTROL</div>
-                    <div className="metric-row volume-control-row">
-                      <span className="metric-label">VOLUME</span>
-                      <span className="metric-value">{volume}%</span>
-                      <div className="volume-slider-container">
-                        <input 
-                          type="range" 
-                          min="0" 
-                          max="100" 
-                          value={volume}
-                          onChange={(e) => setVolume(Number(e.target.value))}
-                          className="volume-range-input"
-                        />
-                        <div className="volume-track">
-                          <div className="volume-fill" style={{ width: `${volume}%` }}></div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="metric-row">
-                      <span className="metric-label">STATUS</span>
-                      <span className="metric-value">STABLE</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
+    <div className="workspace">
+      {/* Ambient background */}
+      <div className="ambient-bg">
+        <div className="ambient-gradient" />
+        <div className="ambient-grid" />
+        <div className="ambient-orb orb-1" />
+        <div className="ambient-orb orb-2" />
+        <div className="ambient-orb orb-3" />
       </div>
+
+      {/* Top Bar */}
+      <header className="topbar" role="banner">
+        <div className="topbar-left">
+          <div className="topbar-brand">
+            <div className="brand-icon">
+              <FiLayers size={18} />
+            </div>
+            <span className="brand-name">workspace</span>
+            <span className="brand-separator">/</span>
+            <span className="brand-path">dominik</span>
+          </div>
+        </div>
+        <div className="topbar-right">
+          <div className="topbar-status">
+            <span className="status-dot online" />
+          </div>
+          <span className="topbar-time mono">{time.toLocaleTimeString('en-US', { hour12: false })}</span>
+        </div>
+      </header>
+
+      {/* Main Layout — VS Code style 3-column */}
+      <main className="main-layout" role="main">
+        {/* Left: Sidebar — Profile + Explorer */}
+        <aside className="sidebar">
+          {/* Profile Card */}
+          <motion.div
+            className="sidebar-profile"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="profile-avatar-wrapper">
+              <div className="avatar-glow" />
+              <img
+                src="https://avatars.githubusercontent.com/u/82450286?v=4"
+                alt="Dominik Koenitzer"
+                className="profile-avatar"
+              />
+              <span className="avatar-status-ring" />
+            </div>
+            <div className="profile-info">
+              <h2 className="profile-name">Dominik Koenitzer</h2>
+              <p className="profile-role">Full-Stack Developer</p>
+              <p className="profile-bio">Crafting web experiences with clean code and thoughtful design.</p>
+            </div>
+            <div className="profile-meta">
+              <span className="meta-item">
+                <FiMapPin size={12} />
+                Switzerland
+              </span>
+              <span className="meta-divider" />
+              <span className="meta-item meta-available" />
+            </div>
+          </motion.div>
+
+          {/* Explorer */}
+          <Panel
+            title="Explorer"
+            icon={<FiFolder size={15} />}
+            className="panel-explorer"
+            delay={0.1}
+          >
+            <FileTree
+              nodes={FILE_TREE_DATA}
+              onFileSelect={handleFileSelect}
+              selectedFile={selectedFile?.name}
+            />
+          </Panel>
+        </aside>
+
+        {/* Center: Editor / File Viewer */}
+        <Panel
+          title={selectedFile ? selectedFile.name : 'Editor'}
+          icon={<FiTerminal size={15} />}
+          className="panel-viewer"
+          delay={0.15}
+          actions={
+            selectedFile ? (
+              <div className="viewer-actions">
+                <button
+                  className="action-btn"
+                  onClick={handleCopyContent}
+                  aria-label={copied ? 'Copied' : 'Copy content'}
+                >
+                  {copied ? <FiCheck size={14} /> : <FiCopy size={14} />}
+                </button>
+                <button
+                  className="action-btn"
+                  onClick={() => setSelectedFile(null)}
+                  aria-label="Close file"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            ) : undefined
+          }
+        >
+          <div className="viewer-content">
+            <AnimatePresence mode="wait">
+              {selectedFile ? (
+                <motion.div
+                  key={selectedFile.name}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  className="file-content-wrapper"
+                >
+                  <div className="file-breadcrumb">
+                    <span className="breadcrumb-segment">~</span>
+                    <span className="breadcrumb-sep">/</span>
+                    <span className="breadcrumb-segment">{selectedFile.name}</span>
+                  </div>
+                  <div className="file-content-area">
+                    <SyntaxHighlighter
+                      code={selectedFile.content || ''}
+                      filename={selectedFile.name}
+                      currentLine={lineCol.line}
+                    />
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="viewer-empty"
+                >
+                  <div className="empty-icon">
+                    <FiTerminal size={28} />
+                  </div>
+                  <p className="empty-title">No file selected</p>
+                  <p className="empty-subtitle">
+                    Choose a file from the explorer to view its contents
+                  </p>
+                  <div className="empty-hint">
+                    <FiCommand size={11} />
+                    <span>Click any file to view</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </Panel>
+
+        {/* Right: Links Panel */}
+        <aside className="sidebar-right">
+          <Panel
+            title="Links"
+            icon={<FiExternalLink size={15} />}
+            className="panel-links"
+            delay={0.2}
+          >
+            <div className="links-list">
+              {LINKS.map((link, i) => (
+                <motion.a
+                  key={link.name}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`link-card color-${link.color}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                  whileHover={{ y: -2 }}
+                >
+                  <div className={`link-icon-wrapper color-${link.color}`}>
+                    <link.icon size={18} />
+                  </div>
+                  <div className="link-text">
+                    <span className="link-name">{link.name}</span>
+                    <span className="link-desc">{link.description}</span>
+                  </div>
+                  <FiArrowUpRight size={14} className="link-external" />
+                </motion.a>
+              ))}
+            </div>
+          </Panel>
+        </aside>
+      </main>
+
+      {/* Footer */}
+      <footer className="workspace-footer" role="contentinfo">
+        <div className="footer-accent" />
+        <div className="footer-content">
+          <div className="footer-left">
+            <span className="footer-item footer-branch">
+              <FiCode size={11} />
+            </span>
+            <span className="footer-separator" />
+            <span className="footer-item mono">
+              Ln {lineCol.line}, Col {lineCol.col}
+            </span>
+            <span className="footer-separator" />
+            <span className="footer-item">
+              <FiZap size={11} />
+              <span>Vite + React</span>
+            </span>
+          </div>
+          <div className="footer-right">
+            <span className="footer-item mono">UTF-8</span>
+            <span className="footer-separator" />
+            <span className="footer-item mono">TypeScript</span>
+            <span className="footer-separator" />
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
