@@ -102,6 +102,7 @@ const first20 = take(fibGenerator(), 20);
 console.log("First 20:", first20);
 console.log("Fib(40):", fibIterative(40));`,
       },
+      // notes.txt removed
       {
         name: 'http-server.ts',
         type: 'file',
@@ -131,12 +132,6 @@ function json(res: ServerResponse, data: unknown, status = 200) {
   res.end(JSON.stringify(data, null, 2));
 }
 
-// Define routes
-route("GET", "/", (_, res) => {
-  json(res, { message: "Hello, World!", timestamp: Date.now() });
-});
-
-route("GET", "/health", (_, res) => {
   json(res, {
     status: "healthy",
     uptime: process.uptime(),
@@ -472,41 +467,7 @@ All notable changes to this project.
       },
     ],
   },
-  {
-    name: 'notes.txt',
-    type: 'file',
-    icon: 'terminal',
-    content: `╭──────────────────────────────────────╮
-│  PROJECT ROADMAP  ·  Q3 2025        │
-├──────────────────────────────────────┤
-│                                      │
-│  ✓  Core physics loop               │
-│  ✓  Particle rendering pipeline      │
-│  ✓  ECS architecture migration       │
-│  ◐  WebGPU compute integration       │
-│  ○  Networked simulations            │
-│  ○  Visual node editor               │
-│                                      │
-╰──────────────────────────────────────╯
-
-Performance Targets:
-  → 1M particles @ 60fps (GPU)
-  → 100K particles @ 60fps (CPU)
-  → < 16ms frame budget
-  → < 50MB memory footprint
-
-Stack:
-  Language   TypeScript + Rust (WASM)
-  Renderer   WebGPU / WebGL2 fallback
-  Build      Vite + Rollup
-  Testing    Vitest + Playwright
-  CI/CD      GitHub Actions
-
-Notes:
-  Remember to benchmark the spatial
-  hashing implementation against the
-  current BVH tree approach.`,
-  },
+  // notes.txt removed
 ]
 
 const LINKS = [
