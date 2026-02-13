@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@font-face {
+  font-family: 'TrixieCyrG';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/TrixieCyrG-Plain-Regular.otf') format('opentype');
+}
 
 * {
   margin: 0;
@@ -6,137 +12,164 @@
   box-sizing: border-box;
 }
 
-:root {
-  /* Core palette */
-  --bg-root: #0f1320;
-  --bg-primary: #131827;
-  --bg-secondary: #1a2133;
-  --bg-tertiary: #242d42;
-  --bg-elevated: #2a3550;
-  --bg-hover: #34415e;
-
-  /* Borders */
-  --border-subtle: rgba(214, 228, 255, 0.12);
-  --border-default: rgba(214, 228, 255, 0.2);
-  --border-strong: rgba(214, 228, 255, 0.3);
-
-  /* Text */
-  --text-primary: #f5f8ff;
-  --text-secondary: #bdc8db;
-  --text-tertiary: #93a2bc;
-  --text-muted: #70809b;
-
-  /* Accents */
-  --accent-primary: #6ea8ff;
-  --accent-primary-dim: rgba(110, 168, 255, 0.18);
-  --accent-cyan: #22d3ee;
-  --accent-cyan-dim: rgba(34, 211, 238, 0.15);
-  --accent-emerald: #34d399;
-  --accent-emerald-dim: rgba(52, 211, 153, 0.15);
-  --accent-amber: #fbbf24;
-  --accent-amber-dim: rgba(251, 191, 36, 0.15);
-  --accent-rose: #fb7185;
-  --accent-rose-dim: rgba(251, 113, 133, 0.15);
-  --accent-violet: #8b5cf6;
-  --accent-violet-dim: rgba(139, 92, 246, 0.15);
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(2, 8, 24, 0.35);
-  --shadow-md: 0 8px 20px rgba(2, 8, 24, 0.45);
-  --shadow-lg: 0 14px 44px rgba(2, 8, 24, 0.5);
-  --shadow-glow: 0 0 44px rgba(110, 168, 255, 0.16);
-
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
-
-  /* Transitions */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+html {
+  overflow: hidden !important;
+  height: 100vh;
+  width: 100vw;
 }
 
-html {
-  height: 100%;
-  scroll-behavior: smooth;
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --neon-cyan: #00ffcc;
+  --neon-magenta: #ff00ff;
+  --neon-green: #00ff00;
+  --neon-blue: #0088ff;
+  --glitch-1: #ff0055;
+  --glitch-2: #00ffaa;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background:
-    radial-gradient(circle at 12% 4%, rgba(110, 168, 255, 0.1) 0%, transparent 40%),
-    radial-gradient(circle at 85% 90%, rgba(34, 211, 238, 0.08) 0%, transparent 38%),
-    var(--bg-root);
+  font-family: 'TrixieCyrG', 'Courier New', monospace;
+  background-color: var(--bg-primary);
   color: var(--text-primary);
-  min-height: 100vh;
-  min-height: 100dvh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden !important;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.6;
-  overflow-x: hidden;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-text-size-adjust: 100%;
+  position: fixed;
+}
+
+/* Scanline effect */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 255, 204, 0.03) 0px,
+    rgba(0, 255, 204, 0.03) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  animation: scanline 8s linear infinite;
+}
+
+@keyframes scanline {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(10px);
+  }
+}
+
+/* Noise effect */
+body::after {
+  content: '';
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  pointer-events: none;
+  z-index: 9998;
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.05"/></svg>');
+  animation: noise 0.2s infinite;
+}
+
+@keyframes noise {
+  0%, 100% { 
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-5%, -5%);
+  }
+  20% {
+    transform: translate(-10%, 5%);
+  }
+  30% {
+    transform: translate(5%, -10%);
+  }
+  40% {
+    transform: translate(-5%, 15%);
+  }
+  50% {
+    transform: translate(-10%, 5%);
+  }
+  60% {
+    transform: translate(15%, 0);
+  }
+  70% {
+    transform: translate(0, 10%);
+  }
+  80% {
+    transform: translate(-15%, 0);
+  }
+  90% {
+    transform: translate(10%, 5%);
+  }
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-code, pre, .mono {
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  font-family: 'TrixieCyrG', 'Courier New', monospace;
+  font-weight: 400;
 }
 
 a {
-  color: var(--accent-primary);
+  color: var(--neon-cyan);
   text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-a:hover {
-  color: var(--accent-cyan);
+  transition: all 0.3s ease;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-secondary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
+  background: var(--neon-cyan);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--neon-magenta);
 }
 
-/* Selection */
-::selection {
-  background: var(--accent-primary-dim);
-  color: var(--text-primary);
-}
+/* Mobile overrides for natural vertical scrolling */
+@media (max-width: 768px) {
+  html, body {
+    height: auto;
+    width: 100%;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    position: static;
+  }
 
-/* Focus styles */
-:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
-}
+  body {
+    font-size: 16px;
+    line-height: 1.6;
+  }
 
-img {
-  max-width: 100%;
-  height: auto;
-  display: block;
+  img, video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
 }
