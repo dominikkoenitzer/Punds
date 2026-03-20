@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type DragEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FiChevronRight,
@@ -25,6 +25,7 @@ export interface TreeFile {
   icon?: 'file' | 'text' | 'code' | 'lock' | 'key' | 'terminal' | 'database' | 'settings' | 'shield'
   label?: string
   content?: string
+  path?: string
 }
 
 export interface TreeFolder {
@@ -39,6 +40,8 @@ export type TreeNode = TreeFile | TreeFolder
 interface FileTreeProps {
   nodes: TreeNode[]
   onFileSelect: (file: TreeFile) => void
+  onFolderSelect?: (path: string) => void
+  onMoveNode?: (sourcePath: string, targetFolderPath: string) => void
   selectedFile?: string | null
   depth?: number
 }
@@ -66,34 +69,72 @@ const fileIconMap = {
 const FileTreeNode = ({
   node,
   onFileSelect,
+  onFolderSelect,
+  onMoveNode,
   selectedFile,
   depth = 0,
+  parentPath = '',
 }: {
   node: TreeNode
   onFileSelect: (file: TreeFile) => void
+  onFolderSelect?: (path: string) => void
+  onMoveNode?: (sourcePath: string, targetFolderPath: string) => void
   selectedFile?: string | null
   depth: number
+  parentPath?: string
 }) => {
   const [isOpen, setIsOpen] = useState(
     node.type === 'folder' && node.defaultOpen !== false
   )
 
+  const currentPath = `${parentPath}${node.name}`
+
   const handleToggle = useCallback(() => {
     setIsOpen(prev => !prev)
-  }, [])
+    if (node.type === 'folder') {
+      onFolderSelect?.(currentPath)
+    }
+  }, [currentPath, node.type, onFolderSelect])
 
   const handleFileClick = useCallback(() => {
     if (node.type === 'file') {
-      onFileSelect(node)
+      onFileSelect({
+        ...node,
+        path: node.path || currentPath,
+      })
     }
-  }, [node, onFileSelect])
+  }, [currentPath, node, onFileSelect])
+
+  const handleDragStart = useCallback((event: DragEvent<HTMLButtonElement>) => {
+    event.dataTransfer.setData('application/x-tree-node-path', currentPath)
+    event.dataTransfer.effectAllowed = 'move'
+  }, [currentPath])
+
+  const handleDropOnFolder = useCallback((event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const sourcePath = event.dataTransfer.getData('application/x-tree-node-path')
+    if (!sourcePath || sourcePath === currentPath) return
+    onMoveNode?.(sourcePath, currentPath)
+  }, [currentPath, onMoveNode])
+
+  const handleDragOverFolder = useCallback((event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
 
   if (node.type === 'folder') {
+    const isSelectedFolder = selectedFile === currentPath
+
     return (
       <div className="tree-folder">
         <button
-          className="tree-item tree-folder-header"
+          className={`tree-item tree-folder-header ${isSelectedFolder ? 'selected' : ''}`}
           onClick={handleToggle}
+          draggable
+          onDragStart={handleDragStart}
+          onDrop={handleDropOnFolder}
+          onDragOver={handleDragOverFolder}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
         >
           <span className="tree-chevron">
@@ -117,8 +158,11 @@ const FileTreeNode = ({
                   key={`${child.name}-${i}`}
                   node={child}
                   onFileSelect={onFileSelect}
+                  onFolderSelect={onFolderSelect}
+                  onMoveNode={onMoveNode}
                   selectedFile={selectedFile}
                   depth={depth + 1}
+                  parentPath={`${parentPath}${node.name}/`}
                 />
               ))}
             </motion.div>
@@ -129,12 +173,15 @@ const FileTreeNode = ({
   }
 
   const IconComponent = fileIconMap[node.icon || 'file']
-  const isSelected = selectedFile === node.name
+  const filePath = node.path || `${parentPath}${node.name}`
+  const isSelected = selectedFile === filePath
 
   return (
     <button
       className={`tree-item tree-file ${isSelected ? 'selected' : ''}`}
       onClick={handleFileClick}
+      draggable
+      onDragStart={handleDragStart}
       style={{ paddingLeft: `${depth * 16 + 12}px` }}
     >
       <span className="tree-chevron" style={{ visibility: 'hidden' }}>
@@ -151,16 +198,31 @@ const FileTreeNode = ({
 // FILE TREE
 // ============================================================================
 
-const FileTree = ({ nodes, onFileSelect, selectedFile, depth = 0 }: FileTreeProps) => {
+const FileTree = ({ nodes, onFileSelect, onFolderSelect, onMoveNode, selectedFile, depth = 0 }: FileTreeProps) => {
   return (
-    <div className="file-tree" role="tree">
+    <div
+      className="file-tree"
+      role="tree"
+      onDragOver={event => {
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+      }}
+      onDrop={event => {
+        const sourcePath = event.dataTransfer.getData('application/x-tree-node-path')
+        if (!sourcePath) return
+        onMoveNode?.(sourcePath, '')
+      }}
+    >
       {nodes.map((node, i) => (
         <FileTreeNode
           key={`${node.name}-${i}`}
           node={node}
           onFileSelect={onFileSelect}
+          onFolderSelect={onFolderSelect}
+          onMoveNode={onMoveNode}
           selectedFile={selectedFile}
           depth={depth}
+          parentPath=""
         />
       ))}
     </div>
