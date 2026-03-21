@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import {
   FiCopy,
   FiCheck,
@@ -17,8 +16,8 @@ import { Input } from '../components/ui/input'
 import './Home.css'
 
 const DEFAULT_WORKSPACE_TREE: TreeNode[] = []
-const STORAGE_TREE_KEY = 'punds.workspace.tree.v1'
-const STORAGE_CONTENT_KEY = 'punds.workspace.content.v1'
+const STORAGE_TREE_KEY = 'remnants.workspace.tree.v1'
+const STORAGE_CONTENT_KEY = 'remnants.workspace.content.v1'
 
 type DialogMode = 'create-file' | 'create-folder' | 'rename' | 'delete' | null
 
@@ -569,7 +568,6 @@ const Home = () => {
             title="Explorer"
             icon={<FiFolder size={15} />}
             className="panel-explorer"
-            delay={0.1}
             actions={
               <div className="viewer-actions">
                 <button
@@ -623,7 +621,6 @@ const Home = () => {
           title={activeFileName}
           icon={<FiTerminal size={15} />}
           className="panel-viewer"
-          delay={0.15}
           actions={
             <div className="viewer-actions">
               <button
@@ -649,11 +646,7 @@ const Home = () => {
         >
           <div className="viewer-content">
             {selectedFile ? (
-              <motion.div
-                key={activeFileName}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              <div
                 className="file-content-wrapper"
               >
                 <div className="file-breadcrumb">
@@ -685,12 +678,9 @@ const Home = () => {
                     aria-label="Code editor"
                   />
                 </div>
-              </motion.div>
+              </div>
             ) : (
-              <motion.div
-                key="empty-editor"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+              <div
                 className="viewer-empty"
               >
                 <div className="empty-icon">
@@ -700,7 +690,7 @@ const Home = () => {
                 <p className="empty-subtitle">
                   Create files/folders from Explorer. Your structure is persisted locally.
                 </p>
-              </motion.div>
+              </div>
             )}
           </div>
         </Panel>
