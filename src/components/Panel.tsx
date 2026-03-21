@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { ReactNode } from 'react'
 
 interface PanelProps {
@@ -8,16 +7,12 @@ interface PanelProps {
   className?: string
   actions?: ReactNode
   badge?: string
-  delay?: number
 }
 
-const Panel = ({ title, icon, children, className = '', actions, badge, delay = 0 }: PanelProps) => {
+const Panel = ({ title, icon, children, className = '', actions, badge }: PanelProps) => {
   return (
-    <motion.div
+    <div
       className={`panel ${className}`}
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="panel-header">
         <div className="panel-header-left">
@@ -30,7 +25,7 @@ const Panel = ({ title, icon, children, className = '', actions, badge, delay = 
       <div className="panel-body">
         {children}
       </div>
-    </motion.div>
+    </div>
   )
 }
 
