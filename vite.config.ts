@@ -1,25 +1,10 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 1000,
-    host: true, // Enable network access
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['@chakra-ui/react', '@chakra-ui/theme', '@chakra-ui/theme-tools'],
-          'animation-vendor': ['framer-motion'],
-          'emotion-vendor': ['@emotion/react', '@emotion/styled'],
-          'icons-vendor': ['react-icons'],
-        },
-      },
-    },
-    chunkSizeWarningLimit: 600,
+    host: true,
   },
 })
