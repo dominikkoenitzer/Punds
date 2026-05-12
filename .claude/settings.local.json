@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm lint *)",
+      "Bash(pnpm info *)",
+      "Bash(pnpm remove *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm build *)"
+    ]
+  }
+}
