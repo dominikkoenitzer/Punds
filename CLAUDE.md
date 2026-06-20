@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Package manager is **pnpm** (see `pnpm-lock.yaml`).
+Package manager is **bun** (see `bun.lock`).
 
-- `pnpm dev` — start the Vite dev server on **port 1000**, exposed on the network (`host: true`)
-- `pnpm build` — type-check all project references (`tsc -b`) then produce the production bundle (`vite build`)
-- `pnpm lint` — run ESLint over the repo
-- `pnpm preview` — serve the built `dist/` locally
+- `bun run dev` — start the Vite dev server on **port 1000**, exposed on the network (`host: true`)
+- `bun run build` — type-check all project references (`tsc -b`) then produce the production bundle (`vite build`)
+- `bun run lint` — run ESLint over the repo
+- `bun run preview` — serve the built `dist/` locally
 
 There is no test runner configured.
 
@@ -32,9 +32,9 @@ Desktop is a 3-column grid (left = profile + filesystem browser, center = oscill
 
 ## Styling
 
-All styling is **hand-written CSS** — no Tailwind or CSS-in-JS. Global resets, the `@font-face` for the custom `TrixieCyrG` font, and the `:root` color variables live in [src/index.css](src/index.css); essentially all component styling (~3000 lines: CRT overlays, glitch keyframes, window chrome, grid/mobile layout) lives in [src/pages/Home.css](src/pages/Home.css), imported by `Home.tsx`. The font file is in `public/fonts/` and is preloaded in `index.html`.
+All styling is **hand-written CSS** — no Tailwind or CSS-in-JS. Global resets, the `@font-face` for the custom `TrixieCyrG` font, and the `:root` color variables live in [src/index.css](src/index.css); essentially all component styling (~1900 lines: CRT overlays, glitch keyframes, window chrome, grid/mobile layout) lives in [src/pages/Home.css](src/pages/Home.css), imported by `Home.tsx`. The font file is in `public/fonts/` and is preloaded in `index.html`.
 
-Note: only `react`, `react-dom`, and `react-icons` are declared dependencies. Other packages present in the pnpm store (Chakra, Emotion, Radix) are leftovers from a previous version and are **not** imported by the source — don't reach for them; add a dependency to `package.json` deliberately if you need one.
+Note: only `react`, `react-dom`, and `react-icons` are declared runtime dependencies (plus the dev toolchain: Vite, TypeScript, ESLint). Add a dependency to `package.json` deliberately if you need one.
 
 ## TypeScript
 

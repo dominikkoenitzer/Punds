@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FaGithub, FaPaypal, FaGlobe, FaBook, FaLinkedin, FaWind, FaPalette, FaRandom, FaArchive } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe, FaBook, FaWind, FaPalette, FaRandom, FaArchive } from 'react-icons/fa'
 import './Home.css'
 
 // ============================================================================
@@ -230,7 +230,7 @@ const Oscilloscope: React.FC = () => {
             + Math.sin(n * 0.7 + t * 1.4 + phaseShift) * (sh * 0.14)
             + Math.sin(n * 2.2 + t * 0.5) * (sh * 0.04)
             + noise
-          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+          if (x === 0) { ctx.moveTo(x, y) } else { ctx.lineTo(x, y) }
         }
         ctx.stroke()
 
@@ -255,7 +255,7 @@ const Oscilloscope: React.FC = () => {
               + Math.sin(n * 2.0 + t * 0.85) * (sh * 0.08)
               + Math.sin(n * 0.3 + t * 0.4)  * (sh * 0.05)
               + glitchNoise
-            x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+            if (x === 0) { ctx.moveTo(x, y) } else { ctx.lineTo(x, y) }
           }
           ctx.stroke()
           ctx.shadowBlur = 0
@@ -824,14 +824,6 @@ const Home = () => {
                   <div className="link-info">
                     <span className="link-name">REPOSITORY</span>
                     <span className="link-path">/git/hub</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                <a href="https://linkedin.com/in/dominik-koenitzer" target="_blank" rel="noopener noreferrer" className="access-link">
-                  <div className="link-icon pulse-icon"><FaLinkedin /></div>
-                  <div className="link-info">
-                    <span className="link-name">LINKEDIN</span>
-                    <span className="link-path">/in/dominik-koenitzer</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
