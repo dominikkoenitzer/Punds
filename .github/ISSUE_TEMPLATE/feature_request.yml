@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest an idea or improvement for the Punds NAVI terminal landing page.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an idea for [Punds](https://punds.ch/).
+        Please describe your idea below so it can be understood and considered.
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Search for existing issues
+      description: Please confirm you have searched the existing issues before opening a new one.
+      options:
+        - label: I have searched the existing issues and this has not already been requested.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The idea / problem it solves
+      description: Describe the idea, or the problem you are trying to solve. Is your feature request related to a frustration? Please describe.
+      placeholder: I'm always frustrated when... / It would be great if...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: A clear and concise description of what you want to happen.
+      placeholder: Describe how you would like this to work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: A clear and concise description of any alternative solutions or features you have considered.
+      placeholder: Other approaches you thought about.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context, mockups, or screenshots about the feature request here.
+      placeholder: Anything else that might help.
+    validations:
+      required: false
