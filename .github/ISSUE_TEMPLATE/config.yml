@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Visit the live site
+    url: https://punds.ch/
+    about: See Punds in action at punds.ch before opening an issue.
+  - name: Email the author
+    url: mailto:dominik.koenitzer@gmail.com
+    about: For questions, security concerns, or anything not suited to a public issue.
