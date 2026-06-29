@@ -1,16 +1,15 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// GiantEye — a colossal HOLOGRAPHIC eye hanging in the void at the zenith,
-// drawn in the same additive phosphor-cyan line-art as the rest of the Wired
-// (glowing almond, ring-iris, a dark void pupil with a bright rim) — a ghostly
-// presence, not a literal eyeball. It billboards to face you (always staring),
-// blinks on a slow timer, and ties into the idle dread: hold still and it
-// brightens, swells, and descends, looming closer. Generic eye, copyright-safe.
+// GiantEye — a colossal HOLOGRAPHIC eye in the void at the zenith. Drawn soft
+// and faint in additive phosphor-cyan (no crisp lines), it reads as a wavering
+// Wired projection, not a pasted image: it billboards to face you, breathes,
+// flickers, and drifts, and ties into the idle dread — hold still and it
+// brightens, swells, and sinks lower, looming. Generic eye, copyright-safe.
 
 const TAU = Math.PI * 2
 const R = 24
-const BASE_Y = 96
+const BASE_Y = 88
 
 function drawEyeTexture(p: ScenePalette): THREE.CanvasTexture {
   const S = 2048
@@ -22,7 +21,7 @@ function drawEyeTexture(p: ScenePalette): THREE.CanvasTexture {
   ctx.translate(S / 2, S / 2)
   ctx.lineCap = 'round'
 
-  const W = S * 0.46 // almond half-width
+  const W = S * 0.45 // almond half-width
   const H = S * 0.2 // almond half-height (lids bulge to H*1.7)
   const eyePath = () => {
     ctx.beginPath()
@@ -32,61 +31,56 @@ function drawEyeTexture(p: ScenePalette): THREE.CanvasTexture {
     ctx.closePath()
   }
 
-  // faint membrane fill inside the almond
-  eyePath()
-  ctx.fillStyle = 'rgba(80,180,255,0.05)'
-  ctx.fill()
+  // soft overall presence behind everything
+  const base = ctx.createRadialGradient(0, 0, 0, 0, 0, H * 1.9)
+  base.addColorStop(0, 'rgba(90,180,250,0.10)')
+  base.addColorStop(1, 'rgba(90,180,250,0)')
+  ctx.fillStyle = base
+  ctx.beginPath(); ctx.arc(0, 0, H * 1.9, 0, TAU); ctx.fill()
 
-  // iris (clipped to the eye opening so the lids cut it off)
+  // iris, clipped to the eye opening (soft, no hard rings)
   const ir = H * 1.55
-  const pr = ir * 0.3 // pupil radius (transparent void)
+  const pr = ir * 0.32 // pupil void
   ctx.save()
   eyePath()
   ctx.clip()
 
   const g = ctx.createRadialGradient(0, 0, pr * 0.6, 0, 0, ir)
-  g.addColorStop(0, 'rgba(10,40,70,0)')
-  g.addColorStop(0.28, 'rgba(10,40,70,0)')
-  g.addColorStop(0.34, 'rgba(190,240,255,0.85)') // bright pupil rim
-  g.addColorStop(0.55, p.hologramStr)
-  g.addColorStop(0.85, 'rgba(80,170,240,0.25)')
+  g.addColorStop(0, 'rgba(8,30,55,0)')
+  g.addColorStop(0.3, 'rgba(8,30,55,0)')
+  g.addColorStop(0.37, 'rgba(170,225,255,0.42)') // soft pupil rim
+  g.addColorStop(0.58, 'rgba(80,170,240,0.3)')
+  g.addColorStop(0.9, 'rgba(80,170,240,0.06)')
   g.addColorStop(1, 'rgba(80,170,240,0)')
   ctx.fillStyle = g
   ctx.beginPath(); ctx.arc(0, 0, ir, 0, TAU); ctx.fill()
 
-  // radial fibres
+  // faint fibres
   ctx.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < 240; i++) {
-    const a = (i / 240) * TAU + (Math.random() - 0.5) * 0.04
-    const r0 = pr * 1.15 + Math.random() * S * 0.01
-    const r1 = ir * (0.7 + Math.random() * 0.26)
+  for (let i = 0; i < 150; i++) {
+    const a = (i / 150) * TAU + (Math.random() - 0.5) * 0.05
+    const r0 = pr * 1.2 + Math.random() * S * 0.01
+    const r1 = ir * (0.65 + Math.random() * 0.28)
     const b = Math.random()
-    ctx.strokeStyle = b > 0.94 ? 'rgba(231,169,60,0.4)' : `rgba(150,225,255,${0.04 + b * 0.16})`
-    ctx.lineWidth = 1.5 + Math.random() * 2.5
+    ctx.strokeStyle = `rgba(150,225,255,${0.02 + b * 0.08})`
+    ctx.lineWidth = 1.5 + Math.random() * 2
     ctx.beginPath()
     ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0)
     ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1)
     ctx.stroke()
   }
   ctx.globalCompositeOperation = 'source-over'
-
-  // limbal ring
-  ctx.strokeStyle = 'rgba(150,225,255,0.35)'
-  ctx.lineWidth = S * 0.01
-  ctx.beginPath(); ctx.arc(0, 0, ir * 0.96, 0, TAU); ctx.stroke()
   ctx.restore()
 
-  // glowing almond outline over the top
-  ctx.strokeStyle = p.phosphorStr
+  // soft, blurred almond edge — a glow, not a line
+  ctx.strokeStyle = `${p.phosphorStr}`
   ctx.shadowColor = p.phosphorStr
-  ctx.shadowBlur = 40
-  ctx.lineWidth = S * 0.014
+  ctx.shadowBlur = 70
+  ctx.globalAlpha = 0.3
+  ctx.lineWidth = S * 0.008
   eyePath()
   ctx.stroke()
-  // inner corner ticks
-  ctx.lineWidth = S * 0.009
-  ctx.beginPath(); ctx.moveTo(-W, 0); ctx.lineTo(-W - S * 0.03, 0); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W + S * 0.03, 0); ctx.stroke()
+  ctx.globalAlpha = 1
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -102,8 +96,8 @@ function drawGlowTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext('2d')
   if (ctx) {
     const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
-    g.addColorStop(0, 'rgba(120,210,255,0.35)')
-    g.addColorStop(0.5, 'rgba(80,160,230,0.12)')
+    g.addColorStop(0, 'rgba(120,210,255,0.22)')
+    g.addColorStop(0.5, 'rgba(80,160,230,0.08)')
     g.addColorStop(1, 'rgba(80,160,230,0)')
     ctx.fillStyle = g
     ctx.fillRect(0, 0, S, S)
@@ -125,7 +119,7 @@ export class GiantEye implements SceneFeature {
   private readonly glowTex: THREE.CanvasTexture
 
   private anim = 0
-  private blinkCooldown = 6
+  private blinkCooldown = 7
   private blinking = false
   private blinkT = 0
 
@@ -140,10 +134,10 @@ export class GiantEye implements SceneFeature {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
-      opacity: 0.4,
+      opacity: 0.25,
     })
     this.glow = new THREE.Sprite(this.glowMat)
-    this.glow.scale.setScalar(R * 3.4)
+    this.glow.scale.setScalar(R * 3.6)
     this.group.add(this.glow)
 
     this.eyeTex = drawEyeTexture(palette)
@@ -154,7 +148,7 @@ export class GiantEye implements SceneFeature {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: false,
-      opacity: 0.55,
+      opacity: 0.34,
       side: THREE.DoubleSide,
     })
     this.eye = new THREE.Mesh(this.eyeGeo, this.eyeMat)
@@ -164,16 +158,20 @@ export class GiantEye implements SceneFeature {
   update(ctx: FeatureContext): void {
     const { dt, motion, dread, camera } = ctx
     this.anim += dt * motion
+    const a = this.anim
 
-    // dread: descend / loom, brighten, swell
-    this.group.position.y = BASE_Y - dread * 16
-    this.eyeMat.opacity = 0.5 + dread * 0.4 + Math.sin(this.anim * 0.4) * 0.04
-    this.glowMat.opacity = 0.35 + dread * 0.4
-    const swell = 1 + dread * 0.12
+    // a wavering, drifting projection — never perfectly still
+    this.group.position.set(Math.sin(a * 0.13) * 1.6, BASE_Y - dread * 14, Math.cos(a * 0.1) * 1.6)
+
+    // holographic flicker + breathe; brighter with dread
+    const flicker = 0.85 + Math.sin(a * 6.3) * 0.06 + Math.sin(a * 1.1) * 0.05 + (Math.random() < 0.03 ? -0.4 : 0)
+    const baseOp = 0.3 + dread * 0.35
+    this.eyeMat.opacity = Math.max(0, baseOp * flicker)
+    this.glowMat.opacity = (0.2 + dread * 0.3) * (0.9 + Math.sin(a * 0.7) * 0.1)
+    const swell = 1 + dread * 0.12 + Math.sin(a * 0.4) * 0.02
 
     // billboard toward the camera (always staring)
     this.eye.lookAt(camera.position)
-    this.glow.lookAt(camera.position)
 
     // slow blink (almond squashes to a glowing line)
     let openness = 1
@@ -183,11 +181,11 @@ export class GiantEye implements SceneFeature {
       this.blinkT = 0
     }
     if (this.blinking) {
-      this.blinkT += (dt * motion) / 0.26
+      this.blinkT += (dt * motion) / 0.28
       openness = 1 - Math.sin(Math.min(this.blinkT, 1) * Math.PI)
       if (this.blinkT >= 1) {
         this.blinking = false
-        this.blinkCooldown = 5 + Math.random() * 7 + dread * 6
+        this.blinkCooldown = 6 + Math.random() * 8 + dread * 6
       }
     }
     this.eye.scale.set(swell, swell * Math.max(0.04, openness), 1)
