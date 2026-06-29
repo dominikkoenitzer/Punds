@@ -26,13 +26,15 @@
     radial-gradient(120% 100% at 50% 35%, var(--copland-bg), var(--copland-void) 70%);
   color: var(--copland-text);
   font-family: var(--mono);
-  cursor: crosshair;
 }
 
 .copland-canvas {
   position: absolute;
   inset: 0;
   z-index: 1;
+  pointer-events: auto;   /* the navigable world: drag / scroll / raycast */
+  cursor: grab;
+  touch-action: none;     /* let pointer-drag own touch gestures */
 }
 .copland-canvas canvas { display: block; }
 
@@ -169,6 +171,38 @@
   letter-spacing: 0.34em;
   color: var(--phosphor-dim);
   animation: copland-fade 2.4s ease both;
+}
+
+/* hovered-panel readout (raycaster) */
+.copland-focus {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 60%;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.32em;
+  color: var(--phosphor);
+  text-shadow: 0 0 14px rgba(118, 228, 255, 0.6);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.copland-focus.is-on { opacity: 1; }
+
+/* navigation hint */
+.copland-nav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1.1rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.28em;
+  color: var(--phosphor-dim);
+  opacity: 0.6;
+  animation: copland-fade 3s ease both;
 }
 
 /* --- constant-motion overlays -------------------------------------------- */
