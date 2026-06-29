@@ -130,64 +130,72 @@ function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   }
 
   // soft outer halo
-  const halo = ctx.createRadialGradient(0, 0, 40, 0, 0, 460)
+  const halo = ctx.createRadialGradient(0, 0, 40, 0, 0, 470)
   halo.addColorStop(0, 'rgba(90,170,255,0.22)')
   halo.addColorStop(1, 'rgba(90,170,255,0)')
   ctx.fillStyle = halo
-  ctx.beginPath(); ctx.arc(0, 0, 460, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(0, 0, 470, 0, Math.PI * 2); ctx.fill()
 
-  // big eye-ring (the iris body), open at the bottom where the stem exits
+  // big rounded BODY/BOWL — open at the TOP, where the iris nests
   setGlow(blue, 26)
-  ctx.lineWidth = 16
-  ctx.beginPath(); ctx.arc(0, -25, 150, 0.62 * Math.PI, 2.38 * Math.PI); ctx.stroke()
+  ctx.lineWidth = 18
+  ctx.beginPath(); ctx.arc(0, -22, 122, 1.72 * Math.PI, 3.28 * Math.PI); ctx.stroke()
 
-  // angular "< >" chevron wings flanking the eye
+  // angular "< >" chevron wings at the iris level
   setGlow(blue, 24)
   ctx.lineWidth = 22
   const chevron = (s: number): void => {
     ctx.beginPath()
-    ctx.moveTo(s * 108, -138)
-    ctx.lineTo(s * 218, -46)
-    ctx.lineTo(s * 108, 32)
+    ctx.moveTo(s * 150, -124)
+    ctx.lineTo(s * 234, -58)
+    ctx.lineTo(s * 150, 8)
     ctx.stroke()
   }
   chevron(-1); chevron(1)
 
-  // iris ring + bright scan-lined pupil
-  setGlow(cyan, 22)
+  // short horizontal traces linking the iris out to each wing
+  setGlow(blue, 16)
   ctx.lineWidth = 12
-  ctx.beginPath(); ctx.arc(0, -55, 74, 0, Math.PI * 2); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(-84, -58); ctx.lineTo(-150, -58); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(84, -58); ctx.lineTo(150, -58); ctx.stroke()
 
-  const pupil = ctx.createRadialGradient(0, -55, 4, 0, -55, 54)
+  // iris: two concentric rings (mid then bright)
+  setGlow(blue, 18); ctx.lineWidth = 10
+  ctx.beginPath(); ctx.arc(0, -60, 80, 0, Math.PI * 2); ctx.stroke()
+  setGlow(cyan, 22); ctx.lineWidth = 11
+  ctx.beginPath(); ctx.arc(0, -60, 58, 0, Math.PI * 2); ctx.stroke()
+
+  // bright scan-lined pupil
+  const pupil = ctx.createRadialGradient(0, -60, 4, 0, -60, 46)
   pupil.addColorStop(0, '#ffffff')
   pupil.addColorStop(0.45, cyan)
   pupil.addColorStop(1, 'rgba(120,210,255,0.18)')
   ctx.shadowColor = cyan
   ctx.shadowBlur = 40
   ctx.fillStyle = pupil
-  ctx.beginPath(); ctx.arc(0, -55, 52, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(0, -60, 44, 0, Math.PI * 2); ctx.fill()
   ctx.shadowBlur = 0
-  ctx.strokeStyle = 'rgba(18,52,104,0.55)'
+  ctx.strokeStyle = 'rgba(18,52,104,0.5)'
   ctx.lineWidth = 5
-  for (let yy = -80; yy <= -30; yy += 12) {
-    ctx.beginPath(); ctx.moveTo(-48, yy); ctx.lineTo(48, yy); ctx.stroke()
+  for (let yy = -82; yy <= -38; yy += 11) {
+    ctx.beginPath(); ctx.moveTo(-40, yy); ctx.lineTo(40, yy); ctx.stroke()
   }
 
-  // bottom circuit stem + diagonal traces to the corner nodes
+  // vertical stem dropping through the bowl + diagonal traces to corner nodes
   setGlow(cyan, 18)
   ctx.lineWidth = 12
-  ctx.beginPath(); ctx.moveTo(0, 120); ctx.lineTo(0, 205); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(0, 20); ctx.lineTo(0, 114); ctx.stroke()
   ctx.lineWidth = 9
-  ctx.beginPath(); ctx.moveTo(0, 150); ctx.lineTo(-74, 196); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(0, 150); ctx.lineTo(74, 196); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(0, 82); ctx.lineTo(-68, 106); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(0, 82); ctx.lineTo(68, 106); ctx.stroke()
 
-  // node dots: chevron upper tips, bottom corners, stem terminal
+  // node dots: wing upper tips, bottom corners, stem terminal
   setGlow(cyan, 16)
-  dot(-108, -138, 15)
-  dot(108, -138, 15)
-  dot(-74, 196, 15)
-  dot(74, 196, 15)
-  dot(0, 205, 12)
+  dot(-150, -124, 14)
+  dot(150, -124, 14)
+  dot(-68, 106, 15)
+  dot(68, 106, 15)
+  dot(0, 116, 11)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
