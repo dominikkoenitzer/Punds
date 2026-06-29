@@ -228,6 +228,98 @@
   animation: copland-fade 3s ease both;
 }
 
+/* --- settings / config panel --------------------------------------------- */
+.copland-cog {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.4rem;
+  z-index: 40;
+  pointer-events: auto;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 16, 28, 0.5);
+  border: 1px solid rgba(118, 228, 255, 0.25);
+  color: var(--phosphor);
+  font-size: 1.1rem;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  transition: background 0.2s, border-color 0.2s;
+}
+.copland-cog:hover {
+  background: rgba(118, 228, 255, 0.12);
+  border-color: var(--phosphor);
+}
+
+.copland-settings {
+  position: absolute;
+  top: 3.6rem;
+  right: 1.4rem;
+  z-index: 40;
+  pointer-events: auto;
+  min-width: 16rem;
+  padding: 0.9rem 1rem;
+  background: rgba(4, 16, 28, 0.8);
+  border: 1px solid rgba(118, 228, 255, 0.25);
+  backdrop-filter: blur(3px);
+  font-family: var(--mono);
+  color: var(--copland-text);
+  box-shadow: 0 0 28px rgba(0, 8, 16, 0.6);
+  animation: copland-fade 0.25s ease both;
+}
+.cs-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.3em;
+  color: var(--phosphor);
+  margin-bottom: 0.7rem;
+}
+.cs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.cs-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  color: var(--phosphor-dim);
+}
+.cs-opts { display: flex; gap: 0.3rem; }
+.cs-opt {
+  pointer-events: auto;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: 1px solid rgba(118, 228, 255, 0.2);
+  color: var(--phosphor-dim);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cs-opt:hover {
+  color: var(--phosphor);
+  border-color: rgba(118, 228, 255, 0.5);
+}
+.cs-opt.is-on {
+  color: #04101c;
+  background: var(--phosphor);
+  border-color: var(--phosphor);
+}
+.cs-help {
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(118, 228, 255, 0.12);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  color: var(--phosphor-dim);
+  line-height: 1.7;
+}
+
 /* --- constant-motion overlays -------------------------------------------- */
 
 /* scanlines + a slow vertical sweep band */

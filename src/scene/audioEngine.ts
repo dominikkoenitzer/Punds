@@ -9,6 +9,8 @@ export class AudioEngine {
   private ctx: AudioContext | null = null
   private analyser: AnalyserNode | null = null
   private data: Uint8Array<ArrayBuffer> | null = null
+  private outGain: GainNode | null = null
+  private muted = false
   private started = false
   private smoothed = 0
 
@@ -26,13 +28,17 @@ export class AudioEngine {
 
       const master = ctx.createGain()
       master.gain.value = 0.035 // very low ambient hum
-      master.connect(ctx.destination)
+      const out = ctx.createGain()
+      out.gain.value = this.muted ? 0 : 1
+      master.connect(out)
+      out.connect(ctx.destination)
+      this.outGain = out
 
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 256
       this.analyser = analyser
       this.data = new Uint8Array(analyser.frequencyBinCount)
-      master.connect(analyser)
+      master.connect(analyser) // pre-mute, so visuals keep reacting when muted
 
       // low drone: a few detuned saws through a lowpass
       const lp = ctx.createBiquadFilter()
@@ -77,10 +83,20 @@ export class AudioEngine {
     return this.smoothed
   }
 
+  setMuted(m: boolean): void {
+    this.muted = m
+    if (this.outGain) this.outGain.gain.value = m ? 0 : 1
+  }
+
+  isMuted(): boolean {
+    return this.muted
+  }
+
   dispose(): void {
     void this.ctx?.close()
     this.ctx = null
     this.analyser = null
     this.data = null
+    this.outGain = null
   }
 }
