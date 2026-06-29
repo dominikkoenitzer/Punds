@@ -292,6 +292,7 @@ export class CoplandScene {
   private onPointerUp: () => void
   private onWheel: (e: WheelEvent) => void
   private onContextLost = (e: Event) => e.preventDefault()
+  private onContextMenu = (e: Event) => e.preventDefault()
 
   constructor(container: HTMLElement, handlers: CoplandHandlers = {}) {
     this.container = container
@@ -349,6 +350,7 @@ export class CoplandScene {
 
     // --- input ---------------------------------------------------------------
     this.onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return // ignore right / middle click
       this.audio.resume()
       this.dragging = true
       this.moved = 0
@@ -388,6 +390,7 @@ export class CoplandScene {
     el.addEventListener('pointerdown', this.onPointerDown)
     el.addEventListener('wheel', this.onWheel, { passive: true })
     el.addEventListener('webglcontextlost', this.onContextLost)
+    el.addEventListener('contextmenu', this.onContextMenu)
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
 
@@ -420,43 +423,68 @@ export class CoplandScene {
     return { points: new THREE.Points(geo, mat), speeds }
   }
 
+  // Place each panel at a DISTINCT direction from the camera origin so that,
+  // billboarded, no two cards stack on the same screen ray (every card stays
+  // clickable). Clickable core (links + operator) fills the front arc; lore /
+  // flavor wraps around the sides and behind.
+  private placePanel(i: number, yawDeg: number, pitchDeg: number, dist: number, near: boolean): void {
+    const datum = PANEL_DATA[i]
+    const mat = new THREE.MeshBasicMaterial({
+      map: drawPanelTexture(datum, this.palette),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    const aspect = 512 / 320
+    const hgt = near ? 2.3 : 2.0
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(hgt * aspect, hgt), mat)
+    const yaw = (yawDeg * Math.PI) / 180
+    const pitch = (pitchDeg * Math.PI) / 180
+    const baseX = Math.sin(yaw) * Math.cos(pitch) * dist
+    const baseY = Math.sin(pitch) * dist
+    const baseZ = -Math.cos(yaw) * Math.cos(pitch) * dist
+    mesh.position.set(baseX, baseY, baseZ)
+    this.panels.push({
+      mesh,
+      mat,
+      datum,
+      baseX,
+      baseY,
+      baseZ,
+      bobPhase: Math.random() * Math.PI * 2,
+      bobSpeed: 0.25 + Math.random() * 0.35,
+      bobAmp: 0.1 + Math.random() * 0.14,
+      hover: 0,
+    })
+    this.scene.add(mesh)
+    this.panelMeshes.push(mesh)
+  }
+
   private buildPanels(): void {
-    PANEL_DATA.forEach((datum, i) => {
-      const tex = drawPanelTexture(datum, this.palette)
-      const mat = new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      })
-      const aspect = 512 / 320
-      const near = datum.kind === 'link' || datum.kind === 'profile'
-      const hgt = near ? 2.3 : 1.8 + (i % 3) * 0.3
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(hgt * aspect, hgt), mat)
+    const nearIdx: number[] = []
+    const farIdx: number[] = []
+    PANEL_DATA.forEach((d, i) => {
+      if (d.kind === 'link' || d.kind === 'profile') nearIdx.push(i)
+      else farIdx.push(i)
+    })
 
-      const angle = (i / PANEL_DATA.length) * Math.PI * 2 + 0.6
-      const radius = near ? 5.5 + (i % 3) * 1.1 : 9.5 + (i % 4) * 2.4
-      const baseX = Math.cos(angle) * radius
-      const baseY = Math.sin(angle) * radius * 0.5 + (i % 2 ? 1.4 : -1.4)
-      const baseZ = (near ? -3 : -8) - (i % 5) * 2.6
-      mesh.position.set(baseX, baseY, baseZ)
+    // front arc: ±40° spread, comfortably spaced and near eye level
+    nearIdx.forEach((i, k) => {
+      const span = Math.max(1, nearIdx.length - 1)
+      const yawDeg = nearIdx.length > 1 ? -40 + (k * 80) / span : 0
+      const pitchDeg = k % 2 === 0 ? -7 : 9
+      const dist = 6 + (k % 2) * 0.8
+      this.placePanel(i, yawDeg, pitchDeg, dist, true)
+    })
 
-      this.panels.push({
-        mesh,
-        mat,
-        datum,
-        baseX,
-        baseY,
-        baseZ,
-        bobPhase: Math.random() * Math.PI * 2,
-        bobSpeed: 0.25 + Math.random() * 0.35,
-        bobAmp: 0.18 + Math.random() * 0.26,
-        hover: 0,
-      })
-      this.scene.add(mesh)
-      this.panelMeshes.push(mesh)
+    // sides + back: 92°..276°, varied height and depth
+    farIdx.forEach((i, j) => {
+      const yawDeg = 92 + (j * 184) / Math.max(1, farIdx.length)
+      const pitchDeg = -18 + ((j * 67) % 44)
+      const dist = 9.5 + (j % 3) * 2.4
+      this.placePanel(i, yawDeg, pitchDeg, dist, false)
     })
   }
 
@@ -637,6 +665,7 @@ export class CoplandScene {
     el.removeEventListener('pointerdown', this.onPointerDown)
     el.removeEventListener('wheel', this.onWheel)
     el.removeEventListener('webglcontextlost', this.onContextLost)
+    el.removeEventListener('contextmenu', this.onContextMenu)
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
 
