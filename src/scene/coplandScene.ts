@@ -569,29 +569,14 @@ export class CoplandScene {
   }
 
   private buildPanels(): void {
-    const nearIdx: number[] = []
-    const farIdx: number[] = []
-    PANEL_DATA.forEach((d, i) => {
-      if (d.kind === 'link' || d.kind === 'profile') nearIdx.push(i)
-      else farIdx.push(i)
-    })
-
-    // front arc: ±40° spread, comfortably spaced and near eye level
-    nearIdx.forEach((i, k) => {
-      const span = Math.max(1, nearIdx.length - 1)
-      const yawDeg = nearIdx.length > 1 ? -40 + (k * 80) / span : 0
-      const pitchDeg = k % 2 === 0 ? -7 : 9
-      const dist = 6 + (k % 2) * 0.8
+    // spread all panels evenly around the viewer, each at its own direction
+    const n = PANEL_DATA.length
+    for (let i = 0; i < n; i++) {
+      const yawDeg = (i / n) * 360 + 18
+      const pitchDeg = i % 2 === 0 ? 6 : -8
+      const dist = 6.4 + (i % 2) * 0.6
       this.placePanel(i, yawDeg, pitchDeg, dist, true)
-    })
-
-    // sides + back: 92°..276°, varied height and depth
-    farIdx.forEach((i, j) => {
-      const yawDeg = 92 + (j * 184) / Math.max(1, farIdx.length)
-      const pitchDeg = -18 + ((j * 67) % 44)
-      const dist = 9.5 + (j % 3) * 2.4
-      this.placePanel(i, yawDeg, pitchDeg, dist, false)
-    })
+    }
   }
 
   private buildFeatures(): void {

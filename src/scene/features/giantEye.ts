@@ -50,6 +50,42 @@ function drawFrameTexture(p: ScenePalette): THREE.CanvasTexture {
   ctx.stroke()
   ctx.globalAlpha = 1
 
+  // eyelashes splaying off the lids
+  const bez = (t: number, top: boolean): { x: number; y: number } => {
+    const u = 1 - t
+    const cy = top ? -H * 1.7 : H * 1.7
+    return { x: u * u * -W + t * t * W, y: 2 * u * t * cy }
+  }
+  const drawLashes = (count: number, top: boolean, len: number, alpha: number): void => {
+    ctx.strokeStyle = p.phosphorStr
+    ctx.shadowColor = p.phosphorStr
+    ctx.shadowBlur = 18
+    ctx.lineWidth = S * 0.004
+    for (let i = 0; i < count; i++) {
+      const t = 0.12 + (i / (count - 1)) * 0.76
+      const a0 = bez(t, top)
+      const a1 = bez(t + 0.01, top)
+      let nx = -(a1.y - a0.y)
+      let ny = a1.x - a0.x
+      const nl = Math.hypot(nx, ny) || 1
+      nx /= nl; ny /= nl
+      if ((top && ny > 0) || (!top && ny < 0)) { nx = -nx; ny = -ny } // point outward
+      let sx = nx + (a0.x / W) * 0.5 // splay toward the nearer corner
+      let sy = ny
+      const sl = Math.hypot(sx, sy) || 1
+      sx /= sl; sy /= sl
+      const l = len * (0.7 + Math.random() * 0.5)
+      ctx.globalAlpha = alpha
+      ctx.beginPath()
+      ctx.moveTo(a0.x, a0.y)
+      ctx.lineTo(a0.x + sx * l, a0.y + sy * l)
+      ctx.stroke()
+    }
+    ctx.globalAlpha = 1
+  }
+  drawLashes(15, true, S * 0.05, 0.55)
+  drawLashes(9, false, S * 0.03, 0.3)
+
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 4
@@ -153,7 +189,7 @@ export class GiantEye implements SceneFeature {
     }
 
     const frame = addLayer(drawFrameTexture(palette), R * 2.4, 0, 0.34)
-    this.iris = addLayer(drawIrisTexture(), R * 1.5, 0.4, 0.5)
+    this.iris = addLayer(drawIrisTexture(), R * 1.2, 0.4, 0.5)
     this.frameMat = frame.material as THREE.MeshBasicMaterial
     this.irisMat = this.iris.material as THREE.MeshBasicMaterial
 
@@ -194,7 +230,7 @@ export class GiantEye implements SceneFeature {
     if (this.sacTimer <= 0) {
       this.sacTimer = 1.4 + Math.random() * 2.6
       if (Math.random() < 0.4) this.sacTarget.set(0, 0)
-      else this.sacTarget.set((Math.random() - 0.5) * R * 0.34, (Math.random() - 0.5) * R * 0.2)
+      else this.sacTarget.set((Math.random() - 0.5) * R * 0.16, (Math.random() - 0.5) * R * 0.07)
     }
     this.sacCur.lerp(this.sacTarget, 0.22) // snappy flick, then settle
     this.iris.position.set(this.sacCur.x, this.sacCur.y, 0.4)
