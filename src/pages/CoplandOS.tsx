@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
+import { CoplandScene, type CoplandPhase, type HoverInfo, type Quality } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
 import './CoplandOS.css'
 
@@ -43,6 +43,10 @@ export default function CoplandOS() {
   const [skipped, setSkipped] = useState(false)
   const [now, setNow] = useState<Date>(() => new Date())
   const [hovered, setHovered] = useState<HoverInfo | null>(null)
+  const [quality, setQualityState] = useState<Quality>('auto')
+  const [muted, setMuted] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const mutedRef = useRef(false)
 
   // --- scene lifecycle ------------------------------------------------------
   useEffect(() => {
@@ -106,6 +110,50 @@ export default function CoplandOS() {
       timers.forEach((t) => window.clearTimeout(t))
     }
   }, [skipped])
+
+  // --- mute: keep a ref + push to the scene's audio -------------------------
+  useEffect(() => {
+    mutedRef.current = muted
+    sceneRef.current?.setMuted(muted)
+    if (muted) voiceRef.current?.cancel()
+  }, [muted])
+
+  // --- NAVI whispers once you're in --------------------------------------
+  useEffect(() => {
+    if (phase !== 'desktop') return
+    const WHISPERS = [
+      'are you there',
+      'who is there',
+      'you are not alone',
+      'i am still here',
+      'do you remember',
+      'i see you',
+      'we are connected',
+      'the signal is clear',
+    ]
+    const id = window.setInterval(() => {
+      if (mutedRef.current || Math.random() > 0.5) return
+      const line = WHISPERS[Math.floor(Math.random() * WHISPERS.length)]
+      voiceRef.current?.speak(line, { pitch: 0.58, rate: 0.8, volume: 0.7 })
+    }, 21000)
+    return () => window.clearInterval(id)
+  }, [phase])
+
+  // --- keyboard shortcuts ---------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase()
+      if (k === 'm') setMuted((m) => !m)
+      else if (k === 'c') setSettingsOpen((s) => !s)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const changeQuality = (q: Quality) => {
+    setQualityState(q)
+    sceneRef.current?.setQuality(q)
+  }
 
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
@@ -181,6 +229,36 @@ export default function CoplandOS() {
           </>
         )}
       </div>
+
+      <button className="copland-cog" onClick={() => setSettingsOpen((s) => !s)} aria-label="settings">
+        ⚙
+      </button>
+      {settingsOpen && (
+        <div className="copland-settings">
+          <div className="cs-title">CONFIG.SYS</div>
+          <div className="cs-row">
+            <span className="cs-label">QUALITY</span>
+            <div className="cs-opts">
+              {(['auto', 'ultra', 'high', 'low'] as Quality[]).map((q) => (
+                <button
+                  key={q}
+                  className={`cs-opt${quality === q ? ' is-on' : ''}`}
+                  onClick={() => changeQuality(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="cs-row">
+            <span className="cs-label">SOUND</span>
+            <button className={`cs-opt${muted ? ' is-on' : ''}`} onClick={() => setMuted((m) => !m)}>
+              {muted ? 'muted' : 'on'}
+            </button>
+          </div>
+          <div className="cs-help">drag · look &nbsp; scroll · fly &nbsp; click node · jack in &nbsp; [M] mute [C] config</div>
+        </div>
+      )}
     </div>
   )
 }
