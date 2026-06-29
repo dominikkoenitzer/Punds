@@ -6,7 +6,8 @@ import { GlitchPass } from 'three/examples/jsm/postprocessing/GlitchPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import type { ScenePalette, SceneFeature, FeatureContext } from './features/types'
 import { AudioEngine } from './audioEngine'
-import { GroundTerrain } from './features/terrain'
+import { ReflectiveFloor } from './features/reflectiveFloor'
+import { HolographicFish } from './features/fish'
 import { CableTangle } from './features/cables'
 import { DataRain } from './features/dataRain'
 import { DataSpires } from './features/dataSpires'
@@ -492,10 +493,11 @@ export class CoplandScene {
   private buildFeatures(): void {
     this.graph = new NetworkGraph(this.palette)
     this.features = [
-      new GroundTerrain(this.palette),
+      new ReflectiveFloor(this.palette),
       new CableTangle(this.palette),
       new DataRain(this.palette),
       new DataSpires(this.palette),
+      new HolographicFish(this.palette),
       new TerminalText(this.palette),
       this.graph,
     ]
