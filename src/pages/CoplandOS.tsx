@@ -40,12 +40,20 @@ export default function CoplandOS() {
   const [bootLines, setBootLines] = useState<string[]>([])
   const [skipped, setSkipped] = useState(false)
   const [now, setNow] = useState<Date>(() => new Date())
+  const [hovered, setHovered] = useState<string | null>(null)
 
   // --- scene lifecycle ------------------------------------------------------
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const scene = new CoplandScene(container)
+    const scene = new CoplandScene(container, {
+      onActivate: () => {
+        setSkipped(true)
+        setBootLines(BOOT_LINES)
+        setPhase('desktop')
+      },
+      onHover: (label) => setHovered(label),
+    })
     sceneRef.current = scene
     scene.start()
     return () => {
@@ -58,17 +66,6 @@ export default function CoplandOS() {
   useEffect(() => {
     sceneRef.current?.setPhase(phase)
   }, [phase])
-
-  // --- pointer parallax -----------------------------------------------------
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const nx = (e.clientX / window.innerWidth) * 2 - 1
-      const ny = -((e.clientY / window.innerHeight) * 2 - 1)
-      sceneRef.current?.setPointer(nx, ny)
-    }
-    window.addEventListener('pointermove', onMove)
-    return () => window.removeEventListener('pointermove', onMove)
-  }, [])
 
   // --- clock ----------------------------------------------------------------
   useEffect(() => {
@@ -97,17 +94,10 @@ export default function CoplandOS() {
     }
   }, [skipped])
 
-  const handleSkip = () => {
-    if (phase === 'desktop') return
-    setSkipped(true)
-    setBootLines(BOOT_LINES)
-    setPhase('desktop')
-  }
-
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
   return (
-    <div className="copland-root" onClick={handleSkip}>
+    <div className="copland-root">
       <div className="copland-canvas" ref={containerRef} />
 
       {/* ambient overlays — always on, the "constant motion" */}
@@ -164,7 +154,11 @@ export default function CoplandOS() {
               <span className="hud-sub">CARRIER 7.83 Hz</span>
               <span className="hud-sub copland-mirror">txEn eht nepO</span>
             </div>
+            <div className={`copland-focus${hovered ? ' is-on' : ''}`}>
+              {hovered ? `▸ ${hovered}` : ''}
+            </div>
             <div className="copland-tagline">no matter where you go, everyone is connected</div>
+            <div className="copland-nav">drag to look · scroll to move through the wired</div>
           </>
         )}
       </div>
