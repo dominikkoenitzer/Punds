@@ -1,0 +1,241 @@
+/* ===========================================================================
+   COPLAND OS ENTERPRISE — theme + DOM overlay
+   The palette lives here as CSS custom properties; the Three.js scene reads
+   them back via getComputedStyle(), so retuning these retunes the 3D too.
+   =========================================================================== */
+:root {
+  --copland-void: #04101c;   /* deep teal-black field */
+  --copland-bg:   #071a2b;
+  --phosphor:     #76e4ff;   /* phosphor cyan text */
+  --phosphor-hi:  #eaf6ff;   /* near-white phosphor core (bloom blows this out) */
+  --phosphor-dim: #3f88a6;
+  --hologram:     #2f7fc4;   /* holographic blue */
+  --tachibana:    #e7a93c;   /* Tachibana amber accent */
+  --warning:      #d83a2b;   /* child-Navi bezel red */
+  --copland-text: #bfe9ff;
+
+  --mono: 'TrixieCyrG', 'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+  --serif: 'Georgia', 'Times New Roman', serif;
+}
+
+.copland-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 100% at 50% 35%, var(--copland-bg), var(--copland-void) 70%);
+  color: var(--copland-text);
+  font-family: var(--mono);
+  cursor: crosshair;
+}
+
+.copland-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.copland-canvas canvas { display: block; }
+
+/* --- DOM overlay ---------------------------------------------------------- */
+.copland-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* boot splash caption (the eye/circuit logo itself is rendered in 3D above) */
+.copland-splash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 64%;
+  text-align: center;
+  animation: copland-fade 1.4s ease both;
+  transition: opacity 0.8s ease;
+}
+.copland-splash.is-dim { opacity: 0.35; }
+
+.copland-wordmark {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(1.6rem, 4vw, 3rem);
+  letter-spacing: 0.04em;
+  color: var(--phosphor-hi);
+  text-shadow: 0 0 18px rgba(118, 228, 255, 0.55), 0 0 4px rgba(255, 255, 255, 0.6);
+}
+.copland-tachibana {
+  margin-top: 0.5rem;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(0.7rem, 1.4vw, 1rem);
+  letter-spacing: 0.18em;
+  color: var(--tachibana);
+  text-shadow: 0 0 12px rgba(231, 169, 60, 0.5);
+}
+
+/* streaming boot log */
+.copland-bootlog {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  margin: 0;
+  font-family: var(--mono);
+  font-size: clamp(0.62rem, 1.1vw, 0.82rem);
+  line-height: 1.7;
+  letter-spacing: 0.06em;
+  color: var(--phosphor);
+  text-shadow: 0 0 8px rgba(118, 228, 255, 0.4);
+  white-space: pre;
+  text-align: left;
+}
+.copland-caret { animation: copland-blink 1s step-end infinite; }
+
+/* present day / operator welcome */
+.copland-welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.4rem;
+  text-align: center;
+  animation: copland-fade 1.6s ease both;
+}
+.copland-presentday {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: clamp(1rem, 2.4vw, 1.8rem);
+  letter-spacing: 0.22em;
+  color: #dff1ff;
+  text-shadow: 0 0 16px rgba(118, 228, 255, 0.5);
+  opacity: 0.92;
+}
+.copland-operator {
+  font-family: var(--mono);
+  font-size: clamp(0.9rem, 2vw, 1.5rem);
+  letter-spacing: 0.4em;
+  color: var(--phosphor);
+  text-shadow: 0 0 18px rgba(118, 228, 255, 0.6);
+}
+.copland-operator b {
+  color: #ffffff;
+  text-shadow: 0 0 22px rgba(118, 228, 255, 0.9), 0 0 6px var(--tachibana);
+}
+
+/* desktop HUD */
+.copland-hud {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  animation: copland-fade 1.8s ease both;
+  text-shadow: 0 0 10px rgba(118, 228, 255, 0.35);
+}
+.copland-hud-tl { top: 1.4rem; left: 1.6rem; }
+.copland-hud-tr { top: 1.4rem; right: 1.6rem; text-align: right; align-items: flex-end; }
+.copland-hud-bl { bottom: 1.6rem; left: 1.6rem; }
+.copland-hud-br { bottom: 1.6rem; right: 1.6rem; text-align: right; align-items: flex-end; }
+
+.hud-key {
+  color: var(--phosphor);
+  font-size: 0.9rem;
+  letter-spacing: 0.3em;
+}
+.hud-sub { color: var(--phosphor-dim); }
+.hud-clock {
+  color: var(--phosphor);
+  font-size: 1.1rem;
+  letter-spacing: 0.2em;
+}
+.copland-mirror { color: var(--tachibana); opacity: 0.6; }
+
+.copland-tagline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3.2rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.34em;
+  color: var(--phosphor-dim);
+  animation: copland-fade 2.4s ease both;
+}
+
+/* --- constant-motion overlays -------------------------------------------- */
+
+/* scanlines + a slow vertical sweep band */
+.copland-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0,
+    transparent 2px,
+    rgba(0, 0, 0, 0.16) 3px,
+    transparent 4px
+  );
+  mix-blend-mode: multiply;
+}
+.copland-scan::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22%;
+  top: -22%;
+  background: linear-gradient(to bottom, transparent, rgba(118, 228, 255, 0.07), transparent);
+  animation: copland-sweep 7.5s linear infinite;
+}
+
+/* phosphor flicker */
+.copland-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 21;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 45%, transparent 60%, rgba(0, 8, 16, 0.35));
+  animation: copland-flicker 0.18s steps(2) infinite;
+}
+
+.copland-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 22;
+  pointer-events: none;
+  box-shadow: inset 0 0 220px rgba(0, 6, 12, 0.8);
+  background: radial-gradient(130% 100% at 50% 50%, transparent 55%, rgba(2, 8, 14, 0.55));
+}
+
+@keyframes copland-fade {
+  from { opacity: 0; filter: blur(6px); transform: translateY(6px); }
+  to   { opacity: 1; filter: blur(0);   transform: translateY(0); }
+}
+@keyframes copland-sweep {
+  from { top: -22%; }
+  to   { top: 100%; }
+}
+@keyframes copland-blink {
+  50% { opacity: 0; }
+}
+@keyframes copland-flicker {
+  0%   { opacity: 0.92; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copland-scan::after { animation: none; display: none; }
+  .copland-grain { animation: none; }
+  .copland-splash, .copland-welcome, .copland-hud, .copland-tagline { animation-duration: 0.01ms; }
+}
