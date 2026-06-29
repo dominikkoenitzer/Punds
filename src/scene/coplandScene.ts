@@ -20,6 +20,7 @@ import { Watcher } from './features/watcher'
 import { WiredIntercepts } from './features/wiredIntercepts'
 import { WatchingEyes } from './features/watchingEyes'
 import { Apparition } from './features/apparition'
+import { GiantEye } from './features/giantEye'
 import { PANEL_DATA, type PanelDatum } from './panelData'
 
 // ============================================================================
@@ -612,6 +613,7 @@ export class CoplandScene {
       new WiredIntercepts(this.palette),
       new WatchingEyes(this.palette),
       new Apparition(this.palette),
+      new GiantEye(this.palette),
       new TerminalText(this.palette),
       this.graph,
     ]
