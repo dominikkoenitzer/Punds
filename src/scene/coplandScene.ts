@@ -44,6 +44,7 @@ export interface HoverInfo {
 export interface CoplandHandlers {
   onActivate?: () => void                 // a tap during boot -> skip to desktop
   onHover?: (info: HoverInfo | null) => void
+  onOpenPanel?: (datum: PanelDatum) => void // a tap on a file/profile/decoder panel
 }
 
 interface Panel {
@@ -344,6 +345,8 @@ export class CoplandScene {
   private autoTimer = 0
   private fogPulse = 0
   private diveTimer = 0
+  private idle = 0
+  private dread = 0
   private timer = new THREE.Timer()
   private rafId = 0
   private resizeObs: ResizeObserver
@@ -449,6 +452,7 @@ export class CoplandScene {
 
     // --- input ---------------------------------------------------------------
     this.onPointerDown = (e: PointerEvent) => {
+      this.idle = 0
       if (e.button !== 0) return // ignore right / middle click
       this.audio.resume()
       this.dragging = true
@@ -458,6 +462,7 @@ export class CoplandScene {
       this.renderer.domElement.style.cursor = 'grabbing'
     }
     this.onPointerMove = (e: PointerEvent) => {
+      this.idle = 0
       const vw = window.innerWidth
       const vh = window.innerHeight
       this.parallaxTarget.set((e.clientX / vw) * 2 - 1, -((e.clientY / vh) * 2 - 1))
@@ -483,6 +488,7 @@ export class CoplandScene {
       this.renderer.domElement.style.cursor = this.hovered ? 'pointer' : 'grab'
     }
     this.onWheel = (e: WheelEvent) => {
+      this.idle = 0
       this.dollyTarget = THREE.MathUtils.clamp(this.dollyTarget + e.deltaY * 0.006, -8, 26)
     }
     const el = this.renderer.domElement
@@ -637,6 +643,10 @@ export class CoplandScene {
     return this.quality
   }
 
+  getDread(): number {
+    return this.dread
+  }
+
   setMuted(m: boolean): void {
     this.audio.setMuted(m)
   }
@@ -680,11 +690,11 @@ export class CoplandScene {
     const hits = this.raycaster.intersectObjects(this.panelMeshes, false)
     if (hits.length === 0) return
     const panel = this.panels.find((p) => p.mesh === hits[0].object)
-    if (panel?.datum.href) {
-      this.diveTo(hits[0].object.position, panel.datum.href)
-    } else {
-      this.lookToward(hits[0].object.position)
-    }
+    if (!panel) return
+    const d = panel.datum
+    this.lookToward(hits[0].object.position)
+    if (d.href) this.diveTo(hits[0].object.position, d.href)
+    else if (d.body || d.decoder) this.handlers.onOpenPanel?.(d)
   }
 
   // "Wired dive": lunge the camera into the clicked card with a glitch warp,
@@ -748,6 +758,11 @@ export class CoplandScene {
     }
     this.audioLevel = this.audio.level()
 
+    // idle dread ramps up the longer the viewer is perfectly still
+    this.idle += dt
+    this.dread = Math.max(0, Math.min(1, (this.idle - 15) / 30))
+    this.audio.setDread(this.dread)
+
     // --- camera rig: ease yaw/pitch/dolly, idle auto-drift, parallax ---------
     if (!this.dragging) this.yawTarget += dt * 0.02 * motion
     this.yaw += (this.yawTarget - this.yaw) * 0.08
@@ -769,8 +784,8 @@ export class CoplandScene {
     // --- jack-in fog pulse + feature update + glitch warp timer --------------
     this.fogPulse += (0 - this.fogPulse) * 0.02
     const fog = this.scene.fog as THREE.FogExp2
-    fog.density = 0.018 + this.fogPulse
-    const ctx: FeatureContext = { dt, t, motion, audio: this.audioLevel, camera: this.camera }
+    fog.density = 0.018 + this.fogPulse + this.dread * 0.012
+    const ctx: FeatureContext = { dt, t, motion, audio: this.audioLevel, dread: this.dread, camera: this.camera }
     for (const f of this.features) f.update(ctx)
     if (this.glitchTimer > 0) {
       this.glitchTimer -= dt
