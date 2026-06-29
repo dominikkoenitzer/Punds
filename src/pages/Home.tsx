@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { FaGithub, FaPaypal, FaGlobe, FaBook, FaWind, FaPalette, FaRandom, FaArchive } from 'react-icons/fa'
+import { FaGithub, FaPaypal, FaGlobe, FaBook } from 'react-icons/fa'
 import './Home.css'
 
 // ============================================================================
@@ -824,38 +824,6 @@ const Home = () => {
                   <div className="link-info">
                     <span className="link-name">REPOSITORY</span>
                     <span className="link-path">/git/hub</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                <a href="https://zephyr.punds.ch/" target="_blank" rel="noopener noreferrer" className="access-link">
-                  <div className="link-icon pulse-icon"><FaWind /></div>
-                  <div className="link-info">
-                    <span className="link-name">ZEPHYR</span>
-                    <span className="link-path">/zephyr.punds.ch</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                <a href="https://spectrum.punds.ch/" target="_blank" rel="noopener noreferrer" className="access-link">
-                  <div className="link-icon pulse-icon"><FaPalette /></div>
-                  <div className="link-info">
-                    <span className="link-name">SPECTRUM</span>
-                    <span className="link-path">/spectrum.punds.ch</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                <a href="https://entropy.punds.ch/" target="_blank" rel="noopener noreferrer" className="access-link">
-                  <div className="link-icon pulse-icon"><FaRandom /></div>
-                  <div className="link-info">
-                    <span className="link-name">ENTROPY</span>
-                    <span className="link-path">/entropy.punds.ch</span>
-                  </div>
-                  <span className="link-arrow blink-slow">→</span>
-                </a>
-                <a href="https://remnants.punds.ch/" target="_blank" rel="noopener noreferrer" className="access-link">
-                  <div className="link-icon pulse-icon"><FaArchive /></div>
-                  <div className="link-info">
-                    <span className="link-name">REMNANTS</span>
-                    <span className="link-path">/remnants.punds.ch</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
