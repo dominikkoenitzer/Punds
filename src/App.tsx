@@ -1,5 +1,5 @@
-import Home from './pages/Home'
+import CoplandOS from './pages/CoplandOS'
 
 export default function App() {
-  return <Home />
+  return <CoplandOS />
 }
