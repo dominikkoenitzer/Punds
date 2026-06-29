@@ -2,44 +2,57 @@ import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
 // ============================================================================
-// DataSpires — a dense, layered, cinematic "city of data" skyline.
+// DataSpires — the CORPORATE PLAZA CANYON that ENCLOSES the camera.
 //
-// A panoramic megacity recedes into the FogExp2 horizon across THREE depth
-// bands: a near band (z ~ -38..-62) that is short and dense, a mid band
-// (~-62..-90), and a far band (~-90..-118) carrying the tallest HERO
-// megastructures so they read over everything nearer. Bases are planted ON the
-// shared ground plane (y = -10) and sink ~1.5-3 units below it into the terrain.
+// The camera stands in an open plaza at the ORIGIN. This feature RINGS the
+// origin with the downtown skyline on ALL sides (full 360°) so the viewer looks
+// UP an urban canyon of corp towers. Towers are seated in THREE concentric
+// depth layers around a CLEAR central plaza (nothing within radius ~18):
+//   • NEAR ring  (r ~24..37)  — the close canyon walls, clearly readable
+//   • MID  ring  (r ~37..56)  — taller massing rising behind the near wall
+//   • FAR  ring  (r ~56..80)  — the tallest backdrop, fading into FogExp2
+// 3-5 HERO corp MEGASTRUCTURES rise far above the rest (heights ~85-96) at
+// evenly-spaced bearings as plaza landmarks with bright phosphor crowns.
 //
-// Every tower is assembled from 1-3 STACKED, narrowing box tiers (+ an optional
-// thin antenna spire, + a bright crown on heroes) — and ALL of those segments
-// are instances of ONE unit BoxGeometry in ONE InstancedMesh (~1 draw call).
-// The towers share a single dark CanvasTexture FACADE with a grid of mostly-dim
-// / a-few-bright / a-few-off windows (phosphor + hologram tint, rare tachibana),
-// tiled down the height via RepeatWrapping. The facade stays dark so only the
-// lit windows and the additive light cloud glow under the bloom pass.
+// Bases are planted ON the shared ground plane (y = -10) and sink ~1.5-3 units
+// below it. Every tower is assembled from 1-3 STACKED, narrowing box tiers
+// (setbacks) + an optional thin antenna spire + a bright crown on heroes — and
+// ALL of those segments are instances of ONE unit BoxGeometry in ONE
+// InstancedMesh (~1 draw call). Towers share a single dark CanvasTexture FACADE
+// (a grid of mostly-dim / a-few-bright / a-few-off windows, phosphor + hologram
+// tint, rare tachibana) tiled down the height via RepeatWrapping; it stays dark
+// so only lit windows + the additive light cloud glow under the bloom pass.
 //
 // A single Points cloud carries every light: scattered facade windows that
-// breathe/blink, plus throbbing/blinking BEACONS on the tower tops and the hero
-// crowns (tachibana amber + warning red accents). Two faint additive horizon
-// HAZE bands seat the city where its base meets the ground / fog horizon.
+// breathe/blink + throbbing/blinking BEACONS on tower tops and hero crowns
+// (tachibana amber + warning red accents). Two faint additive CYLINDRICAL
+// horizon-haze rings sit beyond the furthest towers to seat the skyline against
+// the void and backlight the silhouettes all the way around.
 //
 // update(): blink/breathe the lights, lift overall brightness with audio bass,
-// and apply a very slow parallax sway of the whole skyline. Towers are static.
-// Per frame we only rewrite one small Float32 colour buffer (no allocation),
-// nudge a few transforms, and tweak a handful of material scalars.
-// All rates are multiplied by ctx.motion.
+// and apply a very slow sway of the whole ring. Towers are static. Per frame we
+// only rewrite one small Float32 colour buffer (no allocation), nudge a couple
+// transforms, and tweak a handful of material scalars. Rates × ctx.motion.
 // ============================================================================
 
 const TAU = Math.PI * 2
 const GROUND = -10 // shared floor: tower bases sit on this and sink below it
-const X_SPREAD = 95
-const NORMAL_TOWERS = 112
-const HERO_TOWERS = 3
+const HERO_TOWERS = 5
 
 // light "kinds"
 const KIND_STEADY = 0 // gentle breathing, always lit (facade windows / crown)
 const KIND_BLINK = 1 // hard on/off twinkle
 const KIND_BEACON = 2 // slow strong throb (tower-top warning / amber)
+
+interface RingLayer {
+  n: number
+  rMin: number
+  rMax: number
+  hMin: number
+  hMax: number
+  sMin: number
+  sMax: number
+}
 
 export class DataSpires implements SceneFeature {
   readonly group: THREE.Group
@@ -141,6 +154,7 @@ export class DataSpires implements SceneFeature {
       Math.random() < 0.6 ? palette.phosphor : palette.hologram
 
     // ----- one tower: stacked narrowing tiers (+ antenna, + hero crown) -------
+    // `baseYaw` orients the tower toward the plaza so its faces address the camera.
     const emitTower = (
       cx: number,
       cz: number,
@@ -148,8 +162,9 @@ export class DataSpires implements SceneFeature {
       d: number,
       hAbove: number,
       hero: boolean,
+      baseYaw: number,
     ): void => {
-      const yaw = (Math.random() * 2 - 1) * (hero ? 0.06 : 0.22)
+      const yaw = baseYaw + (Math.random() * 2 - 1) * (hero ? 0.05 : 0.18)
       const cosA = Math.cos(yaw)
       const sinA = Math.sin(yaw)
       const below = hero ? 2.2 + Math.random() * 1.0 : 1.5 + Math.random() * 1.5
@@ -196,7 +211,7 @@ export class DataSpires implements SceneFeature {
 
       // ----- facade window lights for this tower -----------------------------
       const nL = hero
-        ? 7 + Math.floor(Math.random() * 5)
+        ? 8 + Math.floor(Math.random() * 6)
         : Math.min(6, 2 + Math.floor(hAbove / 8))
       for (let l = 0; l < nL; l++) {
         let lx: number
@@ -231,7 +246,7 @@ export class DataSpires implements SceneFeature {
       // ----- beacons --------------------------------------------------------
       if (hero) {
         // glowing crown cluster: bright steady phosphor/hologram crown lights
-        emitLight(cx, topY + 0.4, cz, white.clone().lerp(palette.phosphor, 0.4), 1.15, 0.5 + Math.random() * 0.4, KIND_STEADY)
+        emitLight(cx, topY + 0.4, cz, white.clone().lerp(palette.phosphor, 0.4), 1.2, 0.5 + Math.random() * 0.4, KIND_STEADY)
         const crownN = 3 + Math.floor(Math.random() * 3)
         for (let c = 0; c < crownN; c++) {
           const a = (c / crownN) * TAU + Math.random() * 0.4
@@ -241,13 +256,13 @@ export class DataSpires implements SceneFeature {
             topY + 0.2 + Math.random() * 0.6,
             cz + Math.sin(a) * rr,
             Math.random() < 0.45 ? palette.tachibana : palette.hologram,
-            0.85 + Math.random() * 0.3,
+            0.9 + Math.random() * 0.3,
             0.8 + Math.random() * 1.2,
             Math.random() < 0.5 ? KIND_BEACON : KIND_STEADY,
           )
         }
         // red aircraft-warning blink on the spire tip
-        emitLight(cx, tipY, cz, palette.warning, 1.0, 0.9 + Math.random() * 0.6, KIND_BLINK)
+        emitLight(cx, tipY, cz, palette.warning, 1.05, 0.9 + Math.random() * 0.6, KIND_BLINK)
       } else if (hAbove > 20 && Math.random() < 0.62) {
         const warm = Math.random() < 0.5
         emitLight(
@@ -262,40 +277,40 @@ export class DataSpires implements SceneFeature {
       }
     }
 
-    // ----- generate the city -------------------------------------------------
-    const curve = (cx: number): number => ((cx * cx) / (X_SPREAD * X_SPREAD)) * 10
-    for (let i = 0; i < NORMAL_TOWERS; i++) {
-      const cx = (Math.random() * 2 - 1) * X_SPREAD
-      const f = i / NORMAL_TOWERS
-      let cz: number
-      let hAbove: number
-      let w: number
-      let d: number
-      if (f < 0.46) {
-        cz = -38 - Math.random() * 24 - curve(cx)
-        hAbove = 7 + Math.random() * 12
-        w = 2.5 + Math.random() * 2.5
-        d = 2.5 + Math.random() * 2.5
-      } else if (f < 0.8) {
-        cz = -62 - Math.random() * 28 - curve(cx)
-        hAbove = 13 + Math.random() * 16
-        w = 3 + Math.random() * 3
-        d = 3 + Math.random() * 3
-      } else {
-        cz = -90 - Math.random() * 28 - curve(cx)
-        hAbove = 22 + Math.random() * 18
-        w = 3.5 + Math.random() * 3.5
-        d = 3.5 + Math.random() * 3.5
+    // ----- generate the city: concentric rings enclosing the plaza ----------
+    // Each layer lays its towers in stratified angular sectors (with jitter) so
+    // the canyon closes a full 360° with even coverage and limited overlap; the
+    // radius varies within the layer band so it never reads as a perfect circle.
+    const layers: RingLayer[] = [
+      { n: 50, rMin: 24, rMax: 37, hMin: 20, hMax: 42, sMin: 3, sMax: 6 },
+      { n: 42, rMin: 37, rMax: 56, hMin: 28, hMax: 58, sMin: 4, sMax: 7.5 },
+      { n: 30, rMin: 56, rMax: 80, hMin: 40, hMax: 70, sMin: 5, sMax: 9 },
+    ]
+    let layerIdx = 0
+    for (const layer of layers) {
+      const sector = TAU / layer.n
+      const offset = layerIdx * 0.7 // rotate each ring so layers don't align radially
+      for (let i = 0; i < layer.n; i++) {
+        const ang = offset + (i + 0.5 + (Math.random() - 0.5) * 0.9) * sector
+        const r = layer.rMin + Math.random() * (layer.rMax - layer.rMin)
+        const cx = Math.cos(ang) * r
+        const cz = Math.sin(ang) * r
+        const w = layer.sMin + Math.random() * (layer.sMax - layer.sMin)
+        const d = layer.sMin + Math.random() * (layer.sMax - layer.sMin)
+        const hAbove = layer.hMin + Math.random() * (layer.hMax - layer.hMin)
+        emitTower(cx, cz, w, d, hAbove, false, ang)
       }
-      emitTower(cx, cz, w, d, hAbove, false)
+      layerIdx++
     }
 
-    // distinctive hero megastructures, spread across the far band
-    const heroX = [-52, 6, 58]
+    // distinctive HERO megastructures, evenly spaced bearings, prominent radius
+    const heroStart = Math.random() * TAU
     for (let i = 0; i < HERO_TOWERS; i++) {
-      const cx = heroX[i] + (Math.random() * 2 - 1) * 6
-      const cz = -88 - Math.random() * 16 - curve(cx) * 0.5
-      emitTower(cx, cz, 8 + Math.random() * 4, 8 + Math.random() * 4, 42 + Math.random() * 14, true)
+      const ang = heroStart + (i / HERO_TOWERS) * TAU + (Math.random() * 2 - 1) * 0.18
+      const r = 30 + Math.random() * 16 // 30..46 — landmarks rising over the near wall
+      const cx = Math.cos(ang) * r
+      const cz = Math.sin(ang) * r
+      emitTower(cx, cz, 8 + Math.random() * 4, 8 + Math.random() * 4, 52 + Math.random() * 26, true, ang)
     }
 
     // ----- build the instanced towers ---------------------------------------
@@ -305,7 +320,7 @@ export class DataSpires implements SceneFeature {
     this.towerMat = new THREE.MeshBasicMaterial({ color: white.clone(), map: facadeTex, fog: true })
     this.towers = new THREE.InstancedMesh(towerGeo, this.towerMat, segCount)
     this.towers.instanceMatrix.setUsage(THREE.StaticDrawUsage)
-    this.towers.frustumCulled = false // one draw call spanning a wide arc
+    this.towers.frustumCulled = false // one draw call spanning the full ring
 
     const mtx = new THREE.Matrix4()
     const pos = new THREE.Vector3()
@@ -328,7 +343,7 @@ export class DataSpires implements SceneFeature {
     this.group.add(this.towers)
     this.disposables.push(towerGeo, this.towerMat, facadeTex, this.towers)
 
-    // ----- horizon haze bands to seat the city ------------------------------
+    // ----- cylindrical horizon haze rings to seat the city ------------------
     this.addHaze(palette, white)
 
     // ----- the light cloud ---------------------------------------------------
@@ -436,10 +451,11 @@ export class DataSpires implements SceneFeature {
     return tex
   }
 
-  // faint additive glow band: bright horizontal line at `peak`, fading up/down
-  // and toward the horizontal edges. Color is color-managed via getStyle().
-  private makeGlowTexture(core: THREE.Color, peak: number, softness: number): THREE.CanvasTexture {
-    const W = 256
+  // faint additive horizon band for a haze CYLINDER: a bright horizontal line at
+  // the vertical centre that fades up/down, UNIFORM around the circumference
+  // (no horizontal fade) so the glow seats the skyline evenly on every bearing.
+  private makeHorizonTexture(core: THREE.Color, soft: number): THREE.CanvasTexture {
+    const W = 8
     const H = 128
     const canvas = document.createElement('canvas')
     canvas.width = W
@@ -450,68 +466,59 @@ export class DataSpires implements SceneFeature {
       core.getStyle(THREE.SRGBColorSpace).replace('rgb(', 'rgba(').replace(')', `,${a})`)
 
     const grad = ctx.createLinearGradient(0, 0, 0, H)
-    const a = Math.max(0, peak - softness)
-    const b = Math.min(1, peak + softness)
+    const a = Math.max(0, 0.5 - soft)
+    const b = Math.min(1, 0.5 + soft)
     grad.addColorStop(0, rgba(0))
     if (a > 0.001) grad.addColorStop(a, rgba(0))
-    grad.addColorStop(peak, rgba(1))
+    grad.addColorStop(0.5, rgba(1))
     if (b < 0.999) grad.addColorStop(b, rgba(0))
     grad.addColorStop(1, rgba(0))
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, W, H)
-
-    // horizontal edge fade (multiply alpha)
-    ctx.globalCompositeOperation = 'destination-in'
-    const hg = ctx.createLinearGradient(0, 0, W, 0)
-    hg.addColorStop(0, 'rgba(0,0,0,0)')
-    hg.addColorStop(0.5, 'rgba(0,0,0,1)')
-    hg.addColorStop(1, 'rgba(0,0,0,0)')
-    ctx.fillStyle = hg
-    ctx.fillRect(0, 0, W, H)
-    ctx.globalCompositeOperation = 'source-over'
 
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
     return tex
   }
 
+  // two concentric haze rings BEYOND the furthest towers: a low ground-glow band
+  // seating the bases, and a taller horizon band backlighting the silhouettes.
+  // BackSide so the camera (inside) sees only the far wall — a single additive
+  // layer, no double-exposure; fog:false so it reads through the FogExp2 depth.
   private addHaze(palette: ScenePalette, white: THREE.Color): void {
     const bands: Array<{
       core: THREE.Color
-      peak: number
-      soft: number
-      w: number
-      h: number
+      radius: number
+      height: number
       y: number
-      z: number
+      soft: number
       opacity: number
+      seg: number
     }> = [
-      // ground-glow line where the city base meets the floor
+      // ground glow where the city base meets the floor / fog horizon
       {
         core: palette.hologram.clone().lerp(palette.phosphor, 0.4),
-        peak: 0.62,
-        soft: 0.32,
-        w: 270,
-        h: 16,
+        radius: 86,
+        height: 34,
         y: -7,
-        z: -64,
-        opacity: 0.5,
+        soft: 0.18,
+        opacity: 0.42,
+        seg: 64,
       },
-      // distant horizon haze backlighting the far skyline
+      // distant horizon haze backlighting the tallest ring
       {
         core: palette.hologram.clone().lerp(white, 0.12),
-        peak: 0.7,
-        soft: 0.34,
-        w: 340,
-        h: 40,
-        y: -2,
-        z: -112,
-        opacity: 0.38,
+        radius: 98,
+        height: 72,
+        y: 4,
+        soft: 0.3,
+        opacity: 0.3,
+        seg: 72,
       },
     ]
     for (const def of bands) {
-      const tex = this.makeGlowTexture(def.core, def.peak, def.soft)
-      const geo = new THREE.PlaneGeometry(def.w, def.h)
+      const tex = this.makeHorizonTexture(def.core, def.soft)
+      const geo = new THREE.CylinderGeometry(def.radius, def.radius, def.height, def.seg, 1, true)
       const mat = new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
@@ -519,10 +526,10 @@ export class DataSpires implements SceneFeature {
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         fog: false,
-        side: THREE.DoubleSide,
+        side: THREE.BackSide,
       })
       const mesh = new THREE.Mesh(geo, mat)
-      mesh.position.set(0, def.y, def.z)
+      mesh.position.set(0, def.y, 0)
       mesh.frustumCulled = false
       this.group.add(mesh)
       this.hazeMats.push(mat)
@@ -536,10 +543,9 @@ export class DataSpires implements SceneFeature {
     this.anim += ctx.dt * motion
     const a = this.anim
 
-    // very slow parallax sway of the whole skyline (stays near-static)
-    this.group.rotation.y = Math.sin(a * 0.05) * 0.012
-    this.group.position.x = Math.sin(a * 0.031) * 0.9
-    this.group.position.y = Math.sin(a * 0.043) * 0.35
+    // very slow sway of the whole enclosing ring (stays near-static)
+    this.group.rotation.y = Math.sin(a * 0.04) * 0.01
+    this.group.position.y = Math.sin(a * 0.05) * 0.25
 
     // audio bass gently lifts the windows + the haze brightness
     const audioGain = 1 + ctx.audio * 0.8
