@@ -8,8 +8,8 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // drifts, and looms lower with idle dread. Generic eye, copyright-safe.
 
 const TAU = Math.PI * 2
-const R = 24
-const BASE_Y = 88
+const R = 14
+const BASE_Y = 92
 
 function makeCanvas(s: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
   const canvas = document.createElement('canvas')
@@ -112,31 +112,42 @@ function drawIrisTexture(): THREE.CanvasTexture {
   ctx.translate(S / 2, S / 2)
   ctx.lineCap = 'round'
   const ir = S * 0.46
-  const pr = ir * 0.32
-  const g = ctx.createRadialGradient(0, 0, pr * 0.6, 0, 0, ir)
-  g.addColorStop(0, 'rgba(8,30,55,0)')
-  g.addColorStop(0.3, 'rgba(8,30,55,0)')
-  g.addColorStop(0.37, 'rgba(170,225,255,0.42)')
-  g.addColorStop(0.58, 'rgba(80,170,240,0.3)')
-  g.addColorStop(0.9, 'rgba(80,170,240,0.06)')
-  g.addColorStop(1, 'rgba(80,170,240,0)')
+  const pr = ir * 0.3 // small, defined pupil
+  // glowing iris band around a small dark pupil
+  const g = ctx.createRadialGradient(0, 0, pr, 0, 0, ir)
+  g.addColorStop(0, 'rgba(120,200,255,0)')
+  g.addColorStop(0.26, 'rgba(120,200,255,0)')
+  g.addColorStop(0.31, 'rgba(210,245,255,0.85)') // bright pupil rim
+  g.addColorStop(0.46, 'rgba(110,200,255,0.6)')
+  g.addColorStop(0.78, 'rgba(70,150,235,0.4)')
+  g.addColorStop(0.95, 'rgba(70,150,235,0.12)')
+  g.addColorStop(1, 'rgba(70,150,235,0)')
   ctx.fillStyle = g
   ctx.beginPath(); ctx.arc(0, 0, ir, 0, TAU); ctx.fill()
 
+  // brighter fibres
   ctx.globalCompositeOperation = 'lighter'
-  for (let i = 0; i < 150; i++) {
-    const a = (i / 150) * TAU + (Math.random() - 0.5) * 0.05
-    const r0 = pr * 1.2 + Math.random() * S * 0.01
-    const r1 = ir * (0.65 + Math.random() * 0.28)
+  for (let i = 0; i < 200; i++) {
+    const a = (i / 200) * TAU + (Math.random() - 0.5) * 0.05
+    const r0 = pr * 1.05
+    const r1 = ir * (0.6 + Math.random() * 0.34)
     const b = Math.random()
-    ctx.strokeStyle = `rgba(150,225,255,${0.02 + b * 0.08})`
-    ctx.lineWidth = 1.5 + Math.random() * 2
+    ctx.strokeStyle = `rgba(180,235,255,${0.05 + b * 0.16})`
+    ctx.lineWidth = 1.5 + Math.random() * 2.5
     ctx.beginPath()
     ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0)
     ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1)
     ctx.stroke()
   }
   ctx.globalCompositeOperation = 'source-over'
+
+  // limbal ring + a bright rim that defines the pupil
+  ctx.strokeStyle = 'rgba(180,235,255,0.4)'
+  ctx.lineWidth = S * 0.012
+  ctx.beginPath(); ctx.arc(0, 0, ir * 0.95, 0, TAU); ctx.stroke()
+  ctx.strokeStyle = 'rgba(220,250,255,0.75)'
+  ctx.lineWidth = S * 0.009
+  ctx.beginPath(); ctx.arc(0, 0, pr, 0, TAU); ctx.stroke()
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -202,7 +213,7 @@ export class GiantEye implements SceneFeature {
     }
 
     const frame = addLayer(drawFrameTexture(palette), R * 2.4, 0, 0.34)
-    this.iris = addLayer(drawIrisTexture(), R * 1.05, 0.4, 0.5)
+    this.iris = addLayer(drawIrisTexture(), R * 1.05, 0.4, 0.72)
     this.frameMat = frame.material as THREE.MeshBasicMaterial
     this.irisMat = this.iris.material as THREE.MeshBasicMaterial
 
