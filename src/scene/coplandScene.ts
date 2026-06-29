@@ -2,7 +2,15 @@ import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import { GlitchPass } from 'three/examples/jsm/postprocessing/GlitchPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
+import type { ScenePalette, SceneFeature, FeatureContext } from './features/types'
+import { AudioEngine } from './audioEngine'
+import { CableTangle } from './features/cables'
+import { DataRain } from './features/dataRain'
+import { DataSpires } from './features/dataSpires'
+import { TerminalText } from './features/terminalText'
+import { NetworkGraph } from './features/networkGraph'
 
 // ============================================================================
 // COPLAND OS — navigable 3D backdrop
@@ -18,18 +26,6 @@ export type CoplandPhase = 'logo' | 'boot' | 'welcome' | 'desktop'
 export interface CoplandHandlers {
   onActivate?: () => void                 // a tap during boot -> skip to desktop
   onHover?: (label: string | null) => void
-}
-
-interface Palette {
-  voidColor: THREE.Color
-  phosphor: THREE.Color
-  hologram: THREE.Color
-  tachibana: THREE.Color
-  warning: THREE.Color
-  phosphorStr: string
-  hologramStr: string
-  tachibanaStr: string
-  warningStr: string
 }
 
 const PANELS: { label: string; variant: number }[] = [
@@ -60,7 +56,7 @@ interface Panel {
   hover: number
 }
 
-function readPalette(el: HTMLElement): Palette {
+function readPalette(el: HTMLElement): ScenePalette {
   const cs = getComputedStyle(el)
   const v = (name: string, fallback: string): string => {
     const val = cs.getPropertyValue(name).trim()
@@ -109,7 +105,7 @@ function makeSpriteTexture(): THREE.CanvasTexture {
   return tex
 }
 
-function drawLogoTexture(p: Palette): THREE.CanvasTexture {
+function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   const S = 1024
   const { canvas, ctx } = makeCanvas(S, S)
   ctx.translate(S / 2, S / 2)
@@ -165,7 +161,7 @@ function drawLogoTexture(p: Palette): THREE.CanvasTexture {
   return tex
 }
 
-function drawPanelTexture(label: string, variant: number, p: Palette): THREE.CanvasTexture {
+function drawPanelTexture(label: string, variant: number, p: ScenePalette): THREE.CanvasTexture {
   const W = 512
   const H = 320
   const { canvas, ctx } = makeCanvas(W, H)
@@ -258,10 +254,17 @@ export class CoplandScene {
   private camera: THREE.PerspectiveCamera
   private composer: EffectComposer
   private bloom: UnrealBloomPass
+  private glitch: GlitchPass
+  private glitchTimer = 0
+  private audio = new AudioEngine()
+  private audioLevel = 0
+  private features: SceneFeature[] = []
+  private graph: NetworkGraph | null = null
+  private fogPulse = 0
   private timer = new THREE.Timer()
   private rafId = 0
   private resizeObs: ResizeObserver
-  private palette: Palette
+  private palette: ScenePalette
   private handlers: CoplandHandlers
 
   private particles: THREE.Points
@@ -345,17 +348,22 @@ export class CoplandScene {
     this.scene.add(this.logo)
 
     this.buildPanels()
+    this.buildFeatures()
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.composer.setSize(w, h)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.9, 0.7, 0.15)
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.85)
     this.composer.addPass(this.bloom)
+    this.glitch = new GlitchPass()
+    this.glitch.enabled = false
+    this.composer.addPass(this.glitch)
     this.composer.addPass(new OutputPass())
 
     // --- input ---------------------------------------------------------------
     this.onPointerDown = (e: PointerEvent) => {
+      this.audio.resume()
       this.dragging = true
       this.moved = 0
       this.lastX = e.clientX
@@ -382,7 +390,7 @@ export class CoplandScene {
     this.onPointerUp = () => {
       if (this.dragging && this.moved < 8) {
         if (this.currentPhase !== 'desktop') this.handlers.onActivate?.()
-        else this.focusOnPanel()
+        else this.handleTap()
       }
       this.dragging = false
       this.renderer.domElement.style.cursor = this.hovered ? 'pointer' : 'grab'
@@ -465,19 +473,53 @@ export class CoplandScene {
     })
   }
 
+  private buildFeatures(): void {
+    this.graph = new NetworkGraph(this.palette)
+    this.features = [
+      new CableTangle(this.palette),
+      new DataRain(this.palette),
+      new DataSpires(this.palette),
+      new TerminalText(this.palette),
+      this.graph,
+    ]
+    for (const f of this.features) this.scene.add(f.group)
+  }
+
   setPhase(phase: CoplandPhase): void {
     this.currentPhase = phase
     this.logoTarget = phase === 'boot' ? 0.35 : 1
     this.panelTarget = phase === 'desktop' ? 1 : 0
+    this.glitchTimer = 0.4 // brief glitch warp on layer change
   }
 
-  private focusOnPanel(): void {
+  private handleTap(): void {
     this.raycaster.setFromCamera(this.ndc, this.camera)
+    // jack-in: clicking a network-graph node dives the camera a layer deeper
+    if (this.graph) {
+      const nodeHits = this.raycaster.intersectObjects(this.graph.nodeMeshes, false)
+      if (nodeHits.length) {
+        this.jackIn(nodeHits[0].object as THREE.Mesh)
+        return
+      }
+    }
     const hits = this.raycaster.intersectObjects(this.panelMeshes, false)
-    if (hits.length === 0) return
-    const dir = hits[0].object.position.clone().sub(this.camera.position).normalize()
+    if (hits.length) this.lookToward(hits[0].object.position)
+  }
+
+  private lookToward(worldPos: THREE.Vector3): void {
+    const dir = worldPos.clone().sub(this.camera.position).normalize()
     this.yawTarget = Math.atan2(-dir.x, -dir.z)
     this.pitchTarget = Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1))
+  }
+
+  private jackIn(node: THREE.Mesh): void {
+    if (!this.graph) return
+    const target = this.graph.nodeWorldPosition(node, new THREE.Vector3())
+    this.lookToward(target)
+    const dist = target.distanceTo(this.base)
+    this.dollyTarget = THREE.MathUtils.clamp(dist - 2.5, -8, 24)
+    this.fogPulse = 0.02 // fog darkens as you dive a layer deeper
+    this.glitchTimer = 0.45
   }
 
   private resize(): void {
@@ -501,6 +543,7 @@ export class CoplandScene {
     const t = this.timer.getElapsed()
     const motion = this.reduced ? 0.25 : 1
     this.frame++
+    this.audioLevel = this.audio.level()
 
     // --- camera rig: ease yaw/pitch/dolly, idle auto-drift, parallax ---------
     if (!this.dragging) this.yawTarget += dt * 0.02 * motion
@@ -520,6 +563,19 @@ export class CoplandScene {
     this.camera.position.copy(this.base).addScaledVector(forward, this.dolly)
     this.camera.position.y = Math.max(this.camera.position.y, -6)
 
+    // --- jack-in fog pulse + feature update + glitch warp timer --------------
+    this.fogPulse += (0 - this.fogPulse) * 0.02
+    const fog = this.scene.fog as THREE.FogExp2
+    fog.density = 0.018 + this.fogPulse
+    const ctx: FeatureContext = { dt, t, motion, audio: this.audioLevel, camera: this.camera }
+    for (const f of this.features) f.update(ctx)
+    if (this.glitchTimer > 0) {
+      this.glitchTimer -= dt
+      this.glitch.enabled = true
+    } else {
+      this.glitch.enabled = false
+    }
+
     // --- drifting particle field (endless: wrap Y) ---------------------------
     const arr = this.particles.geometry.attributes.position.array as Float32Array
     for (let i = 0; i < this.particleSpeeds.length; i++) {
@@ -529,11 +585,13 @@ export class CoplandScene {
     }
     this.particles.geometry.attributes.position.needsUpdate = true
     this.particles.rotation.y = t * 0.008 * motion
+    const pmat = this.particles.material as THREE.PointsMaterial
+    pmat.opacity = 0.6 + this.audioLevel * 0.3
 
     // --- logo: fade + slow breathe + billboard -------------------------------
     this.logoOpacity += (this.logoTarget - this.logoOpacity) * Math.min(dt * 2.2, 1)
     this.logoMat.opacity = this.logoOpacity
-    this.logo.scale.setScalar(1 + Math.sin(t * 0.6) * 0.015 * motion)
+    this.logo.scale.setScalar(1 + Math.sin(t * 0.6) * 0.015 * motion + this.audioLevel * 0.06)
     this.logo.lookAt(this.camera.position)
 
     // --- panels: fade + bob + billboard + hover ------------------------------
@@ -553,8 +611,8 @@ export class CoplandScene {
     }
 
     // --- phosphor flicker on the bloom ---------------------------------------
-    const flick = 0.9 + Math.sin(t * 30) * 0.03 + (Math.random() < 0.015 ? -0.25 : 0)
-    this.bloom.strength = this.reduced ? 0.7 : flick
+    const flick = Math.sin(t * 30) * 0.04 + (Math.random() < 0.015 ? -0.3 : 0)
+    this.bloom.strength = this.reduced ? 1.0 : 1.2 + this.audioLevel * 0.7 + flick
 
     this.composer.render()
   }
@@ -581,6 +639,9 @@ export class CoplandScene {
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
 
+    for (const f of this.features) f.dispose()
+    this.audio.dispose()
+
     this.scene.traverse((obj) => {
       const asMesh = obj as THREE.Mesh
       asMesh.geometry?.dispose()
@@ -595,6 +656,7 @@ export class CoplandScene {
     this.spriteTex.dispose()
     this.composer.dispose()
     this.bloom.dispose()
+    this.glitch.dispose()
     this.renderer.dispose()
     this.renderer.forceContextLoss()
     if (el.parentNode) el.parentNode.removeChild(el)
