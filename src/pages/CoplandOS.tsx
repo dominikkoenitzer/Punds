@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
+import { NaviVoice } from '../scene/naviVoice'
 import './CoplandOS.css'
 
 // ============================================================================
@@ -35,6 +36,7 @@ const pad = (n: number): string => n.toString().padStart(2, '0')
 export default function CoplandOS() {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<CoplandScene | null>(null)
+  const voiceRef = useRef<NaviVoice | null>(null)
 
   const [phase, setPhase] = useState<CoplandPhase>('logo')
   const [bootLines, setBootLines] = useState<string[]>([])
@@ -62,9 +64,20 @@ export default function CoplandOS() {
     }
   }, [])
 
-  // --- drive the scene from the boot phase ----------------------------------
+  // --- NAVI voice -----------------------------------------------------------
+  useEffect(() => {
+    voiceRef.current = new NaviVoice()
+    return () => voiceRef.current?.cancel()
+  }, [])
+
+  // --- drive the scene from the boot phase (+ NAVI greets on welcome) --------
   useEffect(() => {
     sceneRef.current?.setPhase(phase)
+    if (phase === 'welcome') {
+      const v = voiceRef.current
+      v?.speak('present day. present time.')
+      v?.speak(`welcome, ${OPERATOR}`, { delay: 2200, pitch: 0.62 })
+    }
   }, [phase])
 
   // --- clock ----------------------------------------------------------------

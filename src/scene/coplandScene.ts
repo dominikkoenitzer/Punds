@@ -247,6 +247,7 @@ export class CoplandScene {
   private features: SceneFeature[] = []
   private graph: NetworkGraph | null = null
   private fogPulse = 0
+  private diveTimer = 0
   private timer = new THREE.Timer()
   private rafId = 0
   private resizeObs: ResizeObserver
@@ -522,10 +523,22 @@ export class CoplandScene {
     if (hits.length === 0) return
     const panel = this.panels.find((p) => p.mesh === hits[0].object)
     if (panel?.datum.href) {
-      window.open(panel.datum.href, '_blank', 'noopener,noreferrer')
+      this.diveTo(hits[0].object.position, panel.datum.href)
     } else {
       this.lookToward(hits[0].object.position)
     }
+  }
+
+  // "Wired dive": lunge the camera into the clicked card with a glitch warp,
+  // open the link in a background tab, then ease back out.
+  private diveTo(worldPos: THREE.Vector3, href: string): void {
+    this.lookToward(worldPos)
+    const dist = worldPos.distanceTo(this.base)
+    this.dollyTarget = THREE.MathUtils.clamp(dist * 0.62, -8, 26)
+    this.glitchTimer = 0.5
+    this.fogPulse = 0.016
+    this.diveTimer = 0.9
+    window.open(href, '_blank', 'noopener,noreferrer')
   }
 
   private lookToward(worldPos: THREE.Vector3): void {
@@ -596,6 +609,10 @@ export class CoplandScene {
       this.glitch.enabled = true
     } else {
       this.glitch.enabled = false
+    }
+    if (this.diveTimer > 0) {
+      this.diveTimer -= dt
+      if (this.diveTimer <= 0) this.dollyTarget = 1.2 // ease back out after the lunge
     }
 
     // --- drifting particle field (endless: wrap Y) ---------------------------
