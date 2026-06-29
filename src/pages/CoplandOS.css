@@ -4,8 +4,9 @@
    them back via getComputedStyle(), so retuning these retunes the 3D too.
    =========================================================================== */
 :root {
-  --copland-void: #04101c;   /* deep teal-black field */
-  --copland-bg:   #071a2b;
+  --copland-void: #06112a;   /* deep twilight indigo (inner-world night sky) */
+  --copland-bg:   #0d2142;
+  --copland-horizon: #1f4068; /* twilight-blue horizon haze (scene fog) */
   --phosphor:     #76e4ff;   /* phosphor cyan text */
   --phosphor-hi:  #eaf6ff;   /* near-white phosphor core (bloom blows this out) */
   --phosphor-dim: #3f88a6;

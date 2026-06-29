@@ -13,6 +13,10 @@ import { DataRain } from './features/dataRain'
 import { DataSpires } from './features/dataSpires'
 import { TerminalText } from './features/terminalText'
 import { NetworkGraph } from './features/networkGraph'
+import { InnerSky } from './features/innerSky'
+import { InnerRain } from './features/rain'
+import { SidewaysCity } from './features/sidewaysCity'
+import { Watcher } from './features/watcher'
 import { PANEL_DATA, type PanelDatum } from './panelData'
 
 // ============================================================================
@@ -320,7 +324,8 @@ export class CoplandScene {
 
     this.scene = new THREE.Scene()
     this.scene.background = this.palette.voidColor.clone()
-    this.scene.fog = new THREE.FogExp2(this.palette.voidColor.clone().getHex(), 0.018)
+    const horizonStr = getComputedStyle(document.documentElement).getPropertyValue('--copland-horizon').trim() || '#1f4068'
+    this.scene.fog = new THREE.FogExp2(new THREE.Color(horizonStr).getHex(), 0.018)
 
     this.camera = new THREE.PerspectiveCamera(70, w / h, 0.1, 240)
 
@@ -498,11 +503,15 @@ export class CoplandScene {
   private buildFeatures(): void {
     this.graph = new NetworkGraph(this.palette)
     this.features = [
+      new InnerSky(this.palette),
       new ReflectiveFloor(this.palette),
+      new SidewaysCity(this.palette),
       new CableTangle(this.palette),
       new DataRain(this.palette),
       new DataSpires(this.palette),
       new HolographicFish(this.palette),
+      new InnerRain(this.palette),
+      new Watcher(this.palette),
       new TerminalText(this.palette),
       this.graph,
     ]
