@@ -1371,6 +1371,184 @@
   text-shadow: 0 0 10px #00ff00;
 }
 
+/* ============================================================================
+   WIRED NODE BUS — desktop access-points redesign (>= 1051px only)
+   The 4 links tap onto one vertical cable; below them a BUS_STATUS readout
+   fills the remaining height so 4 links fill a full-height column on purpose.
+   Every new element is default-hidden, so the <=1050 tablet 3-up grid and the
+   <=768 mobile flat-list render exactly as before (those rules are untouched).
+   ============================================================================ */
+.node-dot,
+.link-index,
+.link-meta,
+.bus-readout { display: none; }
+.links-body::before { display: none; }
+
+@media (min-width: 1051px) {
+  /* Container flip: stop grid-auto-rows:1fr stretch; compact rows pile at the top */
+  .links-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    position: relative;
+    overflow-y: auto;
+  }
+
+  /* The cable — one continuous 1px line down the left gutter, full height */
+  .links-body::before {
+    content: '';
+    display: block;
+    position: absolute;
+    left: 20px;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    background: linear-gradient(180deg, #003a00, #005500 50%, #003a00);
+    box-shadow: 0 0 6px rgba(0, 255, 0, 0.18);
+    z-index: 0;
+  }
+
+  /* Rows: compact, fixed height, top-aligned, left gutter holds the cable tap */
+  .links-body .access-link {
+    flex: 0 0 auto;
+    min-height: 62px;
+    padding-left: 34px;
+  }
+
+  /* Node tap — a TEXT glyph, so it can reuse the text-shadow-based pulse-glow */
+  .node-dot {
+    display: block;
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.6rem;
+    line-height: 1;
+    color: #00ff00;
+    z-index: 3;
+    animation: pulse-glow 2s infinite;
+  }
+  /* Connector stub: bridges cable -> row content */
+  .node-dot::after {
+    content: '';
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 1px;
+    background: #005500;
+  }
+  /* Staggered top-down packet wave (nth-of-type: the readout div doesn't offset the count) */
+  .access-link:nth-of-type(1) .node-dot { animation-delay: 0s; }
+  .access-link:nth-of-type(2) .node-dot { animation-delay: 0.45s; }
+  .access-link:nth-of-type(3) .node-dot { animation-delay: 0.9s; }
+  .access-link:nth-of-type(4) .node-dot { animation-delay: 1.35s; }
+
+  /* Keep the live pulse only on socket 01 (origin node); calm the rest */
+  .access-link:nth-of-type(n+2) .pulse-icon { animation: none; }
+
+  /* Tiny dim socket tag tucked into the far-left gutter corner */
+  .link-index {
+    display: block;
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    font-size: 0.5rem;
+    letter-spacing: 0;
+    color: #005500;
+    z-index: 3;
+  }
+
+  /* Tighten name/path/icon for the narrow column */
+  .links-body .link-icon { font-size: 1.1rem; min-width: 1.2rem; }
+  .links-body .link-name { font-size: 0.66rem; letter-spacing: 0.04rem; }
+  .links-body .link-path {
+    font-size: 0.55rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 3rd info line — per-link handshake telemetry */
+  .link-meta {
+    display: block;
+    margin-top: 1px;
+    font-size: 0.52rem;
+    letter-spacing: 0;
+    color: #006600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .links-body .link-arrow { font-size: 1rem; }
+
+  /* Hover = handshake established: the node locks bright + stops pulsing */
+  .access-link:hover .node-dot {
+    color: #ffffff;
+    text-shadow: 0 0 12px #00ff00, 0 0 20px rgba(0, 255, 0, 0.6);
+    animation: none;
+  }
+
+  /* BUS_STATUS readout — flex:1 eats all leftover height (the fill strategy) */
+  .bus-readout {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 2px;
+    padding: 6px 6px 6px 34px;
+    position: relative;
+    z-index: 1;
+    font-size: 0.55rem;
+    letter-spacing: 0.02rem;
+  }
+  .bus-readout-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: #007700;
+    margin-bottom: 2px;
+  }
+  .bus-corner { color: #004800; font-size: 0.5rem; letter-spacing: 0.05rem; }
+
+  .bus-stat { display: flex; justify-content: space-between; gap: 6px; }
+  .bus-k { color: #006600; }
+  .bus-v { color: #00aa00; text-align: right; white-space: nowrap; }
+
+  /* INTEGRITY tile reuses the established left-accent block look (.stat-item) */
+  .bus-stat-tile {
+    background: rgba(0, 255, 0, 0.05);
+    border-left: 2px solid #00aa00;
+    padding: 3px 5px;
+  }
+
+  .bus-idle {
+    display: block;
+    margin-top: 3px;
+    color: #005500;
+    letter-spacing: 0.08rem;
+    animation: idle-flicker 8s infinite;
+  }
+
+  /* Cable terminator pinned to the very bottom -> readout always reaches the floor */
+  .bus-eol {
+    margin-top: auto;
+    color: #004d00;
+    letter-spacing: 0.04rem;
+  }
+}
+
+/* Respect reduced-motion: drop the pulsing node + icon throb */
+@media (prefers-reduced-motion: reduce) {
+  .node-dot,
+  .pulse-icon { animation: none; }
+}
+
 /* Footer Bar */
 .navi-footer {
   display: flex;
