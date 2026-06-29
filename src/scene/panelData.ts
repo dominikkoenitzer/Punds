@@ -11,6 +11,8 @@ export interface PanelDatum {
   kind: PanelKind
   href?: string
   accent?: PanelAccent
+  body?: string // full text shown when the panel is opened
+  decoder?: boolean // opens the interactive hex decoder
 }
 
 export const PANEL_DATA: PanelDatum[] = [
