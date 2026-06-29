@@ -17,11 +17,6 @@ import { InnerSky } from './features/innerSky'
 import { InnerRain } from './features/rain'
 import { SidewaysCity } from './features/sidewaysCity'
 import { Watcher } from './features/watcher'
-import { PenroseStairs } from './features/penroseStairs'
-import { Totem } from './features/totem'
-import { EnergySlashes } from './features/energySlash'
-import { ReiatsuBursts } from './features/reiatsu'
-import { BattleStorm } from './features/lightning'
 import { WiredIntercepts } from './features/wiredIntercepts'
 import { WatchingEyes } from './features/watchingEyes'
 import { Apparition } from './features/apparition'
@@ -349,9 +344,6 @@ export class CoplandScene {
   private autoTimer = 0
   private fogPulse = 0
   private diveTimer = 0
-  private surgeTimer = 3
-  private shake = 0
-  private surgeFlash = 0
   private timer = new THREE.Timer()
   private rafId = 0
   private resizeObs: ResizeObserver
@@ -610,12 +602,7 @@ export class CoplandScene {
       spires,
       fish,
       new InnerRain(this.palette),
-      new BattleStorm(this.palette),
       new Watcher(this.palette),
-      new PenroseStairs(this.palette),
-      new Totem(this.palette),
-      new EnergySlashes(this.palette),
-      new ReiatsuBursts(this.palette),
       new WiredIntercepts(this.palette),
       new WatchingEyes(this.palette),
       new Apparition(this.palette),
@@ -761,19 +748,6 @@ export class CoplandScene {
     }
     this.audioLevel = this.audio.level()
 
-    // combat surge: a periodic battle impact — camera shake + flash + glitch
-    this.surgeTimer -= dt
-    if (this.surgeTimer <= 0) {
-      this.surgeTimer = 3.5 + Math.random() * 4
-      if (!this.reduced) {
-        this.shake = 0.45 + this.audioLevel * 0.5
-        this.surgeFlash = 0.8
-        if (this.glitchTimer < 0.16) this.glitchTimer = 0.16
-      }
-    }
-    this.shake *= 0.86
-    this.surgeFlash *= 0.9
-
     // --- camera rig: ease yaw/pitch/dolly, idle auto-drift, parallax ---------
     if (!this.dragging) this.yawTarget += dt * 0.02 * motion
     this.yaw += (this.yawTarget - this.yaw) * 0.08
@@ -791,11 +765,6 @@ export class CoplandScene {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion)
     this.camera.position.copy(this.base).addScaledVector(forward, this.dolly)
     this.camera.position.y = Math.max(this.camera.position.y, -2)
-    if (this.shake > 0.002) {
-      this.camera.position.x += (Math.random() - 0.5) * this.shake
-      this.camera.position.y += (Math.random() - 0.5) * this.shake
-      this.camera.position.z += (Math.random() - 0.5) * this.shake * 0.5
-    }
 
     // --- jack-in fog pulse + feature update + glitch warp timer --------------
     this.fogPulse += (0 - this.fogPulse) * 0.02
@@ -852,8 +821,7 @@ export class CoplandScene {
     const flick = Math.sin(t * 30) * 0.04 + (Math.random() < 0.015 ? -0.3 : 0)
     this.bloom.strength = this.reduced
       ? 1.0
-      : (1.2 + this.audioLevel * 0.7 + flick + this.surgeFlash * 1.6) * this.qualityBloom
-    this.renderer.toneMappingExposure = 1.1 + this.surgeFlash * 0.5
+      : (1.2 + this.audioLevel * 0.7 + flick) * this.qualityBloom
 
     this.composer.render()
   }
