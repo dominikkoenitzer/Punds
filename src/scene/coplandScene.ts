@@ -17,7 +17,6 @@ import { InnerSky } from './features/innerSky'
 import { InnerRain } from './features/rain'
 import { SidewaysCity } from './features/sidewaysCity'
 import { Watcher } from './features/watcher'
-import { FoldedCity } from './features/foldedCity'
 import { PenroseStairs } from './features/penroseStairs'
 import { Totem } from './features/totem'
 import { EnergySlashes } from './features/energySlash'
@@ -248,6 +247,39 @@ function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTexture {
 // this lifts the viewer well above the ground; the central logo + UI panels are
 // offset by the same amount so the interface stays at eye level.
 const EYE_HEIGHT = 6
+
+// The fold line (world Y) the overhead mirror reflects the city about; raise to
+// push the inverted ceiling-city higher, lower to bring it closer overhead.
+const MIRROR_FOLD_Y = 60
+
+// Clone an object hierarchy and flip it vertically about y = foldY so it reads
+// as an upside-down mirror twin hanging above ("as above, so below"). Materials
+// are cloned to DoubleSide because the negative scale inverts face winding;
+// geometry + textures stay shared by reference, so the twin still animates with
+// the original (e.g. the city's blinking window lights stay in sync).
+function makeVerticalMirror(src: THREE.Object3D, foldY: number): THREE.Group {
+  const clone = src.clone(true)
+  clone.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+    if (Array.isArray(mat)) {
+      mesh.material = mat.map((m) => {
+        const c = m.clone()
+        c.side = THREE.DoubleSide
+        return c
+      })
+    } else if (mat) {
+      const c = mat.clone()
+      c.side = THREE.DoubleSide
+      mesh.material = c
+    }
+  })
+  const g = new THREE.Group()
+  g.add(clone)
+  g.scale.set(1, -1, 1)
+  g.position.y = foldY * 2
+  return g
+}
 
 export class CoplandScene {
   private container: HTMLElement
@@ -511,14 +543,14 @@ export class CoplandScene {
 
   private buildFeatures(): void {
     this.graph = new NetworkGraph(this.palette)
+    const spires = new DataSpires(this.palette)
     this.features = [
       new InnerSky(this.palette),
       new ReflectiveFloor(this.palette),
       new SidewaysCity(this.palette),
-      new FoldedCity(this.palette),
       new CableTangle(this.palette),
       new DataRain(this.palette),
-      new DataSpires(this.palette),
+      spires,
       new HolographicFish(this.palette),
       new InnerRain(this.palette),
       new BattleStorm(this.palette),
@@ -531,6 +563,10 @@ export class CoplandScene {
       this.graph,
     ]
     for (const f of this.features) this.scene.add(f.group)
+
+    // The top of the world mirrors the bottom: an inverted twin of the city
+    // hangs overhead ("as above, so below").
+    this.scene.add(makeVerticalMirror(spires.group, MIRROR_FOLD_Y))
   }
 
   setPhase(phase: CoplandPhase): void {
