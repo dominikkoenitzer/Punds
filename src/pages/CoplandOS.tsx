@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CoplandScene, type CoplandPhase, type HoverInfo, type Quality } from '../scene/coplandScene'
+import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
 import './CoplandOS.css'
 
@@ -43,9 +43,7 @@ export default function CoplandOS() {
   const [skipped, setSkipped] = useState(false)
   const [now, setNow] = useState<Date>(() => new Date())
   const [hovered, setHovered] = useState<HoverInfo | null>(null)
-  const [quality, setQualityState] = useState<Quality>('auto')
   const [muted, setMuted] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const mutedRef = useRef(false)
 
   // --- scene lifecycle ------------------------------------------------------
@@ -139,21 +137,14 @@ export default function CoplandOS() {
     return () => window.clearInterval(id)
   }, [phase])
 
-  // --- keyboard shortcuts ---------------------------------------------------
+  // --- mute shortcut (M) ----------------------------------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase()
-      if (k === 'm') setMuted((m) => !m)
-      else if (k === 'c') setSettingsOpen((s) => !s)
+      if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-
-  const changeQuality = (q: Quality) => {
-    setQualityState(q)
-    sceneRef.current?.setQuality(q)
-  }
 
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
@@ -229,36 +220,6 @@ export default function CoplandOS() {
           </>
         )}
       </div>
-
-      <button className="copland-cog" onClick={() => setSettingsOpen((s) => !s)} aria-label="settings">
-        ⚙
-      </button>
-      {settingsOpen && (
-        <div className="copland-settings">
-          <div className="cs-title">CONFIG.SYS</div>
-          <div className="cs-row">
-            <span className="cs-label">QUALITY</span>
-            <div className="cs-opts">
-              {(['auto', 'ultra', 'high', 'low'] as Quality[]).map((q) => (
-                <button
-                  key={q}
-                  className={`cs-opt${quality === q ? ' is-on' : ''}`}
-                  onClick={() => changeQuality(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="cs-row">
-            <span className="cs-label">SOUND</span>
-            <button className={`cs-opt${muted ? ' is-on' : ''}`} onClick={() => setMuted((m) => !m)}>
-              {muted ? 'muted' : 'on'}
-            </button>
-          </div>
-          <div className="cs-help">drag · look &nbsp; scroll · fly &nbsp; click node · jack in &nbsp; [M] mute [C] config</div>
-        </div>
-      )}
     </div>
   )
 }
