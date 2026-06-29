@@ -173,22 +173,44 @@
   animation: copland-fade 2.4s ease both;
 }
 
-/* hovered-panel readout (raycaster) */
+/* hovered-panel readout card (raycaster) */
 .copland-focus {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 60%;
-  text-align: center;
+  left: 50%;
+  top: 63%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.55rem 1.3rem;
   font-family: var(--mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.32em;
-  color: var(--phosphor);
-  text-shadow: 0 0 14px rgba(118, 228, 255, 0.6);
+  text-align: center;
+  border: 1px solid rgba(118, 228, 255, 0.22);
+  background: rgba(4, 16, 28, 0.45);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 0 24px rgba(0, 8, 16, 0.5);
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
 }
 .copland-focus.is-on { opacity: 1; }
+.focus-label {
+  font-size: 0.95rem;
+  letter-spacing: 0.26em;
+  color: var(--phosphor);
+  text-shadow: 0 0 14px rgba(118, 228, 255, 0.6);
+}
+.focus-sub {
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  color: var(--copland-text);
+  opacity: 0.8;
+}
+.focus-hint {
+  font-size: 0.56rem;
+  letter-spacing: 0.24em;
+  color: var(--tachibana);
+}
 
 /* navigation hint */
 .copland-nav {
