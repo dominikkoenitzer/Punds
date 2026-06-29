@@ -808,37 +808,63 @@ const Home = () => {
               </div>
               <div className="window-body links-body">
                 <a href="https://dominikkoenitzer.ch" target="_blank" rel="noopener noreferrer" className="access-link">
+                  <span className="node-dot" aria-hidden="true">●</span>
+                  <span className="link-index" aria-hidden="true">01</span>
                   <div className="link-icon pulse-icon"><FaGlobe /></div>
                   <div className="link-info">
                     <span className="link-name">PERSONAL_SITE</span>
                     <span className="link-path">/home/web</span>
+                    <span className="link-meta" aria-hidden="true">P7 · L01 · 08ms</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
                 <a href="https://senbon.ch" target="_blank" rel="noopener noreferrer" className="access-link">
+                  <span className="node-dot" aria-hidden="true">●</span>
+                  <span className="link-index" aria-hidden="true">02</span>
                   <div className="link-icon pulse-icon"><FaBook /></div>
                   <div className="link-info">
                     <span className="link-name">JOURNAL</span>
                     <span className="link-path">/senbon/journal</span>
+                    <span className="link-meta" aria-hidden="true">P7 · L04 · 23ms</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
                 <a href="https://github.com/dominikkoenitzer" target="_blank" rel="noopener noreferrer" className="access-link">
+                  <span className="node-dot" aria-hidden="true">●</span>
+                  <span className="link-index" aria-hidden="true">03</span>
                   <div className="link-icon pulse-icon"><FaGithub /></div>
                   <div className="link-info">
                     <span className="link-name">REPOSITORY</span>
                     <span className="link-path">/git/hub</span>
+                    <span className="link-meta" aria-hidden="true">P7 · L09 · 41ms</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
                 <a href="https://www.paypal.com/paypalme/dominikkoenitzer" target="_blank" rel="noopener noreferrer" className="access-link">
+                  <span className="node-dot" aria-hidden="true">●</span>
+                  <span className="link-index" aria-hidden="true">04</span>
                   <div className="link-icon pulse-icon"><FaPaypal /></div>
                   <div className="link-info">
                     <span className="link-name">TRANSFER</span>
                     <span className="link-path">/pay/support</span>
+                    <span className="link-meta" aria-hidden="true">P7 · L13 · 7.83ms</span>
                   </div>
                   <span className="link-arrow blink-slow">→</span>
                 </a>
+                <div className="bus-readout" aria-hidden="true">
+                  <div className="bus-readout-head">
+                    <span>├─ BUS_STATUS</span>
+                    <span className="bus-corner">TACHIBANA LABS</span>
+                  </div>
+                  <div className="bus-stat"><span className="bus-k">NODES</span><span className="bus-v blink-slow">4 / 4 LINKED</span></div>
+                  <div className="bus-stat"><span className="bus-k">PROTOCOL</span><span className="bus-v">7 // ENTERPRISE</span></div>
+                  <div className="bus-stat"><span className="bus-k">CARRIER</span><span className="bus-v active-pulse">7.83 Hz</span></div>
+                  <div className="bus-stat"><span className="bus-k">LAYER</span><span className="bus-v">0x07</span></div>
+                  <div className="bus-stat bus-stat-tile"><span className="bus-k">INTEGRITY</span><span className="bus-v">▓▓▓▓▓▓▓░ 91%</span></div>
+                  <div className="bus-stat"><span className="bus-k">HANDSHAKE</span><span className="bus-v">awaiting<span className="blink-fast">_</span></span></div>
+                  <span className="bus-idle">PRESENT DAY :: PRESENT TIME</span>
+                  <div className="bus-eol">└─ EOL :: txEn eht nepO</div>
+                </div>
               </div>
             </div>
           </div>
