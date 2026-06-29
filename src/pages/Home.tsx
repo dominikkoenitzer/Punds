@@ -328,6 +328,10 @@ const Home = () => {
 
   const [floatingMsgs, setFloatingMsgs] = useState<Array<{ id: number; x: number; y: number; text: string }>>([])
 
+  // Monotonic id source for transient lists (cursor trail, floating intercepts).
+  // Date.now() collides when events fire within the same millisecond, producing duplicate React keys.
+  const uidRef = useRef(0)
+
   // ==========================================================================
   // EFFECTS
   // ==========================================================================
@@ -368,7 +372,7 @@ const Home = () => {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       setCursorTrail(prev => {
-        const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: Date.now() }]
+        const newTrail = [...prev, { x: e.clientX, y: e.clientY, id: ++uidRef.current }]
         return newTrail.slice(-15)
       })
     }
@@ -392,7 +396,7 @@ const Home = () => {
   useEffect(() => {
     if (!booted) return
     const spawn = setInterval(() => {
-      const id = Date.now()
+      const id = ++uidRef.current
       const x = 3 + Math.random() * 93
       const y = 8 + Math.random() * 83
       const text = FLOAT_MSGS[Math.floor(Math.random() * FLOAT_MSGS.length)]
