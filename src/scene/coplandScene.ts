@@ -113,50 +113,81 @@ function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(S, S)
   ctx.translate(S / 2, S / 2)
   ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
 
-  const stroke = (color: string, blur: number) => {
+  const cyan = p.phosphorStr // bright iris / nodes
+  const blue = p.hologramStr // mid-blue body / brackets
+  const setGlow = (color: string, blur: number): void => {
     ctx.shadowColor = color
     ctx.shadowBlur = blur
     ctx.strokeStyle = color
     ctx.fillStyle = color
   }
-
-  const halo = ctx.createRadialGradient(0, 0, 40, 0, 0, 420)
-  halo.addColorStop(0, 'rgba(120,210,255,0.20)')
-  halo.addColorStop(1, 'rgba(120,210,255,0)')
-  ctx.fillStyle = halo
-  ctx.beginPath(); ctx.arc(0, 0, 420, 0, Math.PI * 2); ctx.fill()
-
-  stroke(p.phosphorStr, 28)
-  ctx.lineWidth = 10
-  for (const r of [70, 120, 175]) {
-    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke()
+  const dot = (x: number, y: number, r: number): void => {
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
   }
 
-  const pupil = ctx.createRadialGradient(0, 0, 4, 0, 0, 60)
-  pupil.addColorStop(0, '#ffffff')
-  pupil.addColorStop(0.4, p.phosphorStr)
-  pupil.addColorStop(1, 'rgba(120,210,255,0)')
-  ctx.shadowColor = p.phosphorStr
-  ctx.shadowBlur = 40
-  ctx.fillStyle = pupil
-  ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.fill()
+  // soft outer halo
+  const halo = ctx.createRadialGradient(0, 0, 40, 0, 0, 460)
+  halo.addColorStop(0, 'rgba(90,170,255,0.22)')
+  halo.addColorStop(1, 'rgba(90,170,255,0)')
+  ctx.fillStyle = halo
+  ctx.beginPath(); ctx.arc(0, 0, 460, 0, Math.PI * 2); ctx.fill()
 
-  stroke(p.hologramStr, 24)
+  // big eye-ring (the iris body), open at the bottom where the stem exits
+  setGlow(blue, 26)
   ctx.lineWidth = 16
-  const bracket = (dir: number) => {
+  ctx.beginPath(); ctx.arc(0, -25, 150, 0.62 * Math.PI, 2.38 * Math.PI); ctx.stroke()
+
+  // angular "< >" chevron wings flanking the eye
+  setGlow(blue, 24)
+  ctx.lineWidth = 22
+  const chevron = (s: number): void => {
     ctx.beginPath()
-    ctx.arc(dir * 250, 0, 150, dir === 1 ? -0.85 : Math.PI - 0.85, dir === 1 ? 0.85 : Math.PI + 0.85, dir !== 1)
+    ctx.moveTo(s * 108, -138)
+    ctx.lineTo(s * 218, -46)
+    ctx.lineTo(s * 108, 32)
     ctx.stroke()
   }
-  bracket(1); bracket(-1)
+  chevron(-1); chevron(1)
 
-  stroke(p.phosphorStr, 18)
-  ctx.lineWidth = 8
-  ctx.beginPath(); ctx.moveTo(0, 175); ctx.lineTo(0, 300); ctx.stroke()
-  for (const [dx, dy] of [[0, 300], [-250, 150], [250, 150], [-175, -120], [175, -120]] as const) {
-    ctx.beginPath(); ctx.arc(dx, dy, 14, 0, Math.PI * 2); ctx.fill()
+  // iris ring + bright scan-lined pupil
+  setGlow(cyan, 22)
+  ctx.lineWidth = 12
+  ctx.beginPath(); ctx.arc(0, -55, 74, 0, Math.PI * 2); ctx.stroke()
+
+  const pupil = ctx.createRadialGradient(0, -55, 4, 0, -55, 54)
+  pupil.addColorStop(0, '#ffffff')
+  pupil.addColorStop(0.45, cyan)
+  pupil.addColorStop(1, 'rgba(120,210,255,0.18)')
+  ctx.shadowColor = cyan
+  ctx.shadowBlur = 40
+  ctx.fillStyle = pupil
+  ctx.beginPath(); ctx.arc(0, -55, 52, 0, Math.PI * 2); ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = 'rgba(18,52,104,0.55)'
+  ctx.lineWidth = 5
+  for (let yy = -80; yy <= -30; yy += 12) {
+    ctx.beginPath(); ctx.moveTo(-48, yy); ctx.lineTo(48, yy); ctx.stroke()
   }
+
+  // bottom circuit stem + diagonal traces to the corner nodes
+  setGlow(cyan, 18)
+  ctx.lineWidth = 12
+  ctx.beginPath(); ctx.moveTo(0, 120); ctx.lineTo(0, 205); ctx.stroke()
+  ctx.lineWidth = 9
+  ctx.beginPath(); ctx.moveTo(0, 150); ctx.lineTo(-74, 196); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(0, 150); ctx.lineTo(74, 196); ctx.stroke()
+
+  // node dots: chevron upper tips, bottom corners, stem terminal
+  setGlow(cyan, 16)
+  dot(-108, -138, 15)
+  dot(108, -138, 15)
+  dot(-74, 196, 15)
+  dot(74, 196, 15)
+  dot(0, 205, 12)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
