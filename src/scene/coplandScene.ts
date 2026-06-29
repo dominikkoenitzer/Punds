@@ -12,6 +12,7 @@ import { DataRain } from './features/dataRain'
 import { DataSpires } from './features/dataSpires'
 import { TerminalText } from './features/terminalText'
 import { NetworkGraph } from './features/networkGraph'
+import { PANEL_DATA, type PanelDatum } from './panelData'
 
 // ============================================================================
 // COPLAND OS — navigable 3D backdrop
@@ -24,30 +25,21 @@ import { NetworkGraph } from './features/networkGraph'
 
 export type CoplandPhase = 'logo' | 'boot' | 'welcome' | 'desktop'
 
-export interface CoplandHandlers {
-  onActivate?: () => void                 // a tap during boot -> skip to desktop
-  onHover?: (label: string | null) => void
+export interface HoverInfo {
+  label: string
+  detail: string
+  href?: string
 }
 
-const PANELS: { label: string; variant: number }[] = [
-  { label: 'NAVI', variant: 0 },
-  { label: 'WIRED', variant: 1 },
-  { label: 'PROTOCOL 7', variant: 2 },
-  { label: 'PSYCHE', variant: 3 },
-  { label: 'LAYER 07', variant: 0 },
-  { label: 'SCHUMANN', variant: 1 },
-  { label: 'TACHIBANA', variant: 2 },
-  { label: 'CYBERIA', variant: 3 },
-  { label: 'KIDS', variant: 0 },
-  { label: 'MEMEX', variant: 1 },
-  { label: 'XANADU', variant: 2 },
-  { label: 'PRESENT DAY', variant: 3 },
-]
+export interface CoplandHandlers {
+  onActivate?: () => void                 // a tap during boot -> skip to desktop
+  onHover?: (info: HoverInfo | null) => void
+}
 
 interface Panel {
   mesh: THREE.Mesh
   mat: THREE.MeshBasicMaterial
-  label: string
+  datum: PanelDatum
   baseX: number
   baseY: number
   baseZ: number
@@ -162,11 +154,13 @@ function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   return tex
 }
 
-function drawPanelTexture(label: string, variant: number, p: ScenePalette): THREE.CanvasTexture {
+function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTexture {
   const W = 512
   const H = 320
   const { canvas, ctx } = makeCanvas(W, H)
+  const accent = d.accent === 'tachibana' ? p.tachibanaStr : d.accent === 'warning' ? p.warningStr : p.phosphorStr
 
+  // frame
   const r = 22
   ctx.beginPath()
   ctx.moveTo(r, 2)
@@ -175,70 +169,61 @@ function drawPanelTexture(label: string, variant: number, p: ScenePalette): THRE
   ctx.arcTo(2, H - 2, 2, 2, r)
   ctx.arcTo(2, 2, W - 2, 2, r)
   ctx.closePath()
-  ctx.fillStyle = 'rgba(28,86,130,0.16)'
+  ctx.fillStyle = 'rgba(16,58,92,0.18)'
   ctx.fill()
-  ctx.shadowColor = p.hologramStr
+  ctx.shadowColor = accent
   ctx.shadowBlur = 16
   ctx.lineWidth = 2.5
-  ctx.strokeStyle = p.hologramStr
+  ctx.strokeStyle = accent
   ctx.stroke()
   ctx.shadowBlur = 0
 
-  ctx.fillStyle = p.phosphorStr
-  ctx.font = '600 26px "TrixieCyrG", ui-monospace, monospace'
   ctx.textBaseline = 'top'
-  ctx.shadowColor = p.phosphorStr
-  ctx.shadowBlur = 10
-  ctx.fillText(label.toUpperCase(), 28, 26)
+
+  // kind tag, top-right
+  const tag = d.kind === 'link' ? 'LINK' : d.kind === 'file' ? 'FILE' : d.kind === 'profile' ? 'OPR' : 'SYS'
+  ctx.font = '600 18px "TrixieCyrG", ui-monospace, monospace'
+  ctx.fillStyle = 'rgba(120,210,255,0.5)'
+  ctx.fillText(tag, W - 30 - ctx.measureText(tag).width, 32)
+
+  // label
+  ctx.font = '700 30px "TrixieCyrG", ui-monospace, monospace'
+  ctx.fillStyle = accent
+  ctx.shadowColor = accent
+  ctx.shadowBlur = 12
+  ctx.fillText(d.label, 30, 26)
   ctx.shadowBlur = 0
-  ctx.fillStyle = 'rgba(120,210,255,0.45)'
-  ctx.fillRect(28, 66, W - 56, 1.5)
 
-  ctx.strokeStyle = p.phosphorStr
-  ctx.fillStyle = p.phosphorStr
-  ctx.lineWidth = 2
+  // divider
+  ctx.fillStyle = 'rgba(120,210,255,0.4)'
+  ctx.fillRect(30, 72, W - 60, 1.5)
 
-  if (variant === 0) {
-    const dcx = W / 2
-    const dcy = 200
-    ctx.globalAlpha = 0.35
-    ctx.beginPath(); ctx.arc(dcx, dcy, 78, 0, Math.PI * 2); ctx.stroke()
-    ctx.globalAlpha = 1
-    ctx.beginPath(); ctx.arc(dcx, dcy, 78, -Math.PI / 2, Math.PI * 0.85); ctx.stroke()
-    for (let i = 0; i < 36; i++) {
-      const a = (i / 36) * Math.PI * 2
-      ctx.globalAlpha = i % 3 === 0 ? 0.9 : 0.3
-      ctx.beginPath()
-      ctx.moveTo(dcx + Math.cos(a) * 88, dcy + Math.sin(a) * 88)
-      ctx.lineTo(dcx + Math.cos(a) * 98, dcy + Math.sin(a) * 98)
-      ctx.stroke()
+  // body lines (a "▸ …" line renders as a highlighted action)
+  let y = 100
+  for (const line of d.lines) {
+    if (line.startsWith('▸')) {
+      ctx.font = '700 26px "TrixieCyrG", ui-monospace, monospace'
+      ctx.fillStyle = accent
+      ctx.shadowColor = accent
+      ctx.shadowBlur = 14
+      ctx.fillText(line, 30, y + 4)
+      ctx.shadowBlur = 0
+    } else {
+      ctx.font = '400 24px "TrixieCyrG", ui-monospace, monospace'
+      ctx.fillStyle = p.phosphorStr
+      ctx.fillText(line, 30, y)
     }
-    ctx.globalAlpha = 1
-  } else if (variant === 1) {
-    for (let i = 0; i < 11; i++) {
-      const bh = 20 + ((i * 37) % 110)
-      ctx.globalAlpha = 0.25 + ((i * 13) % 70) / 100
-      ctx.fillRect(34 + i * 42, 250 - bh, 26, bh)
-    }
-    ctx.globalAlpha = 1
-  } else if (variant === 2) {
-    ctx.beginPath()
-    for (let x = 28; x <= W - 28; x += 6) {
-      const t = (x - 28) / (W - 56)
-      const y = 195 + Math.sin(t * Math.PI * 8) * 40 * Math.sin(t * Math.PI)
-      if (x === 28) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    }
-    ctx.stroke()
-  } else {
-    for (let gy = 0; gy < 4; gy++) {
-      for (let gx = 0; gx < 10; gx++) {
-        ctx.globalAlpha = (gx * 7 + gy * 5) % 4 === 0 ? 0.85 : 0.18
-        ctx.fillRect(34 + gx * 44, 110 + gy * 40, 30, 24)
-      }
-    }
-    ctx.globalAlpha = 1
+    y += 40
   }
+
+  // corner bracket
+  ctx.strokeStyle = accent
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(W - 14, H - 30)
+  ctx.lineTo(W - 14, H - 14)
+  ctx.lineTo(W - 30, H - 14)
+  ctx.stroke()
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -436,8 +421,8 @@ export class CoplandScene {
   }
 
   private buildPanels(): void {
-    PANELS.forEach((def, i) => {
-      const tex = drawPanelTexture(def.label, def.variant, this.palette)
+    PANEL_DATA.forEach((datum, i) => {
+      const tex = drawPanelTexture(datum, this.palette)
       const mat = new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
@@ -447,20 +432,21 @@ export class CoplandScene {
         side: THREE.DoubleSide,
       })
       const aspect = 512 / 320
-      const hgt = 1.7 + (i % 3) * 0.35
+      const near = datum.kind === 'link' || datum.kind === 'profile'
+      const hgt = near ? 2.3 : 1.8 + (i % 3) * 0.3
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(hgt * aspect, hgt), mat)
 
-      const angle = (i / PANELS.length) * Math.PI * 2 + 0.6
-      const radius = 8 + (i % 4) * 2.4
+      const angle = (i / PANEL_DATA.length) * Math.PI * 2 + 0.6
+      const radius = near ? 5.5 + (i % 3) * 1.1 : 9.5 + (i % 4) * 2.4
       const baseX = Math.cos(angle) * radius
-      const baseY = Math.sin(angle) * radius * 0.5 + (i % 2 ? 1.6 : -1.6)
-      const baseZ = -5 - (i % 5) * 4.2
+      const baseY = Math.sin(angle) * radius * 0.5 + (i % 2 ? 1.4 : -1.4)
+      const baseZ = (near ? -3 : -8) - (i % 5) * 2.6
       mesh.position.set(baseX, baseY, baseZ)
 
       this.panels.push({
         mesh,
         mat,
-        label: def.label,
+        datum,
         baseX,
         baseY,
         baseZ,
@@ -505,7 +491,13 @@ export class CoplandScene {
       }
     }
     const hits = this.raycaster.intersectObjects(this.panelMeshes, false)
-    if (hits.length) this.lookToward(hits[0].object.position)
+    if (hits.length === 0) return
+    const panel = this.panels.find((p) => p.mesh === hits[0].object)
+    if (panel?.datum.href) {
+      window.open(panel.datum.href, '_blank', 'noopener,noreferrer')
+    } else {
+      this.lookToward(hits[0].object.position)
+    }
   }
 
   private lookToward(worldPos: THREE.Vector3): void {
@@ -626,7 +618,14 @@ export class CoplandScene {
     const next = hitMesh ? this.panels.find((p) => p.mesh === hitMesh) ?? null : null
     if (next !== this.hovered) {
       this.hovered = next
-      this.handlers.onHover?.(next ? next.label : null)
+      if (next) {
+        const dd = next.datum
+        const detail = dd.lines[0] ?? ''
+        const info: HoverInfo = dd.href ? { label: dd.label, detail, href: dd.href } : { label: dd.label, detail }
+        this.handlers.onHover?.(info)
+      } else {
+        this.handlers.onHover?.(null)
+      }
       if (!this.dragging) this.renderer.domElement.style.cursor = next ? 'pointer' : 'grab'
     }
   }
