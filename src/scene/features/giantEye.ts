@@ -131,7 +131,7 @@ export class GiantEye implements SceneFeature {
 
   constructor(palette: ScenePalette) {
     this.group = new THREE.Group()
-    this.group.position.set(0, BASE_Y, -28)
+    this.group.position.set(0, BASE_Y, 0) // directly overhead, centered at the zenith
 
     this.glowTex = drawGlowTexture()
     this.glowMat = new THREE.SpriteMaterial({
