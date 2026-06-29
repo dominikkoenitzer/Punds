@@ -26,8 +26,8 @@ function drawFrameTexture(p: ScenePalette): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(S)
   ctx.translate(S / 2, S / 2)
   ctx.lineCap = 'round'
-  const W = S * 0.4
-  const H = S * 0.17
+  const W = S * 0.45
+  const H = S * 0.18
   const eyePath = () => {
     ctx.beginPath()
     ctx.moveTo(-W, 0)
@@ -49,55 +49,6 @@ function drawFrameTexture(p: ScenePalette): THREE.CanvasTexture {
   eyePath()
   ctx.stroke()
   ctx.globalAlpha = 1
-
-  // long, dense, swept + tapered eyelashes
-  const bez = (t: number, top: boolean): { x: number; y: number } => {
-    const u = 1 - t
-    const cy = top ? -H * 1.7 : H * 1.7
-    return { x: u * u * -W + t * t * W, y: 2 * u * t * cy }
-  }
-  // a single tapered lash: wide at the base, curving to a fine point
-  const lash = (bx: number, by: number, dx: number, dy: number, len: number, baseW: number, curve: number): void => {
-    const tx = -dy
-    const ty = dx
-    const mx = bx + dx * len * 0.45 + tx * curve * 0.5
-    const my = by + dy * len * 0.45 + ty * curve * 0.5
-    const tipx = bx + dx * len + tx * curve
-    const tipy = by + dy * len + ty * curve
-    ctx.beginPath()
-    ctx.moveTo(bx + tx * baseW, by + ty * baseW)
-    ctx.quadraticCurveTo(mx + tx * baseW * 0.35, my + ty * baseW * 0.35, tipx, tipy)
-    ctx.quadraticCurveTo(mx - tx * baseW * 0.35, my - ty * baseW * 0.35, bx - tx * baseW, by - ty * baseW)
-    ctx.closePath()
-    ctx.fill()
-  }
-  const drawLashes = (count: number, top: boolean, lenBase: number, baseW: number, alpha: number): void => {
-    ctx.fillStyle = p.phosphorStr
-    ctx.shadowColor = p.phosphorStr
-    ctx.shadowBlur = 14
-    ctx.globalAlpha = alpha
-    for (let i = 0; i < count; i++) {
-      const t = 0.1 + (i / (count - 1)) * 0.8
-      const a0 = bez(t, top)
-      const a1 = bez(t + 0.01, top)
-      let nx = -(a1.y - a0.y)
-      let ny = a1.x - a0.x
-      const nl = Math.hypot(nx, ny) || 1
-      nx /= nl; ny /= nl
-      if ((top && ny > 0) || (!top && ny < 0)) { nx = -nx; ny = -ny } // point outward
-      const side = a0.x >= 0 ? 1 : -1
-      const corner = Math.abs(a0.x / W)
-      let dx = nx + side * corner * 0.7 // splay toward the outer corner
-      let dy = ny
-      const dl = Math.hypot(dx, dy) || 1
-      dx /= dl; dy /= dl
-      const len = lenBase * (0.6 + corner * 0.8) * (0.85 + Math.random() * 0.3) // longer toward the corners
-      lash(a0.x, a0.y, dx, dy, len, baseW * (0.8 + Math.random() * 0.4), side * len * 0.4)
-    }
-    ctx.globalAlpha = 1
-  }
-  drawLashes(24, true, S * 0.13, S * 0.013, 0.6)
-  drawLashes(22, false, S * 0.115, S * 0.011, 0.45)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -213,7 +164,7 @@ export class GiantEye implements SceneFeature {
     }
 
     const frame = addLayer(drawFrameTexture(palette), R * 2.4, 0, 0.34)
-    this.iris = addLayer(drawIrisTexture(), R * 1.05, 0.4, 0.72)
+    this.iris = addLayer(drawIrisTexture(), R * 1.5, 0.4, 0.72)
     this.frameMat = frame.material as THREE.MeshBasicMaterial
     this.irisMat = this.iris.material as THREE.MeshBasicMaterial
 
@@ -254,7 +205,7 @@ export class GiantEye implements SceneFeature {
     if (this.sacTimer <= 0) {
       this.sacTimer = 1.4 + Math.random() * 2.6
       if (Math.random() < 0.4) this.sacTarget.set(0, 0)
-      else this.sacTarget.set((Math.random() - 0.5) * R * 0.14, (Math.random() - 0.5) * R * 0.05)
+      else this.sacTarget.set((Math.random() - 0.5) * R * 0.1, (Math.random() - 0.5) * R * 0.035)
     }
     this.sacCur.lerp(this.sacTarget, 0.22) // snappy flick, then settle
     this.iris.position.set(this.sacCur.x, this.sacCur.y, 0.4)
