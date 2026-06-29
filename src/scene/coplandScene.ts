@@ -22,6 +22,9 @@ import { Totem } from './features/totem'
 import { EnergySlashes } from './features/energySlash'
 import { ReiatsuBursts } from './features/reiatsu'
 import { BattleStorm } from './features/lightning'
+import { WiredIntercepts } from './features/wiredIntercepts'
+import { WatchingEyes } from './features/watchingEyes'
+import { Apparition } from './features/apparition'
 import { PANEL_DATA, type PanelDatum } from './panelData'
 
 // ============================================================================
@@ -34,6 +37,8 @@ import { PANEL_DATA, type PanelDatum } from './panelData'
 // ============================================================================
 
 export type CoplandPhase = 'logo' | 'boot' | 'welcome' | 'desktop'
+export type Quality = 'auto' | 'ultra' | 'high' | 'low'
+type Tier = 'ultra' | 'high' | 'low'
 
 export interface HoverInfo {
   label: string
@@ -333,6 +338,15 @@ export class CoplandScene {
   private audioLevel = 0
   private features: SceneFeature[] = []
   private graph: NetworkGraph | null = null
+  private qualityHideOnLow: THREE.Object3D[] = []
+  private quality: Quality = 'auto'
+  private tier: Tier = 'high'
+  private dprCap = 1.3
+  private qualityBloom = 1
+  private fpsAccum = 0
+  private fpsFrames = 0
+  private fps = 60
+  private autoTimer = 0
   private fogPulse = 0
   private diveTimer = 0
   private surgeTimer = 3
@@ -439,6 +453,7 @@ export class CoplandScene {
     this.glitch.enabled = false
     this.composer.addPass(this.glitch)
     this.composer.addPass(new OutputPass())
+    this.applyTier(this.tier)
 
     // --- input ---------------------------------------------------------------
     this.onPointerDown = (e: PointerEvent) => {
@@ -583,14 +598,17 @@ export class CoplandScene {
   private buildFeatures(): void {
     this.graph = new NetworkGraph(this.palette)
     const spires = new DataSpires(this.palette)
+    const floor = new ReflectiveFloor(this.palette)
+    const sideways = new SidewaysCity(this.palette)
+    const fish = new HolographicFish(this.palette)
     this.features = [
       new InnerSky(this.palette),
-      new ReflectiveFloor(this.palette),
-      new SidewaysCity(this.palette),
+      floor,
+      sideways,
       new CableTangle(this.palette),
       new DataRain(this.palette),
       spires,
-      new HolographicFish(this.palette),
+      fish,
       new InnerRain(this.palette),
       new BattleStorm(this.palette),
       new Watcher(this.palette),
@@ -598,6 +616,9 @@ export class CoplandScene {
       new Totem(this.palette),
       new EnergySlashes(this.palette),
       new ReiatsuBursts(this.palette),
+      new WiredIntercepts(this.palette),
+      new WatchingEyes(this.palette),
+      new Apparition(this.palette),
       new TerminalText(this.palette),
       this.graph,
     ]
@@ -605,7 +626,12 @@ export class CoplandScene {
 
     // The top of the world mirrors the bottom: an inverted twin of the city
     // hangs overhead ("as above, so below").
-    this.scene.add(makeVerticalMirror(spires.group, MIRROR_FOLD_Y))
+    const mirror = makeVerticalMirror(spires.group, MIRROR_FOLD_Y)
+    this.scene.add(mirror)
+
+    // Heaviest things dropped on the Low quality tier: the reflection pass is
+    // the biggest cost, then the mirror twin, the sideways city, and the koi.
+    this.qualityHideOnLow = [floor.group, mirror, sideways.group, fish.group]
   }
 
   setPhase(phase: CoplandPhase): void {
@@ -613,6 +639,45 @@ export class CoplandScene {
     this.logoTarget = phase === 'boot' ? 0.35 : 1
     this.panelTarget = phase === 'desktop' ? 1 : 0
     this.glitchTimer = 0.4 // brief glitch warp on layer change
+  }
+
+  setQuality(q: Quality): void {
+    this.quality = q
+    if (q !== 'auto') this.applyTier(q)
+  }
+
+  getQuality(): Quality {
+    return this.quality
+  }
+
+  setMuted(m: boolean): void {
+    this.audio.setMuted(m)
+  }
+
+  isMuted(): boolean {
+    return this.audio.isMuted()
+  }
+
+  // Apply a quality tier: pixel-ratio cap, bloom scale, and dropping the
+  // heaviest geometry (incl. the reflection pass) on Low.
+  private applyTier(tier: Tier): void {
+    this.tier = tier
+    this.dprCap = tier === 'ultra' ? 1.75 : tier === 'high' ? 1.3 : 1.0
+    this.qualityBloom = tier === 'low' ? 0.8 : 1
+    const showHeavy = tier !== 'low'
+    for (const o of this.qualityHideOnLow) o.visible = showHeavy
+    const dpr = Math.min(window.devicePixelRatio, this.dprCap)
+    this.renderer.setPixelRatio(dpr)
+    this.composer.setPixelRatio(dpr)
+  }
+
+  // FPS-driven auto-throttle: step the tier down when slow, up when there's headroom.
+  private autoAdjust(): void {
+    const order: Tier[] = ['low', 'high', 'ultra']
+    let i = order.indexOf(this.tier)
+    if (this.fps < 32 && i > 0) i--
+    else if (this.fps > 56 && i < 2) i++
+    if (order[i] !== this.tier) this.applyTier(order[i])
   }
 
   private handleTap(): void {
@@ -684,6 +749,16 @@ export class CoplandScene {
     const t = this.timer.getElapsed()
     const motion = this.reduced ? 0.25 : 1
     this.frame++
+    this.fpsAccum += dt
+    this.fpsFrames++
+    this.autoTimer += dt
+    if (this.autoTimer >= 1.5) {
+      this.fps = this.fpsFrames / Math.max(this.fpsAccum, 0.0001)
+      this.fpsAccum = 0
+      this.fpsFrames = 0
+      this.autoTimer = 0
+      if (this.quality === 'auto') this.autoAdjust()
+    }
     this.audioLevel = this.audio.level()
 
     // combat surge: a periodic battle impact — camera shake + flash + glitch
@@ -775,7 +850,9 @@ export class CoplandScene {
 
     // --- phosphor flicker on the bloom ---------------------------------------
     const flick = Math.sin(t * 30) * 0.04 + (Math.random() < 0.015 ? -0.3 : 0)
-    this.bloom.strength = this.reduced ? 1.0 : 1.2 + this.audioLevel * 0.7 + flick + this.surgeFlash * 1.6
+    this.bloom.strength = this.reduced
+      ? 1.0
+      : (1.2 + this.audioLevel * 0.7 + flick + this.surgeFlash * 1.6) * this.qualityBloom
     this.renderer.toneMappingExposure = 1.1 + this.surgeFlash * 0.5
 
     this.composer.render()
