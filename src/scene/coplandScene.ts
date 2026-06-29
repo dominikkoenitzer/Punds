@@ -234,6 +234,11 @@ function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTexture {
 
 // ---------------------------------------------------------------------------
 
+// Camera eye height above the world origin. The plaza floor is at y = -10, so
+// this lifts the viewer well above the ground; the central logo + UI panels are
+// offset by the same amount so the interface stays at eye level.
+const EYE_HEIGHT = 6
+
 export class CoplandScene {
   private container: HTMLElement
   private renderer: THREE.WebGLRenderer
@@ -271,7 +276,7 @@ export class CoplandScene {
   private reduced = false
 
   // camera rig
-  private base = new THREE.Vector3(0, 0, 0)
+  private base = new THREE.Vector3(0, EYE_HEIGHT, 0)
   private yaw = 0
   private pitch = 0
   private yawTarget = 0
@@ -333,7 +338,7 @@ export class CoplandScene {
       depthWrite: false,
     })
     this.logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), this.logoMat)
-    this.logo.position.set(0, 0, -9)
+    this.logo.position.set(0, EYE_HEIGHT, -9)
     this.scene.add(this.logo)
 
     this.buildPanels()
@@ -445,7 +450,7 @@ export class CoplandScene {
     const yaw = (yawDeg * Math.PI) / 180
     const pitch = (pitchDeg * Math.PI) / 180
     const baseX = Math.sin(yaw) * Math.cos(pitch) * dist
-    const baseY = Math.sin(pitch) * dist
+    const baseY = EYE_HEIGHT + Math.sin(pitch) * dist
     const baseZ = -Math.cos(yaw) * Math.cos(pitch) * dist
     mesh.position.set(baseX, baseY, baseZ)
     this.panels.push({
@@ -598,7 +603,7 @@ export class CoplandScene {
     this.camera.quaternion.setFromEuler(e)
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion)
     this.camera.position.copy(this.base).addScaledVector(forward, this.dolly)
-    this.camera.position.y = Math.max(this.camera.position.y, -6)
+    this.camera.position.y = Math.max(this.camera.position.y, -2)
 
     // --- jack-in fog pulse + feature update + glitch warp timer --------------
     this.fogPulse += (0 - this.fogPulse) * 0.02
