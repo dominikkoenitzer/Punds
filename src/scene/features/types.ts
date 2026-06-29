@@ -22,6 +22,7 @@ export interface FeatureContext {
   t: number                        // total elapsed seconds
   motion: number                   // 1, or 0.25 under prefers-reduced-motion
   audio: number                    // 0..1 bass level (0 until audio starts)
+  dread: number                    // 0..1 idle "dread" — ramps up while the viewer is still
   camera: THREE.PerspectiveCamera  // the live camera
 }
 

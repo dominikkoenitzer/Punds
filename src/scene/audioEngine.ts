@@ -10,6 +10,7 @@ export class AudioEngine {
   private analyser: AnalyserNode | null = null
   private data: Uint8Array<ArrayBuffer> | null = null
   private outGain: GainNode | null = null
+  private lp: BiquadFilterNode | null = null
   private muted = false
   private started = false
   private smoothed = 0
@@ -45,6 +46,7 @@ export class AudioEngine {
       lp.type = 'lowpass'
       lp.frequency.value = 240
       lp.connect(master)
+      this.lp = lp
       for (const [freq, detune] of [[55, -5], [55, 7], [110, 3]] as const) {
         const osc = ctx.createOscillator()
         osc.type = 'sawtooth'
@@ -86,6 +88,11 @@ export class AudioEngine {
   setMuted(m: boolean): void {
     this.muted = m
     if (this.outGain) this.outGain.gain.value = m ? 0 : 1
+  }
+
+  // 0..1 idle dread: drop the lowpass so the hum sinks lower / muddier.
+  setDread(d: number): void {
+    if (this.lp) this.lp.frequency.value = 240 - d * 130
   }
 
   isMuted(): boolean {

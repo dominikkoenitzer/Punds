@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
+import { PANEL_DATA, type PanelDatum } from '../scene/panelData'
 import './CoplandOS.css'
 
 // ============================================================================
@@ -33,6 +34,15 @@ const BOOT_LINES: string[] = [
 
 const pad = (n: number): string => n.toString().padStart(2, '0')
 
+function supportsWebGL(): boolean {
+  try {
+    const c = document.createElement('canvas')
+    return !!(c.getContext('webgl2') || c.getContext('webgl'))
+  } catch {
+    return false
+  }
+}
+
 export default function CoplandOS() {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<CoplandScene | null>(null)
@@ -45,26 +55,42 @@ export default function CoplandOS() {
   const [hovered, setHovered] = useState<HoverInfo | null>(null)
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
+  const [openPanel, setOpenPanel] = useState<PanelDatum | null>(null)
+  const [webglFailed] = useState(() => !supportsWebGL())
+  const [hexInput, setHexInput] = useState('')
+  const [decoded, setDecoded] = useState('')
 
   // --- scene lifecycle ------------------------------------------------------
   useEffect(() => {
     const container = containerRef.current
-    if (!container) return
-    const scene = new CoplandScene(container, {
-      onActivate: () => {
-        setSkipped(true)
-        setBootLines(BOOT_LINES)
-        setPhase('desktop')
-      },
-      onHover: (info) => setHovered(info),
-    })
-    sceneRef.current = scene
-    scene.start()
+    if (!container || webglFailed) return
+    let scene: CoplandScene | null = null
+    try {
+      scene = new CoplandScene(container, {
+        onActivate: () => {
+          setSkipped(true)
+          setBootLines(BOOT_LINES)
+          setPhase('desktop')
+        },
+        onHover: (info) => setHovered(info),
+        onOpenPanel: (d) => {
+          setOpenPanel(d)
+          if (d.decoder) {
+            setHexInput((h) => h || '47 6F 64 20 69 73 20 68 65 72 65 2E')
+            setDecoded('')
+          }
+        },
+      })
+      sceneRef.current = scene
+      scene.start()
+    } catch {
+      sceneRef.current = null // rare: WebGL reported but init failed; canvas stays blank
+    }
     return () => {
-      scene.dispose()
+      scene?.dispose()
       sceneRef.current = null
     }
-  }, [])
+  }, [webglFailed])
 
   // --- NAVI voice -----------------------------------------------------------
   useEffect(() => {
@@ -130,21 +156,33 @@ export default function CoplandOS() {
       'the signal is clear',
     ]
     const id = window.setInterval(() => {
-      if (mutedRef.current || Math.random() > 0.5) return
+      if (mutedRef.current) return
+      const dread = sceneRef.current?.getDread() ?? 0
+      if (Math.random() > 0.2 + dread * 0.65) return // more often the longer you're still
       const line = WHISPERS[Math.floor(Math.random() * WHISPERS.length)]
-      voiceRef.current?.speak(line, { pitch: 0.58, rate: 0.8, volume: 0.7 })
-    }, 21000)
+      voiceRef.current?.speak(line, { pitch: 0.58 - dread * 0.08, rate: 0.8, volume: 0.55 + dread * 0.25 })
+    }, 15000)
     return () => window.clearInterval(id)
   }, [phase])
 
-  // --- mute shortcut (M) ----------------------------------------------------
+  // --- shortcuts: Esc closes a window, M mutes -----------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
+      if (e.key === 'Escape') setOpenPanel(null)
+      else if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  const handleDecode = () => {
+    const clean = hexInput.replace(/[^0-9a-fA-F]/g, '')
+    let out = ''
+    for (let i = 0; i + 1 < clean.length; i += 2) {
+      out += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16))
+    }
+    setDecoded(out || '— no data —')
+  }
 
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
@@ -220,6 +258,48 @@ export default function CoplandOS() {
           </>
         )}
       </div>
+
+      {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
+      <div className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
+        <h1>Copland OS Enterprise — Dominik Koenitzer</h1>
+        <p>A Serial Experiments Lain NAVI terminal. Access points:</p>
+        <nav>
+          {PANEL_DATA.filter((d) => d.kind === 'link').map((d) => (
+            <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer">
+              {d.label} — {d.lines[0]}
+            </a>
+          ))}
+        </nav>
+      </div>
+
+      {/* opened panel window */}
+      {openPanel && (
+        <div className="copland-window-wrap" onClick={() => setOpenPanel(null)}>
+          <div className="copland-window" onClick={(e) => e.stopPropagation()}>
+            <div className="cw-bar">
+              <span className="cw-title">{openPanel.label}</span>
+              <button className="cw-close" onClick={() => setOpenPanel(null)} aria-label="close">
+                ×
+              </button>
+            </div>
+            {openPanel.body && <pre className="cw-body">{openPanel.body}</pre>}
+            {openPanel.decoder && (
+              <div className="cw-decoder">
+                <textarea
+                  className="cw-hex"
+                  value={hexInput}
+                  onChange={(e) => setHexInput(e.target.value)}
+                  spellCheck={false}
+                />
+                <button className="cw-decode" onClick={handleDecode}>
+                  DECODE ▸
+                </button>
+                {decoded && <pre className="cw-out">{decoded}</pre>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
