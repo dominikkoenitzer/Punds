@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CoplandScene, type CoplandPhase } from '../scene/coplandScene'
+import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
 import './CoplandOS.css'
 
 // ============================================================================
@@ -40,7 +40,7 @@ export default function CoplandOS() {
   const [bootLines, setBootLines] = useState<string[]>([])
   const [skipped, setSkipped] = useState(false)
   const [now, setNow] = useState<Date>(() => new Date())
-  const [hovered, setHovered] = useState<string | null>(null)
+  const [hovered, setHovered] = useState<HoverInfo | null>(null)
 
   // --- scene lifecycle ------------------------------------------------------
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function CoplandOS() {
         setBootLines(BOOT_LINES)
         setPhase('desktop')
       },
-      onHover: (label) => setHovered(label),
+      onHover: (info) => setHovered(info),
     })
     sceneRef.current = scene
     scene.start()
@@ -155,7 +155,13 @@ export default function CoplandOS() {
               <span className="hud-sub copland-mirror">txEn eht nepO</span>
             </div>
             <div className={`copland-focus${hovered ? ' is-on' : ''}`}>
-              {hovered ? `▸ ${hovered}` : ''}
+              {hovered && (
+                <>
+                  <span className="focus-label">{hovered.label}</span>
+                  <span className="focus-sub">{hovered.detail}</span>
+                  <span className="focus-hint">{hovered.href ? '▸ click to open' : '▸ click to focus'}</span>
+                </>
+              )}
             </div>
             <div className="copland-tagline">no matter where you go, everyone is connected</div>
             <div className="copland-nav">drag to look · scroll to move through the wired</div>
