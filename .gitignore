@@ -36,3 +36,4 @@ coverage/
 # ESLint/Prettier caches
 .eslintcache
 .prettier-cache
+.vercel
