@@ -1,6 +1,6 @@
-// The floating NAVI panels carry the operator's main data: the access-point
-// links, and an operator profile. Link panels open their href when clicked;
-// the profile opens a small window with its full text.
+// The floating NAVI panels carry the operator's access-point links. Link
+// panels open their href when clicked; file/profile panels (if any) open a
+// small window with their full text.
 
 export type PanelKind = 'link' | 'profile' | 'file' | 'flavor'
 export type PanelAccent = 'phosphor' | 'tachibana' | 'warning'
@@ -40,18 +40,5 @@ export const PANEL_DATA: PanelDatum[] = [
     kind: 'link',
     href: 'https://www.paypal.com/paypalme/dominikkoenitzer',
     lines: ['/pay/support', 'PROTOCOL 7 · L13', '7.83ms · SECURE', '▸ OPEN'],
-  },
-  // --- operator profile ----------------------------------------------------
-  {
-    label: 'OPERATOR',
-    kind: 'profile',
-    lines: ['DOMINIK_KOENITZER', 'NODE 0xD04C_1K_N37', 'STATUS :: ONLINE', 'LAYER 07 · WIRED'],
-    body: `OPERATOR :: DOMINIK_KOENITZER
-NODE     :: 0xD04C_1K_N37
-STATUS   :: ONLINE
-LAYER    :: 07 // THE WIRED
-
-operator of this node, jacked into the wired.
-follow the access points to find the rest.`,
   },
 ]
