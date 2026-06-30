@@ -97,8 +97,7 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 ├── public/
 │   ├── fonts/
 │   │   └── TrixieCyrG-Plain-Regular.otf        # custom NAVI font
-│   ├── robots.txt                              # disallow all crawlers
-│   └── favicon.png
+│   └── robots.txt                              # disallow all crawlers
 └── src/
     ├── main.tsx                                # React 19 createRoot entry
     ├── App.tsx                                 # renders <Home />
