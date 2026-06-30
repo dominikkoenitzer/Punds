@@ -161,19 +161,6 @@
 }
 .copland-mirror { color: var(--tachibana); opacity: 0.6; }
 
-.copland-tagline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 3.2rem;
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.34em;
-  color: var(--phosphor-dim);
-  animation: copland-fade 2.4s ease both;
-}
-
 /* hovered-panel readout card (raycaster) */
 .copland-focus {
   position: absolute;
@@ -212,22 +199,6 @@
   letter-spacing: 0.24em;
   color: var(--tachibana);
 }
-
-/* navigation hint */
-.copland-nav {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 1.1rem;
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 0.56rem;
-  letter-spacing: 0.28em;
-  color: var(--phosphor-dim);
-  opacity: 0.6;
-  animation: copland-fade 3s ease both;
-}
-
 
 /* --- constant-motion overlays -------------------------------------------- */
 
@@ -427,5 +398,5 @@
 @media (prefers-reduced-motion: reduce) {
   .copland-scan::after { animation: none; display: none; }
   .copland-grain { animation: none; }
-  .copland-splash, .copland-welcome, .copland-hud, .copland-tagline { animation-duration: 0.01ms; }
+  .copland-splash, .copland-welcome, .copland-hud { animation-duration: 0.01ms; }
 }

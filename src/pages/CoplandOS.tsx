@@ -253,8 +253,6 @@ export default function CoplandOS() {
                 </>
               )}
             </div>
-            <div className="copland-tagline">no matter where you go, everyone is connected</div>
-            <div className="copland-nav">drag to look · scroll to move through the wired</div>
           </>
         )}
       </div>

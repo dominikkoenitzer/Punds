@@ -164,7 +164,9 @@ export class GiantEye implements SceneFeature {
     }
 
     const frame = addLayer(drawFrameTexture(palette), R * 2.4, 0, 0.34)
-    this.iris = addLayer(drawIrisTexture(), R * 1.5, 0.4, 0.72)
+    // iris sized so its limbal ring stays within the almond's vertical opening
+    // (~0.85*H of the frame) — keeps the eyeball inside the eye outline
+    this.iris = addLayer(drawIrisTexture(), R * 0.78, 0.4, 0.72)
     this.frameMat = frame.material as THREE.MeshBasicMaterial
     this.irisMat = this.iris.material as THREE.MeshBasicMaterial
 
