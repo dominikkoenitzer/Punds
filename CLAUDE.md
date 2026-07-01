@@ -15,26 +15,42 @@ There is no test runner configured.
 
 ## What this is
 
-A single-page personal landing page styled as the **NAVI terminal from *Serial Experiments Lain***: CRT/scanline/glitch effects, a boot sequence, a canvas oscilloscope, a fake filesystem of lore files, a hex decoder, and a column of external links. It is intentionally `noindex` for all crawlers (see the meta tags in `index.html`).
+A single-page personal landing page styled as **Copland OS / the NAVI from *Serial Experiments Lain***: a navigable, full-screen **Three.js 3D world** you boot into. A CRT-styled boot sequence ("present day, present time") hands you a desktop where floating holographic link panels orbit a central eye/circuit logo inside a fog-bound inner world (reflective floor, an inverted mirror-city overhead, data rain, koi, watching eyes, a giant eye, a network graph you can "jack into", etc.). Drag to look, scroll to fly. It is intentionally `noindex` / `nofollow` for all crawlers (meta tags in `index.html` plus `public/robots.txt`).
 
 ## Architecture
 
-The entire UI lives in **one file**: [src/pages/Home.tsx](src/pages/Home.tsx). [src/App.tsx](src/App.tsx) just renders `<Home />`, and [src/main.tsx](src/main.tsx) is the React 19 `createRoot` entry. There is no router, no global state, and no data layer — every piece of state is local `useState` inside `Home`.
+The app is split into a thin **React layer** and a self-contained **Three.js scene engine**.
 
-Key structure within `Home.tsx`:
-- **Top-of-file constants** drive the content: `SECRET_FILES` (the fake FS file bodies), `BOOT_LINES`, `IDLE_QUOTES`, `FLOAT_MSGS`. Edit these to change displayed text rather than touching JSX.
-- **`Oscilloscope`** is a self-contained canvas component. It draws directly with the 2D context inside a `requestAnimationFrame` loop, handles HiDPI via `devicePixelRatio`, resizes through a `ResizeObserver` on its parent, and waits for the `TrixieCyrG` font (`document.fonts.load`) before the first frame. All animation state (glitch/dropout/phase) is local to the effect — no React state per frame.
-- **`Home`** wires up several `setInterval`/event-listener effects (boot sequence, idle-quote cycling, cursor trail, clock, uptime, floating intercepts). Each effect returns its own cleanup; keep that pattern when adding timers.
-- The **hex decoder** (`handleHexDecode`) parses whitespace-stripped hex input two chars at a time into ASCII.
+Entry chain: [src/main.tsx](src/main.tsx) (React 19 `createRoot` in `StrictMode`, imports `index.css` + `App.css`) → [src/App.tsx](src/App.tsx) renders `<CoplandOS />` → [src/pages/CoplandOS.tsx](src/pages/CoplandOS.tsx). There is no router, no global state, and no data layer — React state is local `useState` inside `CoplandOS`.
 
-### Responsive / layout convention
-Desktop is a 3-column grid (left = profile + filesystem browser, center = oscilloscope + decoder, right = links). Mobile collapses to a tab bar driven by `mobileTab` state. Visibility is controlled by the **`mv()` helper**, which returns a `mobile-hidden` class for columns/windows not matching the active tab — follow this when adding a new pane. The filesystem browser additionally swaps between a tree pane and viewer pane on mobile via `mobileFsPane`.
+### React layer — `src/pages/CoplandOS.tsx`
+- Drives a **boot phase machine**: `logo` → `boot` (streaming boot log) → `welcome` (the "present day / present time" splash + a `NaviVoice` greeting) → `desktop` (the HUD). Tapping during boot skips straight to `desktop` (via the scene's `onActivate`).
+- Owns the scene lifecycle: **lazy-imports** (`await import('../scene/coplandScene')`) and constructs a `CoplandScene` in a `useEffect` so the boot shell paints before three loads, wires its handlers (`onActivate`, `onHover`), and disposes it on unmount.
+- Renders the **crisp DOM overlays** the WebGL canvas sits behind: CRT scan/grain/vignette layers, the four corner HUD readouts + hover focus label, the boot wordmark/log, and the operator welcome.
+- Renders a **screen-reader / no-WebGL fallback** (`.copland-sr` / `.copland-fallback`) containing the real links from `PANEL_DATA`, so the page is meaningful without WebGL.
+- Wires several `setInterval`/event-listener effects (clock, boot orchestration timers, NAVI whispers that get more frequent with idle "dread", `M` toggles audio mute). Each effect returns its own cleanup — keep that pattern.
+
+### Scene engine — `src/scene/`
+- **`coplandScene.ts`** hosts the `CoplandScene` class: a `THREE.WebGLRenderer` + `PerspectiveCamera` + an `EffectComposer` post chain (`RenderPass` → `UnrealBloomPass` → `GlitchPass` → `OutputPass`). It builds the central logo, the drifting particle field, the billboarded link panels, and all feature modules; runs the `requestAnimationFrame` loop; and exposes `setPhase`, `setMuted`, `setQuality`, `getDread`, `start`, `dispose`. Key systems:
+  - **Camera rig** — drag to look (yaw/pitch), scroll to fly/dolly, idle auto-drift, pointer parallax. A `Raycaster` drives panel hover/click; clicking a link panel "dives" toward it and opens its `href`, clicking a network-graph node "jacks in" a layer deeper.
+  - **Idle "dread"** — ramps 0→1 the longer the viewer is perfectly still, deepening fog, audio, and NAVI whispers.
+  - **Auto quality tiers** — an FPS sampler steps an `ultra`/`high`/`low` tier up/down (pixel-ratio cap, bloom scale, MSAA samples, and dropping the heaviest objects — the reflective floor, mirror twin, sideways city, koi — on `low`).
+  - **Palette** — read from CSS custom properties via `getComputedStyle(document.documentElement)`, so retuning the CSS vars retunes the 3D.
+- **`features/`** — ~15 visual modules, each implementing `SceneFeature { group, update(ctx), dispose() }` from [features/types.ts](src/scene/features/types.ts). The host adds each `group` to the scene, calls `update(ctx)` every frame, and `dispose()` on teardown. Current modules: `InnerSky`, `ReflectiveFloor`, `SidewaysCity`, `CableTangle` (cables.ts), `DataRain`, `DataSpires`, `HolographicFish` (fish.ts — koi), `InnerRain` (rain.ts), `Watcher`, `WiredIntercepts`, `WatchingEyes`, `Apparition`, `GiantEye`, `TerminalText`, `NetworkGraph`. Plus a vertical **mirror twin** of the city (`makeVerticalMirror` of the spires, "as above, so below") added directly in `buildFeatures`. To add a feature, implement `SceneFeature` and register it in `CoplandScene.buildFeatures()`.
+- **`audioEngine.ts`** — `AudioEngine`: an ambient Web Audio drone (detuned saws → lowpass, slow LFO) plus a bass analyser whose `level()` the scene reads each frame to drive bloom/particles. Must be `resume()`d from a user gesture; `setMuted` / `setDread` retune it.
+- **`naviVoice.ts`** — `NaviVoice`: a thin Web Speech wrapper for low-pitched "NAVI" utterances; no-ops where speech is unavailable.
+- **`panelData.ts`** — `PANEL_DATA`, the floating panels' content. Currently four link panels: `PERSONAL_SITE`, `JOURNAL`, `REPOSITORY`, `TRANSFER`. Edit this to change links/labels rather than touching scene code.
 
 ## Styling
 
-All styling is **hand-written CSS** — no Tailwind or CSS-in-JS. Global resets, the `@font-face` for the custom `TrixieCyrG` font, and the `:root` color variables live in [src/index.css](src/index.css); essentially all component styling (~1900 lines: CRT overlays, glitch keyframes, window chrome, grid/mobile layout) lives in [src/pages/Home.css](src/pages/Home.css), imported by `Home.tsx`. The font file is in `public/fonts/` and is preloaded in `index.html`.
+All styling is **hand-written CSS** — no Tailwind or CSS-in-JS.
+- [src/index.css](src/index.css) — global resets, the `@font-face` for the custom `TrixieCyrG` font, and some legacy `:root` vars; sets the html/body to fixed full-viewport (with mobile scroll overrides).
+- [src/App.css](src/App.css) — sizes `#root` to the full fixed viewport.
+- [src/pages/CoplandOS.css](src/pages/CoplandOS.css) — the **scene color palette** as `:root` custom properties (`--copland-void`, `--copland-horizon`, `--phosphor`, `--hologram`, `--tachibana`, `--warning`, …) that the Three.js scene reads back via `getComputedStyle`, plus all DOM overlay styling: CRT scan/grain/vignette, the boot theatre, and the HUD.
 
-Note: only `react`, `react-dom`, and `react-icons` are declared runtime dependencies (plus the dev toolchain: Vite, TypeScript, ESLint). Add a dependency to `package.json` deliberately if you need one.
+The font file lives in `public/fonts/` and is preloaded in `index.html`. There is no favicon.
+
+Note: runtime dependencies are only `react`, `react-dom`, and `three` (`react-icons` was removed). Dev toolchain: Vite 8, TypeScript, ESLint, `@types/three`, `@vitejs/plugin-react`. Add a dependency to `package.json` deliberately if you need one.
 
 ## TypeScript
 

@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { CoplandScene, type CoplandPhase, type HoverInfo } from '../scene/coplandScene'
+import type { CoplandScene, CoplandPhase, HoverInfo } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
-import { PANEL_DATA, type PanelDatum } from '../scene/panelData'
+import { PANEL_DATA } from '../scene/panelData'
 import './CoplandOS.css'
 
 // ============================================================================
 // COPLAND OS ENTERPRISE — produced by Tachibana Lab
-// A 3D NAVI boot/desktop experience. The Three.js scene lives in
-// ../scene/coplandScene; this layer drives boot phases and the crisp DOM
-// overlay (boot log, operator welcome, desktop HUD).
+// A 3D NAVI boot/desktop experience. The heavy Three.js scene lives in
+// ../scene/coplandScene and is LAZY-LOADED (dynamic import) so the React boot
+// shell paints immediately while three streams in during the boot sequence.
+// This layer drives boot phases and the crisp DOM overlay (boot log, operator
+// welcome, desktop HUD).
 // ============================================================================
 
 // The NAVI addresses its operator by name on boot. Retune freely.
@@ -47,6 +49,7 @@ export default function CoplandOS() {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<CoplandScene | null>(null)
   const voiceRef = useRef<NaviVoice | null>(null)
+  const phaseRef = useRef<CoplandPhase>('logo')
 
   const [phase, setPhase] = useState<CoplandPhase>('logo')
   const [bootLines, setBootLines] = useState<string[]>([])
@@ -55,38 +58,36 @@ export default function CoplandOS() {
   const [hovered, setHovered] = useState<HoverInfo | null>(null)
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
-  const [openPanel, setOpenPanel] = useState<PanelDatum | null>(null)
   const [webglFailed] = useState(() => !supportsWebGL())
-  const [hexInput, setHexInput] = useState('')
-  const [decoded, setDecoded] = useState('')
 
-  // --- scene lifecycle ------------------------------------------------------
+  // --- scene lifecycle (lazy-loads the heavy Three.js layer) ----------------
   useEffect(() => {
     const container = containerRef.current
     if (!container || webglFailed) return
     let scene: CoplandScene | null = null
-    try {
-      scene = new CoplandScene(container, {
-        onActivate: () => {
-          setSkipped(true)
-          setBootLines(BOOT_LINES)
-          setPhase('desktop')
-        },
-        onHover: (info) => setHovered(info),
-        onOpenPanel: (d) => {
-          setOpenPanel(d)
-          if (d.decoder) {
-            setHexInput((h) => h || '47 6F 64 20 69 73 20 68 65 72 65 2E')
-            setDecoded('')
-          }
-        },
-      })
-      sceneRef.current = scene
-      scene.start()
-    } catch {
-      sceneRef.current = null // rare: WebGL reported but init failed; canvas stays blank
-    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const mod = await import('../scene/coplandScene')
+        if (cancelled) return
+        scene = new mod.CoplandScene(container, {
+          onActivate: () => {
+            setSkipped(true)
+            setBootLines(BOOT_LINES)
+            setPhase('desktop')
+          },
+          onHover: (info) => setHovered(info),
+        })
+        sceneRef.current = scene
+        scene.start()
+        scene.setPhase(phaseRef.current) // sync to whatever phase we reached while loading
+        scene.setMuted(mutedRef.current)
+      } catch {
+        sceneRef.current = null // rare: WebGL reported but init failed; canvas stays blank
+      }
+    })()
     return () => {
+      cancelled = true
       scene?.dispose()
       sceneRef.current = null
     }
@@ -95,11 +96,15 @@ export default function CoplandOS() {
   // --- NAVI voice -----------------------------------------------------------
   useEffect(() => {
     voiceRef.current = new NaviVoice()
-    return () => voiceRef.current?.cancel()
+    return () => {
+      voiceRef.current?.dispose()
+      voiceRef.current = null
+    }
   }, [])
 
   // --- drive the scene from the boot phase (+ NAVI greets on welcome) --------
   useEffect(() => {
+    phaseRef.current = phase
     sceneRef.current?.setPhase(phase)
     if (phase === 'welcome') {
       const v = voiceRef.current
@@ -135,11 +140,11 @@ export default function CoplandOS() {
     }
   }, [skipped])
 
-  // --- mute: keep a ref + push to the scene's audio -------------------------
+  // --- mute: keep a ref + push to the scene's audio and the NAVI voice -------
   useEffect(() => {
     mutedRef.current = muted
     sceneRef.current?.setMuted(muted)
-    if (muted) voiceRef.current?.cancel()
+    voiceRef.current?.setMuted(muted)
   }, [muted])
 
   // --- NAVI whispers once you're in --------------------------------------
@@ -165,24 +170,14 @@ export default function CoplandOS() {
     return () => window.clearInterval(id)
   }, [phase])
 
-  // --- shortcuts: Esc closes a window, M mutes -----------------------------
+  // --- shortcuts: M mutes ---------------------------------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenPanel(null)
-      else if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
+      if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-
-  const handleDecode = () => {
-    const clean = hexInput.replace(/[^0-9a-fA-F]/g, '')
-    let out = ''
-    for (let i = 0; i + 1 < clean.length; i += 2) {
-      out += String.fromCharCode(parseInt(clean.slice(i, i + 2), 16))
-    }
-    setDecoded(out || '— no data —')
-  }
 
   const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
@@ -195,7 +190,9 @@ export default function CoplandOS() {
       <div className="copland-grain" aria-hidden="true" />
       <div className="copland-vignette" aria-hidden="true" />
 
-      <div className="copland-overlay">
+      {/* the visual chrome is decorative + duplicated by the .copland-sr fallback,
+          so hide it from assistive tech (real controls live outside this div) */}
+      <div className="copland-overlay" aria-hidden="true">
         {/* boot splash caption (logo itself is rendered in 3D) */}
         {(phase === 'logo' || phase === 'boot') && (
           <div className={`copland-splash${phase === 'boot' ? ' is-dim' : ''}`}>
@@ -258,7 +255,7 @@ export default function CoplandOS() {
       </div>
 
       {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
-      <div className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
+      <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
         <h1>Copland OS Enterprise — Dominik Koenitzer</h1>
         <p>A Serial Experiments Lain NAVI terminal. Access points:</p>
         <nav>
@@ -268,36 +265,7 @@ export default function CoplandOS() {
             </a>
           ))}
         </nav>
-      </div>
-
-      {/* opened panel window */}
-      {openPanel && (
-        <div className="copland-window-wrap" onClick={() => setOpenPanel(null)}>
-          <div className="copland-window" onClick={(e) => e.stopPropagation()}>
-            <div className="cw-bar">
-              <span className="cw-title">{openPanel.label}</span>
-              <button className="cw-close" onClick={() => setOpenPanel(null)} aria-label="close">
-                ×
-              </button>
-            </div>
-            {openPanel.body && <pre className="cw-body">{openPanel.body}</pre>}
-            {openPanel.decoder && (
-              <div className="cw-decoder">
-                <textarea
-                  className="cw-hex"
-                  value={hexInput}
-                  onChange={(e) => setHexInput(e.target.value)}
-                  spellCheck={false}
-                />
-                <button className="cw-decode" onClick={handleDecode}>
-                  DECODE ▸
-                </button>
-                {decoded && <pre className="cw-out">{decoded}</pre>}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </main>
     </div>
   )
 }
