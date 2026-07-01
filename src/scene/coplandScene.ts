@@ -45,7 +45,6 @@ export interface HoverInfo {
 export interface CoplandHandlers {
   onActivate?: () => void                 // a tap during boot -> skip to desktop
   onHover?: (info: HoverInfo | null) => void
-  onOpenPanel?: (datum: PanelDatum) => void // a tap on a file/profile/decoder panel
 }
 
 interface Panel {
@@ -205,76 +204,185 @@ function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   return tex
 }
 
+// A NAVI panel rendered as an ETHEREAL projection in the Wired rather than a
+// solid window: a luminous field (no hard border), a faint constellation of
+// connected nodes, hologram scanlines, a data-stream, implied corner brackets,
+// and feathered edges that dissolve into the void. Drawn once per panel; the
+// drift/bloom/hover animation lives on the mesh.
 function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTexture {
   const W = 512
   const H = 320
+  const TAU = Math.PI * 2
   const { canvas, ctx } = makeCanvas(W, H)
-  const accent = d.accent === 'tachibana' ? p.tachibanaStr : d.accent === 'warning' ? p.warningStr : p.phosphorStr
+  const accent = p.phosphorStr
 
-  // frame
-  const r = 22
-  ctx.beginPath()
-  ctx.moveTo(r, 2)
-  ctx.arcTo(W - 2, 2, W - 2, H - 2, r)
-  ctx.arcTo(W - 2, H - 2, 2, H - 2, r)
-  ctx.arcTo(2, H - 2, 2, 2, r)
-  ctx.arcTo(2, 2, W - 2, 2, r)
-  ctx.closePath()
-  ctx.fillStyle = 'rgba(16,58,92,0.18)'
-  ctx.fill()
-  ctx.shadowColor = accent
-  ctx.shadowBlur = 16
-  ctx.lineWidth = 2.5
-  ctx.strokeStyle = accent
-  ctx.stroke()
-  ctx.shadowBlur = 0
+  // manual letter-spacing (avoids depending on ctx.letterSpacing)
+  const spacedWidth = (text: string, sp: number): number => {
+    let w = 0
+    for (const ch of text) w += ctx.measureText(ch).width + sp
+    return Math.max(0, w - sp)
+  }
+  const fillSpaced = (text: string, x: number, y: number, sp: number): void => {
+    let cx = x
+    for (const ch of text) {
+      ctx.fillText(ch, cx, y)
+      cx += ctx.measureText(ch).width + sp
+    }
+  }
+
+  // --- ethereal body: a soft luminous field, no hard window fill -----------
+  const body = ctx.createLinearGradient(0, 16, 0, H - 16)
+  body.addColorStop(0, 'rgba(20,72,124,0.04)')
+  body.addColorStop(0.45, 'rgba(28,98,158,0.20)')
+  body.addColorStop(1, 'rgba(12,48,92,0.04)')
+  ctx.fillStyle = body
+  ctx.fillRect(0, 0, W, H)
+
+  // soft core glow pooled behind the title
+  const core = ctx.createRadialGradient(150, 64, 0, 150, 64, 280)
+  core.addColorStop(0, 'rgba(96,184,252,0.22)')
+  core.addColorStop(1, 'rgba(96,184,252,0)')
+  ctx.fillStyle = core
+  ctx.fillRect(0, 0, W, H)
+
+  // --- the Wired: a faint constellation of nodes + nearest-neighbour traces -
+  ctx.globalCompositeOperation = 'lighter'
+  const nodes: { x: number; y: number }[] = []
+  for (let i = 0; i < 8; i++) nodes.push({ x: 36 + Math.random() * (W - 72), y: 92 + Math.random() * (H - 132) })
+  ctx.lineWidth = 1
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dist = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y)
+      if (dist < 158) {
+        ctx.strokeStyle = `rgba(126,206,255,${(0.12 * (1 - dist / 158)).toFixed(3)})`
+        ctx.beginPath()
+        ctx.moveTo(nodes[i].x, nodes[i].y)
+        ctx.lineTo(nodes[j].x, nodes[j].y)
+        ctx.stroke()
+      }
+    }
+  }
+  for (const n of nodes) {
+    const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 6)
+    g.addColorStop(0, 'rgba(184,236,255,0.55)')
+    g.addColorStop(1, 'rgba(184,236,255,0)')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.arc(n.x, n.y, 6, 0, TAU)
+    ctx.fill()
+  }
+  ctx.globalCompositeOperation = 'source-over'
+
+  // --- hologram scanlines --------------------------------------------------
+  ctx.fillStyle = 'rgba(124,204,255,0.05)'
+  for (let yy = 20; yy < H - 18; yy += 4) ctx.fillRect(20, yy, W - 40, 1)
 
   ctx.textBaseline = 'top'
 
-  // kind tag, top-right
-  const tag = d.kind === 'link' ? 'LINK' : d.kind === 'file' ? 'FILE' : d.kind === 'profile' ? 'OPR' : 'SYS'
-  ctx.font = '600 18px "TrixieCyrG", ui-monospace, monospace'
-  ctx.fillStyle = 'rgba(120,210,255,0.5)'
-  ctx.fillText(tag, W - 30 - ctx.measureText(tag).width, 32)
-
-  // label
-  ctx.font = '700 30px "TrixieCyrG", ui-monospace, monospace'
+  // --- kind tag + live status node, top-right ------------------------------
+  const tag = 'LINK'
+  ctx.font = '600 17px "TrixieCyrG", ui-monospace, monospace'
+  const tagX = W - 36 - spacedWidth(tag, 3)
+  ctx.fillStyle = 'rgba(150,214,250,0.55)'
+  fillSpaced(tag, tagX, 34, 3)
   ctx.fillStyle = accent
   ctx.shadowColor = accent
-  ctx.shadowBlur = 12
-  ctx.fillText(d.label, 30, 26)
+  ctx.shadowBlur = 10
+  ctx.beginPath()
+  ctx.arc(tagX - 12, 42, 3.5, 0, TAU)
+  ctx.fill()
   ctx.shadowBlur = 0
 
-  // divider
-  ctx.fillStyle = 'rgba(120,210,255,0.4)'
-  ctx.fillRect(30, 72, W - 60, 1.5)
+  // --- label ---------------------------------------------------------------
+  ctx.font = '700 31px "TrixieCyrG", ui-monospace, monospace'
+  ctx.fillStyle = accent
+  ctx.shadowColor = accent
+  ctx.shadowBlur = 16
+  fillSpaced(d.label, 38, 26, 2)
+  ctx.shadowBlur = 0
 
-  // body lines (a "▸ …" line renders as a highlighted action)
-  let y = 100
+  // --- divider: a trace that fades at both ends, with a node at the head ----
+  const dy = 76
+  const dg = ctx.createLinearGradient(38, 0, W - 44, 0)
+  dg.addColorStop(0, 'rgba(126,206,255,0)')
+  dg.addColorStop(0.12, 'rgba(126,206,255,0.5)')
+  dg.addColorStop(1, 'rgba(126,206,255,0)')
+  ctx.fillStyle = dg
+  ctx.fillRect(38, dy, W - 82, 1.5)
+  ctx.fillStyle = accent
+  ctx.shadowColor = accent
+  ctx.shadowBlur = 8
+  ctx.beginPath()
+  ctx.arc(40, dy + 0.5, 3, 0, TAU)
+  ctx.fill()
+  ctx.shadowBlur = 0
+
+  // --- body lines (a "▸ …" line renders as a glowing action) --------------
+  let y = 106
   for (const line of d.lines) {
     if (line.startsWith('▸')) {
-      ctx.font = '700 26px "TrixieCyrG", ui-monospace, monospace'
+      ctx.font = '700 25px "TrixieCyrG", ui-monospace, monospace'
       ctx.fillStyle = accent
       ctx.shadowColor = accent
-      ctx.shadowBlur = 14
-      ctx.fillText(line, 30, y + 4)
+      ctx.shadowBlur = 16
+      fillSpaced(line, 38, y + 4, 2)
       ctx.shadowBlur = 0
     } else {
-      ctx.font = '400 24px "TrixieCyrG", ui-monospace, monospace'
-      ctx.fillStyle = p.phosphorStr
-      ctx.fillText(line, 30, y)
+      ctx.font = '400 23px "TrixieCyrG", ui-monospace, monospace'
+      ctx.fillStyle = 'rgba(174,224,255,0.82)'
+      ctx.fillText(line, 38, y)
     }
     y += 40
   }
 
-  // corner bracket
+  // --- data-stream: a faint signal trace along the lower edge --------------
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.fillStyle = 'rgba(126,206,255,0.28)'
+  for (let i = 0; i < 48; i++) {
+    const tx = 38 + i * 9
+    if (tx > W - 46) break
+    const th = 2 + Math.random() * 12
+    ctx.fillRect(tx, H - 32 - th, 2, th)
+  }
+  ctx.globalCompositeOperation = 'source-over'
+
+  // --- HUD corner brackets: an implied frame, not a window -----------------
   ctx.strokeStyle = accent
+  ctx.shadowColor = accent
+  ctx.shadowBlur = 10
   ctx.lineWidth = 2
+  const m = 22
+  const L = 26
+  const corner = (cx: number, cy: number, sx: number, sy: number): void => {
+    ctx.beginPath()
+    ctx.moveTo(cx, cy + sy * L)
+    ctx.lineTo(cx, cy)
+    ctx.lineTo(cx + sx * L, cy)
+    ctx.stroke()
+  }
+  corner(m, m, 1, 1)
+  corner(W - m, m, -1, 1)
+  corner(m, H - m, 1, -1)
+  corner(W - m, H - m, -1, -1)
+  ctx.shadowBlur = 0
+
+  // --- feather the edges so the card dissolves into the void ---------------
+  ctx.globalCompositeOperation = 'destination-in'
+  ctx.fillStyle = '#000'
+  ctx.shadowColor = '#000'
+  ctx.shadowBlur = 26
+  const mi = 18
+  const rr = 30
   ctx.beginPath()
-  ctx.moveTo(W - 14, H - 30)
-  ctx.lineTo(W - 14, H - 14)
-  ctx.lineTo(W - 30, H - 14)
-  ctx.stroke()
+  ctx.moveTo(mi + rr, mi)
+  ctx.arcTo(W - mi, mi, W - mi, H - mi, rr)
+  ctx.arcTo(W - mi, H - mi, mi, H - mi, rr)
+  ctx.arcTo(mi, H - mi, mi, mi, rr)
+  ctx.arcTo(mi, mi, W - mi, mi, rr)
+  ctx.closePath()
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.globalCompositeOperation = 'source-over'
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -344,6 +452,11 @@ export class CoplandScene {
   private fpsFrames = 0
   private fps = 60
   private autoTimer = 0
+  // anti-thrash for the auto-quality stepper: require sustained signal + a
+  // cooldown after any change, so a single noisy 1.5s window can't flip tiers.
+  private slowWindows = 0
+  private fastWindows = 0
+  private tierCooldown = 0
   private fogPulse = 0
   private diveTimer = 0
   private idle = 0
@@ -404,7 +517,10 @@ export class CoplandScene {
     const w = container.clientWidth || window.innerWidth
     const h = container.clientHeight || window.innerHeight
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    // antialias:false — AA is supplied by the EffectComposer's MSAA targets
+    // (see applyTier); the default drawing buffer only ever shows OutputPass's
+    // full-screen quad, so a multisampled canvas would just waste a resolve.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.renderer.setSize(w, h)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -412,44 +528,54 @@ export class CoplandScene {
     this.renderer.domElement.style.cursor = 'grab'
     container.appendChild(this.renderer.domElement)
 
-    this.scene = new THREE.Scene()
-    this.scene.background = this.palette.voidColor.clone()
-    const horizonStr = getComputedStyle(document.documentElement).getPropertyValue('--copland-horizon').trim() || '#1f4068'
-    this.scene.fog = new THREE.FogExp2(new THREE.Color(horizonStr).getHex(), 0.018)
+    // The renderer/canvas exist now; if any of the heavy build work below throws
+    // (2D context exhaustion, render-target allocation, etc.) the caller's `new`
+    // yields nothing and can never dispose us, so tear the GL context down here.
+    try {
+      this.scene = new THREE.Scene()
+      this.scene.background = this.palette.voidColor.clone()
+      const horizonStr = getComputedStyle(document.documentElement).getPropertyValue('--copland-horizon').trim() || '#1f4068'
+      this.scene.fog = new THREE.FogExp2(new THREE.Color(horizonStr).getHex(), 0.018)
 
-    this.camera = new THREE.PerspectiveCamera(70, w / h, 0.1, 240)
+      this.camera = new THREE.PerspectiveCamera(70, w / h, 0.1, 240)
 
-    this.spriteTex = makeSpriteTexture()
-    const built = this.buildParticles()
-    this.particles = built.points
-    this.particleSpeeds = built.speeds
-    this.scene.add(this.particles)
+      this.spriteTex = makeSpriteTexture()
+      const built = this.buildParticles()
+      this.particles = built.points
+      this.particleSpeeds = built.speeds
+      this.scene.add(this.particles)
 
-    this.logoMat = new THREE.MeshBasicMaterial({
-      map: drawLogoTexture(this.palette),
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    })
-    this.logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), this.logoMat)
-    this.logo.position.set(0, EYE_HEIGHT, -9)
-    this.scene.add(this.logo)
+      this.logoMat = new THREE.MeshBasicMaterial({
+        map: drawLogoTexture(this.palette),
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+      this.logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), this.logoMat)
+      this.logo.position.set(0, EYE_HEIGHT, -9)
+      this.scene.add(this.logo)
 
-    this.buildPanels()
-    this.buildFeatures()
+      this.buildPanels()
+      this.buildFeatures()
 
-    this.composer = new EffectComposer(this.renderer)
-    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
-    this.composer.setSize(w, h)
-    this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.85)
-    this.composer.addPass(this.bloom)
-    this.glitch = new GlitchPass()
-    this.glitch.enabled = false
-    this.composer.addPass(this.glitch)
-    this.composer.addPass(new OutputPass())
-    this.applyTier(this.tier)
+      this.composer = new EffectComposer(this.renderer)
+      this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
+      this.composer.setSize(w, h)
+      this.composer.addPass(new RenderPass(this.scene, this.camera))
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.85)
+      this.composer.addPass(this.bloom)
+      this.glitch = new GlitchPass()
+      this.glitch.enabled = false
+      this.composer.addPass(this.glitch)
+      this.composer.addPass(new OutputPass())
+      this.applyTier(this.tier)
+    } catch (err) {
+      this.renderer.dispose()
+      this.renderer.forceContextLoss()
+      this.renderer.domElement.remove()
+      throw err
+    }
 
     // --- input ---------------------------------------------------------------
     this.onPointerDown = (e: PointerEvent) => {
@@ -653,15 +779,52 @@ export class CoplandScene {
     const dpr = Math.min(window.devicePixelRatio, this.dprCap)
     this.renderer.setPixelRatio(dpr)
     this.composer.setPixelRatio(dpr)
+
+    // MSAA the composer's offscreen targets. renderer.antialias does NOT apply
+    // to EffectComposer render targets, so the thin neon-grid rails alias hard
+    // at grazing floor angles and shimmer into a radial fan (amplified by the
+    // bloom pass). Multisampling the scene pass removes that. Dropped on Low.
+    // Changing .samples needs the RT rebuilt, so dispose to force it.
+    const samples = tier === 'low' ? 0 : 4
+    if (this.composer.renderTarget1.samples !== samples) {
+      this.composer.renderTarget1.samples = samples
+      this.composer.renderTarget2.samples = samples
+      this.composer.renderTarget1.dispose()
+      this.composer.renderTarget2.dispose()
+    }
   }
 
-  // FPS-driven auto-throttle: step the tier down when slow, up when there's headroom.
+  // FPS-driven auto-throttle (called once per ~1.5s window). Damped so it can't
+  // oscillate: step DOWN after 2 sustained slow windows (protect weak hardware
+  // quickly), step UP only after 4 sustained fast windows, and after any change
+  // hold a cooldown so a step-up can't immediately undo a step-down. Without
+  // this the low<->high flip pops the reflection/mirror/city/koi and reallocates
+  // GPU targets every window on borderline hardware.
   private autoAdjust(): void {
+    if (this.tierCooldown > 0) {
+      this.tierCooldown--
+      return
+    }
     const order: Tier[] = ['low', 'high', 'ultra']
-    let i = order.indexOf(this.tier)
-    if (this.fps < 32 && i > 0) i--
-    else if (this.fps > 56 && i < 2) i++
-    if (order[i] !== this.tier) this.applyTier(order[i])
+    const i = order.indexOf(this.tier)
+    if (this.fps < 30 && i > 0) {
+      this.fastWindows = 0
+      if (++this.slowWindows >= 2) {
+        this.applyTier(order[i - 1])
+        this.slowWindows = 0
+        this.tierCooldown = 4 // ~6s before another change
+      }
+    } else if (this.fps > 58 && i < 2) {
+      this.slowWindows = 0
+      if (++this.fastWindows >= 4) {
+        this.applyTier(order[i + 1])
+        this.fastWindows = 0
+        this.tierCooldown = 4
+      }
+    } else {
+      this.slowWindows = 0
+      this.fastWindows = 0
+    }
   }
 
   private handleTap(): void {
@@ -681,7 +844,6 @@ export class CoplandScene {
     const d = panel.datum
     this.lookToward(hits[0].object.position)
     if (d.href) this.diveTo(hits[0].object.position, d.href)
-    else if (d.body || d.decoder) this.handlers.onOpenPanel?.(d)
   }
 
   // "Wired dive": lunge the camera into the clicked card with a glitch warp,
@@ -776,7 +938,7 @@ export class CoplandScene {
     for (const f of this.features) f.update(ctx)
     if (this.glitchTimer > 0) {
       this.glitchTimer -= dt
-      this.glitch.enabled = true
+      this.glitch.enabled = !this.reduced // honour prefers-reduced-motion: no full-screen warp
     } else {
       this.glitch.enabled = false
     }

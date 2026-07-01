@@ -76,10 +76,12 @@ export class ReflectiveFloor implements SceneFeature {
     this.group.name = 'ReflectiveFloor'
 
     // ----- the reflective mirror -------------------------------------------
-    // Dark teal tint so the plaza reads as wet, dim pavement: only the bright
-    // emissive city/koi/panels above it reflect strongly (and then bloom).
-    this.baseTint = palette.voidColor.clone().lerp(palette.hologram, 0.1)
-    this.shimmerTarget = palette.hologram.clone()
+    // Deep, dim teal tint: only a faint wet sheen of the bright emissive
+    // city/koi/panels reflects. Kept deliberately dark so reflected verticals
+    // (tower edges, light beams, the overhead eye) don't cross the bloom
+    // threshold and bloom into a hard radial fan at the reflected nadir.
+    this.baseTint = palette.voidColor.clone().lerp(palette.hologram, 0.1).multiplyScalar(0.55)
+    this.shimmerTarget = palette.hologram.clone().multiplyScalar(0.5)
 
     this.reflectorGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE)
     this.reflectorGeo.rotateX(-Math.PI / 2) // lay flat, normal pointing up (+Y)
@@ -88,10 +90,20 @@ export class ReflectiveFloor implements SceneFeature {
       textureWidth: 1024, // modest — this RT is re-rendered every frame
       textureHeight: 1024,
       clipBias: 0.003,
-      multisample: 2, // light MSAA; bloom blurs the rest, keep the pass cheap
+      multisample: 4, // 4x MSAA smooths reflected thin lines/edges at grazing angles
     })
     this.reflector.position.y = FLOOR_Y
     this.reflector.frustumCulled = false // keep the reflection refreshing steadily
+
+    // Give the reflection real minification AA. At grazing angles a huge stretch
+    // of floor maps to a sliver of this 1024² RT, so bright reflected verticals
+    // (towers, data-rain, the giant eye's radial iris) alias into streaks that
+    // fan from the reflected nadir. Mipmaps + anisotropy trade that shimmer for a
+    // touch of clean blur (re-generated each frame after the reflection renders).
+    const refRT = this.reflector.getRenderTarget()
+    refRT.texture.minFilter = THREE.LinearMipmapLinearFilter
+    refRT.texture.generateMipmaps = true
+    refRT.texture.anisotropy = 8
 
     // Grab the live tint Color the Reflector built from our option so update()
     // can shimmer it in place (it clones the option into its uniform).
@@ -252,17 +264,16 @@ export class ReflectiveFloor implements SceneFeature {
     this.ringMat.opacity = Math.sin(prog * Math.PI) * RING_OPACITY * (1 + audio * 0.4)
 
     // Subtle reflection-tint shimmer: keep the mirror dark teal but let it
-    // breathe a touch toward hologram blue (and brighten with audio). Mutated
-    // in place — no allocation.
-    const shimmer = 0.05 + 0.04 * Math.sin(t * 0.7) + audio * 0.12
+    // breathe a touch toward hologram blue. Kept small (and barely audio-driven)
+    // so the reflection never pulses bright enough to bloom into streaks.
+    const shimmer = 0.04 + 0.03 * Math.sin(t * 0.7) + audio * 0.05
     this.refColor.copy(this.baseTint).lerp(this.shimmerTarget, shimmer)
   }
 
   dispose(): void {
-    // Reflector.dispose() frees its render target + shader material; we also
-    // dispose the render target defensively and the plane geometry it owns.
+    // Reflector.dispose() already frees its render target + shader material;
+    // we still own the plane geometry passed in, so dispose that ourselves.
     this.reflector.dispose()
-    this.reflector.getRenderTarget()?.dispose()
     this.reflectorGeo.dispose()
 
     this.gridMinorGeo.dispose()
