@@ -1,8 +1,8 @@
 # Contributing to Punds
 
 Thanks for your interest in contributing! Punds is a single-page personal landing page styled
-as the NAVI terminal from *Serial Experiments Lain*. This guide covers everything you need to
-get a change merged.
+as Copland OS / the NAVI from *Serial Experiments Lain* — a navigable Three.js 3D world you
+boot into. This guide covers everything you need to get a change merged.
 
 By participating in this project you agree to abide by our
 [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -42,8 +42,8 @@ Open http://localhost:1000 to see the site. The dev server hot-reloads on save.
 ## Branch & PR workflow
 
 1. **Fork** the repository (or, if you have push access, create a branch directly).
-2. Create a **descriptively named branch** off `main`, e.g. `feat/idle-quote-cycler`,
-   `fix/oscilloscope-resize`, or `docs/readme-tweaks`.
+2. Create a **descriptively named branch** off `main`, e.g. `feat/network-graph-node`,
+   `fix/bloom-flicker`, or `docs/readme-tweaks`.
 3. Make your changes, committing with [Conventional Commits](#commit-messages).
 4. Make sure the [quality gate](#quality-gate) passes.
 5. Open a **pull request against `main`**. Describe what changed and why; include a screenshot
@@ -57,9 +57,9 @@ with a type — common ones here are `feat:`, `fix:`, `chore:`, `docs:`, and `re
 Real examples from this repository:
 
 ```
-feat: enhance Home component with oscilloscope and floating messages
+feat(eye): drop eyelashes, fit iris to the eye opening
+fix: shrink the giant eye and give it a real glowing iris
 docs: add CLAUDE.md guidance for Claude Code
-chore: migrate to bun, remove LinkedIn, prune dead CSS
 ```
 
 Keep the summary in the imperative mood and reasonably short; add a body if the change needs
@@ -82,29 +82,43 @@ disabling the rule.
 ## Testing
 
 There is **no test runner** configured. Manual verification in the browser is expected: run
-`bun run dev`, exercise the part of the UI you touched, and confirm it behaves on both desktop
-(the 3-column grid) and mobile (the tab bar). For build-affecting changes, also sanity-check
-`bun run preview` against the production bundle.
+`bun run dev`, then watch the full boot sequence (logo → boot log → "present day, present time"
+→ desktop) and exercise the part you touched — drag to look around, scroll to fly, hover and
+click the floating panels. A WebGL-capable browser is required; without WebGL you get the
+accessible link fallback. For build-affecting changes, also sanity-check `bun run preview`
+against the production bundle.
 
 ## Code conventions
 
-- **The entire UI lives in one file: [`src/pages/Home.tsx`](src/pages/Home.tsx).** `App.tsx`
-  just renders `<Home/>`. There is no router, no global state, and no data layer — all state is
-  local `useState` inside `Home`.
-- **Edit content constants, not JSX.** Displayed text is driven by top-of-file constants —
-  `SECRET_FILES` (the fake filesystem bodies), `BOOT_LINES`, `IDLE_QUOTES`, and `FLOAT_MSGS`.
-  Change these to update content rather than touching the markup.
-- **Styling is 100% hand-written CSS** — no Tailwind, no CSS-in-JS. Component styling lives in
-  [`src/pages/Home.css`](src/pages/Home.css); global resets, the `@font-face` for the custom
-  `TrixieCyrG` font, and the `:root` color variables live in [`src/index.css`](src/index.css).
-- **Every `useEffect` timer or event listener must return its own cleanup.** The boot sequence,
-  idle-quote cycler, cursor trail, clock, uptime, and floating intercepts each set up and tear
-  down their own interval/listener — follow that pattern when adding one.
+The app is a thin **React layer** over a self-contained **Three.js scene engine**. Entry chain:
+[`src/main.tsx`](src/main.tsx) → [`src/App.tsx`](src/App.tsx) renders `<CoplandOS/>` →
+[`src/pages/CoplandOS.tsx`](src/pages/CoplandOS.tsx). There is no router, no global state, and no
+data layer — React state is local `useState` inside `CoplandOS`.
+
+- **Know which layer you're in.** [`CoplandOS.tsx`](src/pages/CoplandOS.tsx) drives the boot
+  phase machine (`logo` → `boot` → `welcome` → `desktop`) and the DOM overlays (CRT layers, HUD,
+  boot log, the accessible no-WebGL fallback). The 3D world lives in
+  [`src/scene/coplandScene.ts`](src/scene/coplandScene.ts) (the `CoplandScene` class) and its
+  feature modules — touch the scene there, not in React.
+- **Features implement a contract.** Each module in [`src/scene/features/`](src/scene/features)
+  implements `SceneFeature { group, update(ctx), dispose() }` (see
+  [`features/types.ts`](src/scene/features/types.ts)). To add one, implement the interface and
+  register it in `CoplandScene.buildFeatures()`. Always `dispose()` geometries/materials you
+  create — the scene tears itself down on unmount and must not leak GPU resources.
+- **Edit content/config data, not scene code.** The floating links live in
+  [`src/scene/panelData.ts`](src/scene/panelData.ts) (`PANEL_DATA`); the boot log and operator
+  name are constants at the top of [`CoplandOS.tsx`](src/pages/CoplandOS.tsx).
+- **Styling is 100% hand-written CSS** — no Tailwind, no CSS-in-JS. Global resets and the
+  `TrixieCyrG` `@font-face` live in [`src/index.css`](src/index.css); the scene colour-palette
+  `:root` variables (read back by the 3D engine via `getComputedStyle`) and all overlay/HUD
+  styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css). Retune the palette there
+  and the 3D follows.
+- **Every `useEffect` timer or event listener must return its own cleanup.** The scene
+  lifecycle, clock, boot orchestration, NAVI whispers, and keyboard shortcuts each set up and
+  tear down their own interval/listener — follow that pattern when adding one.
 - **Add runtime dependencies deliberately.** The only runtime deps today are `react`,
-  `react-dom`, and `react-icons`. Prefer reaching for those (or plain CSS/canvas) before adding
+  `react-dom`, and `three`. Prefer reaching for those (or plain CSS/canvas) before adding
   anything new to `package.json`.
-- **Mobile layout** is controlled by the `mv()` helper and `mobileTab` state — reuse them when
-  adding a new pane rather than rolling bespoke visibility logic.
 
 ## Licensing
 

@@ -1,18 +1,13 @@
-// The floating NAVI panels carry the operator's access-point links. Link
-// panels open their href when clicked; file/profile panels (if any) open a
-// small window with their full text.
+// The floating NAVI panels carry the operator's access-point links. Each panel
+// opens its href when clicked.
 
-export type PanelKind = 'link' | 'profile' | 'file' | 'flavor'
-export type PanelAccent = 'phosphor' | 'tachibana' | 'warning'
+export type PanelKind = 'link'
 
 export interface PanelDatum {
   label: string
   lines: string[]
   kind: PanelKind
   href?: string
-  accent?: PanelAccent
-  body?: string // full text shown when the panel is opened
-  decoder?: boolean // opens the interactive hex decoder
 }
 
 export const PANEL_DATA: PanelDatum[] = [
