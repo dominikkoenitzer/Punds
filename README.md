@@ -158,7 +158,9 @@ Licensed under the **Creative Commons Attribution-NonCommercial 4.0 Internationa
 
 ## Author & Acknowledgements
 
-Built by **Dominik Koenitzer** — [@dominikkoenitzer](https://github.com/dominikkoenitzer) · dominik.koenitzer@gmail.com
+**Dominik Könitzer** — software engineer in Zürich, Switzerland.
+
+[dominikkoenitzer.ch](https://dominikkoenitzer.ch) · [CV](https://dominikkoenitzer.ch/cv) · [@dominikkoenitzer](https://github.com/dominikkoenitzer) · [dominik.koenitzer@gmail.com](mailto:dominik.koenitzer@gmail.com)
 
 If this made you smile, you can support my work via [PayPal](https://www.paypal.com/paypalme/dominikkoenitzer).
 
