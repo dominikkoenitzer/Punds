@@ -86,8 +86,6 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 | `bun run lint`    | Run ESLint over the repository.                                          |
 | `bun run preview` | Serve the built `dist/` locally to preview the production bundle.        |
 
-> There is no test runner configured.
-
 ## Project Structure
 
 ```
