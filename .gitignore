@@ -37,3 +37,10 @@ coverage/
 .eslintcache
 .prettier-cache
 .vercel
+
+# AI agent tooling (local only)
+CLAUDE.md
+AGENTS.md
+.claude/
+.agents/
+skills-lock.json
