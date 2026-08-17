@@ -16,6 +16,9 @@ A personal landing page styled as **Copland OS / the NAVI** from *Serial Experim
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)](https://bun.sh/)
 
+
+<img src="docs/screenshot.jpg" alt="Punds — the Copland OS NAVI world" width="880" />
+
 </div>
 
 ---
