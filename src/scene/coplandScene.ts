@@ -6,6 +6,12 @@ import { GlitchPass } from 'three/examples/jsm/postprocessing/GlitchPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import type { ScenePalette, SceneFeature, FeatureContext } from './features/types'
 import { AudioEngine } from './audioEngine'
+import {
+  initialQualityState,
+  stepQuality,
+  type QualityState,
+  type Tier,
+} from './qualityStepper'
 import { ReflectiveFloor } from './features/reflectiveFloor'
 import { HolographicFish } from './features/fish'
 import { CableTangle } from './features/cables'
@@ -36,7 +42,6 @@ import { drawLogoTexture, drawPanelTexture, makeSpriteTexture } from './textures
 
 export type CoplandPhase = 'logo' | 'boot' | 'welcome' | 'desktop'
 export type Quality = 'auto' | 'ultra' | 'high' | 'low'
-type Tier = 'ultra' | 'high' | 'low'
 
 export interface HoverInfo {
   label: string
@@ -115,18 +120,13 @@ export class CoplandScene {
   private graph: NetworkGraph | null = null
   private qualityHideOnLow: THREE.Object3D[] = []
   private quality: Quality = 'auto'
-  private tier: Tier = 'high'
+  private qualityState: QualityState = initialQualityState('high')
   private dprCap = 1.3
   private qualityBloom = 1
   private fpsAccum = 0
   private fpsFrames = 0
   private fps = 60
   private autoTimer = 0
-  // anti-thrash for the auto-quality stepper: require sustained signal + a
-  // cooldown after any change, so a single noisy 1.5s window can't flip tiers.
-  private slowWindows = 0
-  private fastWindows = 0
-  private tierCooldown = 0
   private fogPulse = 0
   private diveTimer = 0
   private idle = 0
@@ -239,7 +239,7 @@ export class CoplandScene {
       this.glitch.enabled = false
       this.composer.addPass(this.glitch)
       this.composer.addPass(new OutputPass())
-      this.applyTier(this.tier)
+      this.applyTier(this.qualityState.tier)
     } catch (err) {
       this.renderer.dispose()
       this.renderer.forceContextLoss()
@@ -441,7 +441,7 @@ export class CoplandScene {
   // Apply a quality tier: pixel-ratio cap, bloom scale, and dropping the
   // heaviest geometry (incl. the reflection pass) on Low.
   private applyTier(tier: Tier): void {
-    this.tier = tier
+    this.qualityState = { ...this.qualityState, tier }
     this.dprCap = tier === 'ultra' ? 1.75 : tier === 'high' ? 1.3 : 1.0
     this.qualityBloom = tier === 'low' ? 0.8 : 1
     const showHeavy = tier !== 'low'
@@ -464,37 +464,14 @@ export class CoplandScene {
     }
   }
 
-  // FPS-driven auto-throttle (called once per ~1.5s window). Damped so it can't
-  // oscillate: step DOWN after 2 sustained slow windows (protect weak hardware
-  // quickly), step UP only after 4 sustained fast windows, and after any change
-  // hold a cooldown so a step-up can't immediately undo a step-down. Without
-  // this the low<->high flip pops the reflection/mirror/city/koi and reallocates
-  // GPU targets every window on borderline hardware.
+  // FPS-driven auto-throttle, called once per ~1.5s window. The damping rules
+  // live in `stepQuality`; this only reacts when the tier it returns differs,
+  // because applying one reallocates GPU targets.
   private autoAdjust(): void {
-    if (this.tierCooldown > 0) {
-      this.tierCooldown--
-      return
-    }
-    const order: Tier[] = ['low', 'high', 'ultra']
-    const i = order.indexOf(this.tier)
-    if (this.fps < 30 && i > 0) {
-      this.fastWindows = 0
-      if (++this.slowWindows >= 2) {
-        this.applyTier(order[i - 1])
-        this.slowWindows = 0
-        this.tierCooldown = 4 // ~6s before another change
-      }
-    } else if (this.fps > 58 && i < 2) {
-      this.slowWindows = 0
-      if (++this.fastWindows >= 4) {
-        this.applyTier(order[i + 1])
-        this.fastWindows = 0
-        this.tierCooldown = 4
-      }
-    } else {
-      this.slowWindows = 0
-      this.fastWindows = 0
-    }
+    const next = stepQuality(this.qualityState, this.fps)
+    const changed = next.tier !== this.qualityState.tier
+    this.qualityState = next
+    if (changed) this.applyTier(next.tier)
   }
 
   private handleTap(): void {
