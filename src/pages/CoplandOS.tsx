@@ -183,7 +183,9 @@ export default function CoplandOS() {
 
   return (
     <div className="copland-root">
-      <div className="copland-canvas" ref={containerRef} />
+      {/* Decoration: everything the canvas draws is also written out for real
+          in the .copland-sr fallback below. */}
+      <div aria-hidden="true" className="copland-canvas" ref={containerRef} />
 
       {/* ambient overlays — always on, the "constant motion" */}
       <div className="copland-scan" aria-hidden="true" />
