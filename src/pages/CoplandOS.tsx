@@ -4,14 +4,13 @@ import { NaviVoice } from '../scene/naviVoice'
 import { PANEL_DATA } from '../scene/panelData'
 import './CoplandOS.css'
 
-// ============================================================================
-// COPLAND OS ENTERPRISE — produced by Tachibana Lab
+// COPLAND OS ENTERPRISE :: produced by Tachibana Lab
 // A 3D NAVI boot/desktop experience. The heavy Three.js scene lives in
-// ../scene/coplandScene and is LAZY-LOADED (dynamic import) so the React boot
-// shell paints immediately while three streams in during the boot sequence.
+// ../scene/coplandScene and is lazy-loaded through a dynamic import, so the
+// React boot shell paints immediately while three streams in behind the boot
+// sequence.
 // This layer drives boot phases and the crisp DOM overlay (boot log, operator
 // welcome, desktop HUD).
-// ============================================================================
 
 // The NAVI addresses its operator by name on boot. Retune freely.
 const OPERATOR = 'LAIN'

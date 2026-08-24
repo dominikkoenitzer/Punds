@@ -1,12 +1,11 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// HolographicFish — a school of holographic KOI drifting through the air of the
-// corporate plaza (the iconic cyberpunk holo-fish-ad motif from the wet-neon
-// downtown). Each fish is a single FLATTENED plane textured with ONE shared,
-// pre-rendered koi-SILHOUETTE CanvasTexture (body + dorsal/pectoral fins + a
-// fanned tail, drawn as a soft additive glow). The whole school shares that one
+// HolographicFish: a school of holographic koi drifting through the air of the
+// corporate plaza, the cyberpunk holo-fish-ad motif from the wet-neon downtown.
+// Each fish is a single flattened plane textured with one shared, pre-rendered
+// koi-silhouette CanvasTexture (body, dorsal and pectoral fins, and a fanned
+// tail, drawn as a soft additive glow). The whole school shares that one
 // texture and ONE unit PlaneGeometry; only the per-fish MeshBasicMaterial is
 // unique (so each koi carries its own phosphor/hologram/tachibana tint and its
 // own brightness shimmer).
@@ -17,16 +16,15 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // inside bounds (radius ~8..40, y ~-9..23) with no escape and no clumping. The
 // heading is taken from a fixed finite-difference of the path (stable under any
 // motion scale), then the koi is laid along its travel direction kept roughly
-// upright; because tangential travel makes each koi's broad side face radially —
-// i.e. toward the camera at the origin — you read the silhouette in profile. A
+// upright. Tangential travel makes each koi's broad side face radially, which
+// is toward the camera at the origin, so you read the silhouette in profile. A
 // brisk sine TAIL WAG (yaw + a little roll, fast relative to the slow body
 // drift) plus a length breathe makes them undulate like swimming.
 //
 // update(): per fish two cheap scalar position samples, one orientation basis,
 // two small quaternion wags, an opacity shimmer lifted by ctx.audio. All scratch
-// objects are reused — no per-frame allocation. All rates scale with ctx.motion
+// objects are reused, so no per-frame allocation. All rates scale with ctx.motion
 // via a private accumulated anim clock.
-// ============================================================================
 
 const TAU = Math.PI * 2
 const COUNT = 22
@@ -144,7 +142,7 @@ export class HolographicFish implements SceneFeature {
   private readonly fish: Fish[] = []
   private anim = 0
 
-  // reusable scratch — no per-frame allocation
+  // reusable scratch, so no per-frame allocation
   private readonly posA = new THREE.Vector3()
   private readonly posB = new THREE.Vector3()
   private readonly fwd = new THREE.Vector3()

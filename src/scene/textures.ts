@@ -56,7 +56,7 @@ export function drawLogoTexture(p: ScenePalette): THREE.CanvasTexture {
   ctx.fillStyle = halo
   ctx.beginPath(); ctx.arc(0, 0, 470, 0, Math.PI * 2); ctx.fill()
 
-  // big rounded BODY/BOWL — open at the TOP, where the iris nests
+  // big rounded body/bowl, open at the top, where the iris nests
   setGlow(blue, 26)
   ctx.lineWidth = 18
   ctx.beginPath(); ctx.arc(0, -22, 122, 1.72 * Math.PI, 3.28 * Math.PI); ctx.stroke()

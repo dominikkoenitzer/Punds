@@ -1,15 +1,13 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// TerminalText — floating "Wired" log readouts
+// TerminalText: floating "Wired" log readouts.
 // A scatter of CanvasTexture planes drifting at depth, each rendering several
 // lines of monospace log text in phosphor cyan with glow on a transparent,
 // additively-blended surface so the bloom pass makes them bloom. Planes always
 // billboard toward the camera, bob gently, and slowly fade in/out (per-plane
 // sine) so logs appear and dissolve. Each plane scrolls in a fresh line at
 // most every ~2s (throttled, one redraw per frame), never per frame.
-// ============================================================================
 
 type Tone = 'phosphor' | 'hologram' | 'tachibana' | 'warning'
 

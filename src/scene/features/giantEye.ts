@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// GiantEye — a colossal HOLOGRAPHIC eye in the void at the zenith. A soft, faint
+// GiantEye: a colossal holographic eye in the void at the zenith. A soft, faint
 // additive projection (almond glow frame + a separate iris layer) that
 // billboards to face you. The iris flicks to look in a new direction every
 // couple of seconds, then settles. It also breathes, flickers, blinks and
@@ -165,7 +165,7 @@ export class GiantEye implements SceneFeature {
 
     const frame = addLayer(drawFrameTexture(palette), R * 2.4, 0, 0.34)
     // iris sized so its limbal ring stays within the almond's vertical opening
-    // (~0.85*H of the frame) — keeps the eyeball inside the eye outline
+    // (~0.85*H of the frame), which keeps the eyeball inside the eye outline
     this.iris = addLayer(drawIrisTexture(), R * 0.78, 0.4, 0.72)
     this.frameMat = frame.material as THREE.MeshBasicMaterial
     this.irisMat = this.iris.material as THREE.MeshBasicMaterial
@@ -191,7 +191,7 @@ export class GiantEye implements SceneFeature {
     this.anim += dt * motion
     const a = this.anim
 
-    // wavering, drifting projection — never perfectly still
+    // wavering, drifting projection, never perfectly still
     this.group.position.set(Math.sin(a * 0.13) * 1.6, BASE_Y - dread * 14, Math.cos(a * 0.1) * 1.6)
     this.group.lookAt(camera.position) // the eyeball keeps facing you
 
@@ -212,7 +212,7 @@ export class GiantEye implements SceneFeature {
     this.sacCur.lerp(this.sacTarget, 0.22) // snappy flick, then settle
     this.iris.position.set(this.sacCur.x, this.sacCur.y, 0.4)
 
-    // slow blink — the whole eye squashes to a glowing line
+    // slow blink: the whole eye squashes to a glowing line
     let openness = 1
     this.blinkCooldown -= dt * motion
     if (this.blinkCooldown <= 0 && !this.blinking) {

@@ -1,9 +1,8 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// WatchingEyes — the core LAIN motif: disembodied EYES that open in the dark
-// between the towers and WATCH you. Quiet, restrained, unsettling — NOT battle
+// WatchingEyes: the core Lain motif. Disembodied eyes open in the dark between
+// the towers and watch you. Quiet, restrained and unsettling, not battle
 // spectacle.
 //
 // A small POOL of glowing eyes lives in the darker regions of the world (radius
@@ -16,8 +15,8 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 //
 // BEHAVIOUR (pooled, recurring, staggered): an idle eye waits on a cooldown,
 // then fades in while the eyelid OPENS from a slit; it WATCHES for a couple of
-// seconds — the iris/pupil leading toward the camera as the eye lazily swivels
-// to follow you — BLINKS once (lid snaps shut and open), then fades out and
+// seconds, the iris and pupil leading toward the camera as the eye lazily
+// swivels to follow you, blinks once (the lid snaps shut and open), then fades out and
 // recycles to a fresh dark spot. A faint per-eye glow FLICKER (a destabilising
 // transmission) rises with ctx.audio. Staggered cooldowns keep ~2-4 watching at
 // once.
@@ -27,7 +26,6 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // the eye visibly dart to look at you. Shared geometries + one glow texture;
 // per-eye materials only (so eyes fade independently). No per-frame allocation;
 // idle eyes are fully hidden. COPYRIGHT-SAFE: generic glowing shapes only.
-// ============================================================================
 
 const TAU = Math.PI * 2
 
@@ -86,7 +84,7 @@ interface EyeRec {
   fp: number
 }
 
-// soft round blue glow sprite — shared by every eye's sclera halo
+// soft round blue glow sprite, shared by every eye's sclera halo
 function makeGlowTexture(): THREE.CanvasTexture {
   const S = 64
   const canvas = document.createElement('canvas')

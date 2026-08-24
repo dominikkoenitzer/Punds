@@ -1,15 +1,14 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// WiredIntercepts — eerie glitchy "Wired transmission" text fragments.
+// WiredIntercepts: eerie glitchy "Wired transmission" text fragments.
 //
 // A pool of small billboarded planes, each textured from its own tiny <canvas>
 // painting a SHORT monospace transmission fragment (phosphor cyan, glowing, on a
 // transparent additively-blended surface so the bloom pass catches it). Each
 // fragment FADES IN at a random spot around the viewer (radius ~10..40, varied
-// y), drifts slowly, occasionally GLITCHES — a brief redraw with scrambled
-// glyphs + RGB-split + jitter — then FADES OUT and recycles to a fresh
+// y), drifts slowly, occasionally glitches with a brief redraw of scrambled
+// glyphs plus RGB-split and jitter, then fades out and recycles to a fresh
 // spot/phrase a few seconds later. Spawns are staggered so only a few hang in
 // the haze at once: presences in the Wired, half-heard. ("you are not alone.")
 //
@@ -18,10 +17,9 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // Perf: ONE shared PlaneGeometry; per-plane size in mesh.scale. Canvases are
 // redrawn ONLY on (re)spawn and on the two edges of a glitch (start / end),
 // never per frame, and a small per-frame REDRAW BUDGET spreads those redraws
-// across frames. update() does no allocation beyond Math.* scalars — it only
+// across frames. update() allocates nothing beyond Math.* scalars; it only
 // advances opacity / position / billboard rotation. Idle fragments are hidden
 // (visible=false, opacity 0) and skipped.
-// ============================================================================
 
 const POOL_COUNT = 12
 
@@ -333,7 +331,7 @@ export class WiredIntercepts implements SceneFeature {
             this.draw(p, false)
             budget--
           } else {
-            // No redraw budget this frame — hold the scramble one more frame.
+            // No redraw budget this frame, so hold the scramble one more frame.
             p.glitchEndsAt = lt + 0.05
           }
         }

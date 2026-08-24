@@ -2,10 +2,10 @@ import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
 // ---------------------------------------------------------------------------
-// DataRain — falling monospace glyph streams scattered through the mid/back of
-// the Wired. Each stream is a tall, thin, camera-billboarded plane textured
-// with a pre-rendered strip canvas of katakana / ASCII / hex glyphs. The
-// canvas is drawn ONCE per stream; per-frame animation is just a cheap scroll
+// DataRain: falling monospace glyph streams scattered through the mid and back
+// of the Wired. Each stream is a tall, thin, camera-billboarded plane textured
+// with a pre-rendered strip canvas of katakana, ASCII and hex glyphs. The
+// canvas is drawn once per stream; per-frame animation is just a cheap scroll
 // of texture.offset.y (RepeatWrapping), so there is no per-frame canvas work
 // and no per-frame allocation.
 // ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ interface Stream {
 
 function buildGlyphSet(): string {
   let s = ''
-  // half-width katakana (U+FF66..U+FF9D) — the Lain / Wired staple
+  // half-width katakana (U+FF66..U+FF9D), the Lain / Wired staple
   for (let c = 0xff66; c <= 0xff9d; c++) s += String.fromCharCode(c)
   s += 'ABCDEFGHJKLMNPQRSTUVWXYZ'
   s += '0123456789'
@@ -93,7 +93,7 @@ function makeStreamTexture(glyphs: string, color: THREE.Color): THREE.CanvasText
         ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`
         ctx.fillText(rnd(), x, y)
       } else if (Math.random() < 0.26) {
-        // sparse faint background glyphs — kept sparse so the plane never reads
+        // sparse faint background glyphs, kept sparse so the plane never reads
         // as a solid glowing rectangle, only as streaks
         const a = 0.05 + Math.random() * 0.07
         ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`
@@ -138,7 +138,7 @@ export class DataRain implements SceneFeature {
 
       const mesh = new THREE.Mesh(this.geometry, material)
 
-      // scatter through the mid/back, biased to the sides — never dead-center
+      // scatter through the mid and back, biased to the sides, never dead-center
       const z = -10 - Math.random() * 33 // -10 .. -43
       let x = (Math.random() * 2 - 1) * 30
       if (Math.abs(x) < 7) x += x >= 0 ? 7 : -7

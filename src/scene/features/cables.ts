@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// CableTangle — the signature Wired look: ~14-22 drooping cables, each a
+// CableTangle: the signature Wired look. Roughly 14-22 drooping cables, each a
 // CatmullRomCurve3 sagged downward by "gravity" and skinned with a thin
 // additive TubeGeometry so the bloom pass makes it glow. Several cables are
 // clustered into near-parallel bundles so the space reads as "cables
