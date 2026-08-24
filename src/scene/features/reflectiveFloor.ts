@@ -2,12 +2,11 @@ import * as THREE from 'three'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// ReflectiveFloor — the glossy plaza pavement at the heart of the corpo-plaza.
-// REPLACES the old rolling GroundTerrain. A large flat THREE.Reflector lies at
-// the shared world floor (y = -10) and MIRRORS everything above it — the ringing
-// towers, the holographic koi, the floating UI panels, the central logo — like
-// wet downtown asphalt under neon. A dark teal tint keeps the mirror dim so only
+// ReflectiveFloor: the glossy plaza pavement at the heart of the corpo-plaza,
+// which replaced the old rolling GroundTerrain. A large flat THREE.Reflector
+// lies at the shared world floor (y = -10) and mirrors everything above it: the
+// ringing towers, the holographic koi, the floating UI panels, the central logo,
+// like wet downtown asphalt under neon. A dark teal tint keeps the mirror dim so only
 // the bright emissive content reflects and blooms.
 //
 // Lifted a hair above the mirror (y = -9.95, to dodge z-fighting) sits a glowing
@@ -19,11 +18,10 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 //
 // PERF: the Reflector renders the WHOLE scene a second time into its own render
 // target every frame, so the texture is kept modest (1024²) with light MSAA, and
-// the grid is dirt-cheap — a couple hundred static line vertices, two materials.
+// the grid is dirt-cheap, a couple hundred static line vertices and two materials.
 // update() only tweaks a few opacity/scale/colour scalars: no per-frame alloc.
-// The Reflector refreshes its reflection itself (its own onBeforeRender) — we
-// never drive it manually.
-// ============================================================================
+// The Reflector refreshes its reflection itself, in its own onBeforeRender, so
+// we never drive it manually.
 
 const FLOOR_Y = -10 // shared world floor: the mirror sits exactly here
 const PLANE_SIZE = 300 // mirror + grid span (fades into fog long before the rim)

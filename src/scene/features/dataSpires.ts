@@ -1,24 +1,23 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// DataSpires — the CORPORATE PLAZA CANYON that ENCLOSES the camera.
+// DataSpires: the corporate plaza canyon that encloses the camera.
 //
-// The camera stands in an open plaza at the ORIGIN. This feature RINGS the
-// origin with the downtown skyline on ALL sides (full 360°) so the viewer looks
-// UP an urban canyon of corp towers. Towers are seated in THREE concentric
-// depth layers around a CLEAR central plaza (nothing within radius ~18):
-//   • NEAR ring  (r ~24..37)  — the close canyon walls, clearly readable
-//   • MID  ring  (r ~37..56)  — taller massing rising behind the near wall
-//   • FAR  ring  (r ~56..80)  — the tallest backdrop, fading into FogExp2
-// 3-5 HERO corp MEGASTRUCTURES rise far above the rest (heights ~85-96) at
-// evenly-spaced bearings as plaza landmarks with bright phosphor crowns.
+// The camera stands in an open plaza at the origin. This feature rings the
+// origin with the downtown skyline on all sides (a full 360°) so the viewer
+// looks up an urban canyon of corp towers. Towers sit in three concentric depth
+// layers around a clear central plaza, with nothing inside radius ~18:
+//   • NEAR ring  (r ~24..37)  the close canyon walls, clearly readable
+//   • MID  ring  (r ~37..56)  taller massing rising behind the near wall
+//   • FAR  ring  (r ~56..80)  the tallest backdrop, fading into FogExp2
+// Three to five hero megastructures rise far above the rest (heights ~85-96) at
+// evenly-spaced bearings, plaza landmarks with bright phosphor crowns.
 //
 // Bases are planted ON the shared ground plane (y = -10) and sink ~1.5-3 units
 // below it. Every tower is assembled from 1-3 STACKED, narrowing box tiers
-// (setbacks) + an optional thin antenna spire + a bright crown on heroes — and
-// ALL of those segments are instances of ONE unit BoxGeometry in ONE
-// InstancedMesh (~1 draw call). Towers share a single dark CanvasTexture FACADE
+// (setbacks), an optional thin antenna spire, and a bright crown on the heroes.
+// All of those segments are instances of one unit BoxGeometry in one
+// InstancedMesh, so roughly one draw call. Towers share a single dark CanvasTexture FACADE
 // (a grid of mostly-dim / a-few-bright / a-few-off windows, phosphor + hologram
 // tint, rare tachibana) tiled down the height via RepeatWrapping; it stays dark
 // so only lit windows + the additive light cloud glow under the bloom pass.
@@ -33,7 +32,6 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // and apply a very slow sway of the whole ring. Towers are static. Per frame we
 // only rewrite one small Float32 colour buffer (no allocation), nudge a couple
 // transforms, and tweak a handful of material scalars. Rates × ctx.motion.
-// ============================================================================
 
 const TAU = Math.PI * 2
 const GROUND = -10 // shared floor: tower bases sit on this and sink below it
@@ -483,7 +481,7 @@ export class DataSpires implements SceneFeature {
 
   // two concentric haze rings BEYOND the furthest towers: a low ground-glow band
   // seating the bases, and a taller horizon band backlighting the silhouettes.
-  // BackSide so the camera (inside) sees only the far wall — a single additive
+  // BackSide so the camera, inside, sees only the far wall: a single additive
   // layer, no double-exposure; fog:false so it reads through the FogExp2 depth.
   private addHaze(palette: ScenePalette, white: THREE.Color): void {
     const bands: Array<{

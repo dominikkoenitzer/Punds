@@ -1,35 +1,33 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// SidewaysCity — the SIGNATURE Bleach "inner world" image bled into the Wired:
-// glass blue-windowed SKYSCRAPERS lying SIDEWAYS at impossible angles, floating
-// in the twilight sky around and ABOVE the upright corporate plaza. Where the
-// two realities overlap you get wrong-gravity vertigo — towers that should rise
+// SidewaysCity: the signature Bleach "inner world" image bled into the Wired.
+// Glass blue-windowed skyscrapers lie sideways at impossible angles, floating in
+// the twilight sky around and above the upright corporate plaza. Where the two
+// realities overlap you get wrong-gravity vertigo: towers that should rise
 // instead hang horizontal overhead, receding into the twilight-blue fog.
 //
 // Each skyscraper is a tall thin box (a few get a second, narrower stacked
 // "annex" at one end for massing variety) whose long +Y axis is TIPPED ~90°
 // about a random horizontal axis (plus extra random tilt) so it reads as a
 // sideways tower. Centres sit in a wide sky band around the plaza
-// (radius ~38..115, y ~8..90) — never in the clear central plaza; long towers
+// (radius ~38..115, y ~8..90) and never in the clear central plaza; long towers
 // are length-capped by their radius so they can't stab inward across the plaza.
 //
 // EVERYTHING is ONE shared unit BoxGeometry driven by TWO InstancedMeshes
 // (~2 draw calls total spanning the whole sky):
-//   • bodies — a shared dark twilight-blue CanvasTexture FACADE: a grid of cool
+//   • bodies, on a shared dark twilight-blue CanvasTexture facade: a grid of cool
 //     reflective-blue glass windows, a few lit brighter phosphor/hologram, a few
 //     dark; tiled via RepeatWrapping. The body stays dark so only the windows
 //     glow under the bloom pass. Per-instance instanceColor varies each tower's
 //     brightness/cool-cast.
-//   • frames — the SAME boxes scaled a hair larger with a shared additive
+//   • frames, the same boxes scaled a hair larger with a shared additive
 //     edge-frame CanvasTexture (glowing border, transparent centre) so each
 //     sideways silhouette catches a faint twilight-blue rim/edge glow.
 //
 // update(): a VERY slow continuous drift/rotation of the whole group (they hang
 // almost still in the sky) + a subtle audio brightness/opacity lift. No
-// per-frame allocation — only a few material scalars and group transforms.
-// ============================================================================
+// per-frame allocation, only a few material scalars and group transforms.
 
 const TAU = Math.PI * 2
 const TOWER_COUNT = 46

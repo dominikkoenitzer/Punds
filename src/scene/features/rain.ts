@@ -1,29 +1,27 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// InnerRain — the constant, melancholy rain of the BLEACH inner world ("it
+// InnerRain: the constant, melancholy rain of the Bleach inner world ("it
 // always rains in my inner world") bleeding into the Wired. A tall COLUMN of
 // thin falling streaks that always surrounds the viewer: the whole field is
 // anchored to the live camera in X/Z each frame, so no matter where you dolly
 // or look, soft cool-blue rain is falling around you and dissolving into the
 // twilight-blue fog horizon.
 //
-// IMPLEMENTATION — one single THREE.LineSegments draws every drop. Each drop is
-// two vertices (a faint trailing TOP + a bright leading BOTTOM) so the line is a
-// short slanted streak with a comet fade baked into a static vertex-COLOUR
+// Implementation: one single THREE.LineSegments draws every drop. Each drop is
+// two vertices, a faint trailing top and a bright leading bottom, so the line is
+// a short slanted streak with a comet fade baked into a static vertex-colour
 // attribute (additive blending turns the dim top vertex into a fade, the bright
 // bottom into the head). Per frame we only march each drop's Y down, drift it
 // sideways with a gentle wind, wrap it within the column, and rewrite the two
-// vertex positions in place — no per-frame allocation, no texture, one draw call.
+// vertex positions in place: no per-frame allocation, no texture, one draw call.
 //
-// RIPPLES — a tiny pool of additive expanding rings sit just above the reflective
+// Ripples: a tiny pool of additive expanding rings sits just above the reflective
 // floor where rain "lands", growing + fading then recycling. They share one ring
 // geometry; the pool is small so per-ripple materials stay cheap.
 //
 // update(): fall + drift + recycle (x ctx.motion), follow the camera in X/Z,
 // and let ctx.audio lift the fall speed / brightness / ripple cadence subtly.
-// ============================================================================
 
 const COUNT = 1400 // falling streaks (one LineSegments, two verts each)
 const R = 45 // horizontal half-extent of the rain column around the camera
@@ -66,7 +64,7 @@ export class InnerRain implements SceneFeature {
   private readonly positions: Float32Array
   private readonly posAttr: THREE.BufferAttribute
 
-  // per-drop state (parallel arrays — no per-drop objects)
+  // per-drop state (parallel arrays, no per-drop objects)
   private readonly ox = new Float32Array(COUNT) // X offset relative to camera
   private readonly oz = new Float32Array(COUNT) // Z offset relative to camera
   private readonly dy = new Float32Array(COUNT) // current Y of the streak top

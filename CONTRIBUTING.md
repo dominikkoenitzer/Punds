@@ -1,7 +1,7 @@
 # Contributing to Punds
 
 Thanks for your interest in contributing! Punds is a single-page personal landing page styled
-as Copland OS / the NAVI from *Serial Experiments Lain* — a navigable Three.js 3D world you
+as Copland OS / the NAVI from *Serial Experiments Lain*: a navigable Three.js 3D world you
 boot into. This guide covers everything you need to get a change merged.
 
 By participating in this project you agree to abide by our
@@ -9,7 +9,7 @@ By participating in this project you agree to abide by our
 
 ## Prerequisites
 
-- [bun](https://bun.sh) (the canonical package manager — version `1.3.14` is used here)
+- [bun](https://bun.sh) (the canonical package manager; version `1.3.14` is used here)
 
 That's it. bun runs the dev server, the build, and the linter; you don't need a separate Node
 setup, though Node 22 also works.
@@ -52,7 +52,7 @@ Open http://localhost:1000 to see the site. The dev server hot-reloads on save.
 ## Commit messages
 
 This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Prefix each commit
-with a type — common ones here are `feat:`, `fix:`, `chore:`, `docs:`, and `refactor:`.
+with a type. Common ones here are `feat:`, `fix:`, `chore:`, `docs:` and `refactor:`.
 
 Real examples from this repository:
 
@@ -76,14 +76,14 @@ bun run build
 
 The TypeScript config is **strict**, with `noUnusedLocals`, `noUnusedParameters`,
 `noFallthroughCasesInSwitch`, and `exactOptionalPropertyTypes` enabled. Because `bun run build`
-runs `tsc -b`, it **fails on unused locals and parameters** — clean those up rather than
+runs `tsc -b`, it **fails on unused locals and parameters**, so clean those up rather than
 disabling the rule.
 
 ## Testing
 
 There is **no test runner** configured. Manual verification in the browser is expected: run
 `bun run dev`, then watch the full boot sequence (logo → boot log → "present day, present time"
-→ desktop) and exercise the part you touched — drag to look around, scroll to fly, hover and
+→ desktop) and exercise the part you touched: drag to look around, scroll to fly, hover and
 click the floating panels. A WebGL-capable browser is required; without WebGL you get the
 accessible link fallback. For build-affecting changes, also sanity-check `bun run preview`
 against the production bundle.
@@ -93,29 +93,29 @@ against the production bundle.
 The app is a thin **React layer** over a self-contained **Three.js scene engine**. Entry chain:
 [`src/main.tsx`](src/main.tsx) → [`src/App.tsx`](src/App.tsx) renders `<CoplandOS/>` →
 [`src/pages/CoplandOS.tsx`](src/pages/CoplandOS.tsx). There is no router, no global state, and no
-data layer — React state is local `useState` inside `CoplandOS`.
+data layer. React state is local `useState` inside `CoplandOS`.
 
 - **Know which layer you're in.** [`CoplandOS.tsx`](src/pages/CoplandOS.tsx) drives the boot
   phase machine (`logo` → `boot` → `welcome` → `desktop`) and the DOM overlays (CRT layers, HUD,
   boot log, the accessible no-WebGL fallback). The 3D world lives in
   [`src/scene/coplandScene.ts`](src/scene/coplandScene.ts) (the `CoplandScene` class) and its
-  feature modules — touch the scene there, not in React.
+  feature modules, so touch the scene there and not in React.
 - **Features implement a contract.** Each module in [`src/scene/features/`](src/scene/features)
   implements `SceneFeature { group, update(ctx), dispose() }` (see
   [`features/types.ts`](src/scene/features/types.ts)). To add one, implement the interface and
   register it in `CoplandScene.buildFeatures()`. Always `dispose()` geometries/materials you
-  create — the scene tears itself down on unmount and must not leak GPU resources.
+  create. The scene tears itself down on unmount and must not leak GPU resources.
 - **Edit content/config data, not scene code.** The floating links live in
   [`src/scene/panelData.ts`](src/scene/panelData.ts) (`PANEL_DATA`); the boot log and operator
   name are constants at the top of [`CoplandOS.tsx`](src/pages/CoplandOS.tsx).
-- **Styling is 100% hand-written CSS** — no Tailwind, no CSS-in-JS. Global resets and the
+- **Styling is 100% hand-written CSS.** No Tailwind, no CSS-in-JS. Global resets and the
   `TrixieCyrG` `@font-face` live in [`src/index.css`](src/index.css); the scene colour-palette
   `:root` variables (read back by the 3D engine via `getComputedStyle`) and all overlay/HUD
   styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css). Retune the palette there
   and the 3D follows.
 - **Every `useEffect` timer or event listener must return its own cleanup.** The scene
   lifecycle, clock, boot orchestration, NAVI whispers, and keyboard shortcuts each set up and
-  tear down their own interval/listener — follow that pattern when adding one.
+  tear down their own interval or listener; follow that pattern when adding one.
 - **Add runtime dependencies deliberately.** The only runtime deps today are `react`,
   `react-dom`, and `three`. Prefer reaching for those (or plain CSS/canvas) before adding
   anything new to `package.json`.

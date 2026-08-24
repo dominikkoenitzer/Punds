@@ -1,8 +1,8 @@
-/* ===========================================================================
-   COPLAND OS ENTERPRISE — theme + DOM overlay
+/*
+   COPLAND OS ENTERPRISE :: theme and DOM overlay
    The palette lives here as CSS custom properties; the Three.js scene reads
    them back via getComputedStyle(), so retuning these retunes the 3D too.
-   =========================================================================== */
+*/
 :root {
   --copland-void: #06112a;   /* deep twilight indigo (inner-world night sky) */
   --copland-bg:   #0d2142;

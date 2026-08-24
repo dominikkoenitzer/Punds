@@ -31,14 +31,12 @@ import { PANEL_DATA, type PanelDatum } from './panelData'
 import { readPalette } from './palette'
 import { drawLogoTexture, drawPanelTexture, makeSpriteTexture } from './textures'
 
-// ============================================================================
-// COPLAND OS — navigable 3D backdrop
+// COPLAND OS :: navigable 3D backdrop
 // A full-screen WebGL world the DOM looks into: the eye/circuit logo ahead, a
 // cloud of billboarded holographic NAVI panels, a drifting particle field, and
 // exponential fog for infinite depth. Drag to look around, scroll to fly
 // through. Raycaster drives panel hover/click. The React layer drives boot
 // phases (setPhase) and reacts to hover/skip via handlers.
-// ============================================================================
 
 export type CoplandPhase = 'logo' | 'boot' | 'welcome' | 'desktop'
 export type Quality = 'auto' | 'ultra' | 'high' | 'low'
@@ -187,7 +185,7 @@ export class CoplandScene {
     const w = container.clientWidth || window.innerWidth
     const h = container.clientHeight || window.innerHeight
 
-    // antialias:false — AA is supplied by the EffectComposer's MSAA targets
+    // antialias:false because AA comes from the EffectComposer's MSAA targets
     // (see applyTier); the default drawing buffer only ever shows OutputPass's
     // full-screen quad, so a multisampled canvas would just waste a resolve.
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
