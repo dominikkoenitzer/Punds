@@ -1,14 +1,13 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// Watcher — the lone INNER-WORLD GUARDIAN: an abstract humanoid silhouette
+// Watcher: the lone inner-world guardian, an abstract humanoid silhouette
 // standing on a tall, thin antenna/pole far out in the skyline, read against
 // the twilight-blue sky (the "someone is always watching over the city" motif
 // where the Wired and the inner world overlap).
 //
 // COPYRIGHT-SAFE: the figure is a GENERIC, featureless silhouette assembled from
-// primitives only — a tapered torso, an icosa head, suggested arms, and a flared
+// primitives only: a tapered torso, an icosa head, suggested arms, and a flared
 // COAT (a skirt cone + two trailing tapered flares that flutter in the wind). NO
 // face, NO recognizable design.
 //
@@ -22,9 +21,9 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 //
 // All geometries/materials are built ONCE and SHARED across both watchers. The
 // figure faces the origin (forward = local +Z). update(): a slow whole-body sway
-// + a coat/flare flutter (sine), a breathing rim-glow and throbbing markers —
-// every rate × ctx.motion with a slight ctx.audio lift. No per-frame allocation.
-// ============================================================================
+// plus a coat and flare flutter on a sine, a breathing rim-glow and throbbing
+// markers, every rate times ctx.motion with a slight ctx.audio lift. No
+// per-frame allocation.
 
 const FLOOR = -10
 const POLE_BOTTOM = -14 // pole sinks below the floor

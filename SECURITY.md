@@ -1,6 +1,6 @@
 # Security Policy
 
-Thanks for helping keep **Punds** safe. This is a small personal landing page —
+Thanks for helping keep **Punds** safe. This is a small personal landing page,
 a single deployed static site at [punds.ch](https://punds.ch/) with no backend,
 no database, and no user accounts or user data. That keeps the attack surface
 small, but reports are still genuinely appreciated.
@@ -13,20 +13,20 @@ fixes. There are no older releases to patch.
 
 | Version       | Supported |
 | ------------- | --------- |
-| latest `main` | ✅        |
-| anything else | ❌        |
+| latest `main` | Yes       |
+| anything else | No        |
 
 ## Reporting a Vulnerability
 
-Please report security issues **privately** — do not open a public issue for
+Please report security issues **privately**. Don't open a public issue for
 something exploitable.
 
 You can report in either of these ways:
 
-- **GitHub private security advisories** — go to the
+- **GitHub private security advisories.** Go to the
   [Security tab](https://github.com/dominikkoenitzer/Punds/security/advisories)
   of the repository and click *Report a vulnerability*.
-- **Email** — [dominikkoenitzer@users.noreply.github.com](mailto:dominikkoenitzer@users.noreply.github.com).
+- **Email:** [dominikkoenitzer@users.noreply.github.com](mailto:dominikkoenitzer@users.noreply.github.com).
 
 ### What to include
 

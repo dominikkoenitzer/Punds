@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// NetworkGraph — the "data is moving" beat of the Wired.
+// NetworkGraph: the "data is moving" beat of the Wired.
 //
 // A loose cluster of glowing icosahedron nodes wired to their nearest
 // neighbours, with packets of light streaming along the edges. The whole graph

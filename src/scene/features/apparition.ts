@@ -1,39 +1,38 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// Apparition — a PRESENCE IN THE WIRED. On a long, random timer (~12-28s) ONE
-// eerie GENERIC humanoid silhouette materializes out of drifting STATIC at a
-// random mid-distance spot, turns to FACE the camera and stands watching for a
-// few seconds, then dissolves back into shimmering grains and vanishes — and
-// reappears later somewhere else. The "wait… was someone there?" moment.
+// Apparition: a presence in the Wired. On a long, random timer (~12-28s) one
+// eerie, generic humanoid silhouette materializes out of drifting static at a
+// random mid-distance spot, turns to face the camera and stands watching for a
+// few seconds, then dissolves back into shimmering grains and vanishes, to
+// reappear later somewhere else. The "wait, was someone there?" moment.
 //
-// COPYRIGHT-SAFE: the figure is a GENERIC featureless suggestion of a standing
-// person assembled from primitives only — tapered torso, small icosa head,
-// suggested legs and hanging arms. NO face, NO recognizable design, no text.
+// Copyright-safe: the figure is a generic featureless suggestion of a standing
+// person assembled from primitives only, a tapered torso, a small icosa head,
+// suggested legs and hanging arms. No face, no recognizable design, no text.
 //
-// LOOK: the body is a DARK transparent silhouette (fog:true, so it sinks into
-// the twilight haze) wrapped in a faint ADDITIVE phosphor wireframe RIM-GLOW
-// (fog:false, so it punches through the fog for the bloom pass). Over/through it
-// a pooled POINTS cloud of white-hot grains forms the figure: while materialized
-// the grains settle into the silhouette and barely shimmer; while transitioning
-// they scatter outward into TV-static and the solid body fades away — selling
-// the "resolves from / dissolves into static" effect.
+// Look: the body is a dark transparent silhouette (fog:true, so it sinks into
+// the twilight haze) wrapped in a faint additive phosphor wireframe rim-glow
+// (fog:false, so it punches through the fog for the bloom pass). Over and
+// through it a pooled Points cloud of white-hot grains forms the figure. While
+// materialized the grains settle into the silhouette and barely shimmer; while
+// transitioning they scatter outward into TV-static and the solid body fades,
+// which is what sells the "resolves from, dissolves into static" effect.
 //
-// PERF: exactly ONE figure, all internals preallocated ONCE (shared geometries
-// + materials, a single fixed grain buffer). The grain loop and material writes
-// run ONLY while the apparition is visible (~6-10s out of every ~12-28s); the
-// rest of the time everything is hidden and update() early-returns. No per-frame
-// allocation. update() rates × ctx.motion; rim/grain intensity lift with audio.
-// ============================================================================
+// Perf: exactly one figure, with all internals preallocated once (shared
+// geometries and materials, a single fixed grain buffer). The grain loop and
+// the material writes run only while the apparition is visible, roughly 6-10s
+// out of every 12-28s; the rest of the time everything is hidden and update()
+// early-returns. No per-frame allocation. update() rates scale by ctx.motion,
+// and rim and grain intensity lift with audio.
 
 const TAU = Math.PI * 2
 const FLOOR = -10
 
-// grain budget — sampled across the body; kept low (cheap, only runs when shown)
+// grain budget, sampled across the body; kept low, and only runs when shown
 const GRAINS = 200
 
-// state machine durations (seconds) — long quiet gaps between appearances
+// state machine durations (seconds), with long quiet gaps between appearances
 const COOLDOWN_MIN = 12
 const COOLDOWN_VAR = 16 // -> 12..28s hidden
 const IN_MIN = 1.9
@@ -68,7 +67,7 @@ const approachAngle = (cur: number, target: number, t: number): number => {
   return cur + d * Math.min(1, t)
 }
 
-// one soft round grain sprite — shared by every point of the static cloud
+// one soft round grain sprite, shared by every point of the static cloud
 function makeGrainTexture(): THREE.CanvasTexture {
   const S = 32
   const canvas = document.createElement('canvas')
@@ -291,7 +290,7 @@ export class Apparition implements SceneFeature {
       const a = Math.random() * TAU
       const sr = Math.sqrt(1 - u * u)
       const i3 = i * 3
-      // bias the dispersal slightly upward — static drifting off into the Wired
+      // bias the dispersal slightly upward, static drifting off into the Wired
       this.gdir[i3] = Math.cos(a) * sr
       this.gdir[i3 + 1] = u * 0.6 + 0.5
       this.gdir[i3 + 2] = Math.sin(a) * sr

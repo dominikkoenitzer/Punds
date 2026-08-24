@@ -1,25 +1,24 @@
 import * as THREE from 'three'
 import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 
-// ============================================================================
-// InnerSky — the endless twilight-blue "inner world" sky that wraps the whole
-// Wired plaza (the BLEACH inner-world bleed: a vast sky instead of a ceiling).
-// Two pieces, both deliberately CHEAP and fog-immune so they read as the far
-// backdrop behind every other feature:
+// InnerSky: the endless twilight-blue "inner world" sky that wraps the whole
+// Wired plaza, the Bleach inner-world bleed of a vast sky in place of a
+// ceiling. Two pieces, both deliberately cheap and fog-immune so they read as
+// the far backdrop behind every other feature:
 //
-//   1. SKY DOME — a single large inverted SphereGeometry (radius 340, BackSide)
+//   1. Sky dome. A single large inverted SphereGeometry (radius 340, BackSide)
 //      drawn with a raw ShaderMaterial that paints a VERTICAL twilight gradient
 //      (deep indigo/navy zenith -> lighter teal-blue horizon -> dark nadir) on
 //      the sphere's local Y direction. The gradient is kept in the mid/low range
 //      so it never crosses the bloom threshold (~0.85) and washes the scene out.
 //      Because the world camera's far plane is only 240 (< the 340 dome), the
 //      vertex shader uses the standard skybox depth trick `gl_Position.z = w`
-//      (=> ndc.z = 1, the far plane) so the dome is NOT far-clipped, and the
+//      (=> ndc.z = 1, the far plane) so the dome is not far-clipped, and the
 //      mesh is frustumCulled:false / renderOrder:-1000 / depthTest:false so it
 //      is always drawn first as the unconditional backdrop, writing no depth.
-//      Raw ShaderMaterials get no fog by default — exactly what we want.
+//      Raw ShaderMaterials get no fog by default, which is exactly what we want.
 //
-//   2. CLOUDS — a set of soft, melancholy cloud billboards drifting high in the
+//   2. Clouds. A set of soft, melancholy cloud billboards drifting high in the
 //      sky. One shared fluffy CanvasTexture (overlapping radial lobes, white-
 //      blue, soft alpha) and one shared unit plane back every cloud; each cloud
 //      owns only a thin MeshBasicMaterial (NormalBlending, fog:false) so it can
@@ -30,7 +29,6 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // update(): one scalar sky-breathe uniform + per-cloud (advance ring angle,
 // reposition, yaw to camera, opacity breathe). No per-frame allocation; all
 // rates scale with ctx.motion and lift faintly with ctx.audio.
-// ============================================================================
 
 const TAU = Math.PI * 2
 
@@ -91,7 +89,7 @@ interface Cloud {
   breathePhase: number
 }
 
-// One soft, fluffy white-blue cloud — a few overlapping radial-gradient lobes
+// One soft, fluffy white-blue cloud: a few overlapping radial-gradient lobes
 // accumulated with the 'lighter' op so the body is dense and the edges fade to
 // nothing. Shared by every cloud; tinted cooler per-cloud via material.color.
 function makeCloudTexture(): THREE.CanvasTexture {
@@ -110,7 +108,7 @@ function makeCloudTexture(): THREE.CanvasTexture {
   ctx.clearRect(0, 0, W, H)
   ctx.globalCompositeOperation = 'lighter'
 
-  // lobes: [centreX, centreY, radius] — wider-than-tall, denser along the base
+  // lobes: [centreX, centreY, radius], wider than tall, denser along the base
   const lobes: ReadonlyArray<readonly [number, number, number]> = [
     [W * 0.5, H * 0.6, H * 0.46],
     [W * 0.34, H * 0.64, H * 0.34],
@@ -229,7 +227,7 @@ export class InnerSky implements SceneFeature {
     const m = ctx.motion
     this.t += ctx.dt * m
 
-    // faint sky-tint breathe, lifted a touch by the bass — kept tiny so the sky
+    // faint sky-tint breathe, lifted a touch by the bass, kept tiny so the sky
     // stays under the bloom threshold
     this.domeMat.uniforms.uBreathe.value = 1 + Math.sin(this.t * 0.05) * 0.04 + ctx.audio * 0.05
 
