@@ -149,6 +149,11 @@ export function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTe
     }
   }
 
+  // --- dark glass plate: the card carries its own backdrop so the text keeps
+  // its contrast no matter how bright the city behind it is ------------------
+  ctx.fillStyle = 'rgba(5, 16, 32, 0.85)'
+  ctx.fillRect(0, 0, W, H)
+
   // --- ethereal body: a soft luminous field, no hard window fill -----------
   const body = ctx.createLinearGradient(0, 16, 0, H - 16)
   body.addColorStop(0, 'rgba(20,72,124,0.04)')
@@ -248,7 +253,7 @@ export function drawPanelTexture(d: PanelDatum, p: ScenePalette): THREE.CanvasTe
       ctx.shadowBlur = 0
     } else {
       ctx.font = '400 23px "TrixieCyrG", ui-monospace, monospace'
-      ctx.fillStyle = 'rgba(174,224,255,0.82)'
+      ctx.fillStyle = 'rgba(186,230,255,0.95)'
       ctx.fillText(line, 38, y)
     }
     y += 40

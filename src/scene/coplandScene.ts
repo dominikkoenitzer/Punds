@@ -192,7 +192,7 @@ export class CoplandScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.renderer.setSize(w, h)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.1
+    this.renderer.toneMappingExposure = 1.05
     this.renderer.domElement.style.cursor = 'grab'
     container.appendChild(this.renderer.domElement)
 
@@ -231,7 +231,7 @@ export class CoplandScene {
       this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
       this.composer.setSize(w, h)
       this.composer.addPass(new RenderPass(this.scene, this.camera))
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 1.2, 0.6, 0.85)
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.6, 0.85)
       this.composer.addPass(this.bloom)
       this.glitch = new GlitchPass()
       this.glitch.enabled = false
@@ -325,15 +325,15 @@ export class CoplandScene {
 
   // Place each panel at a DISTINCT direction from the camera origin so that,
   // billboarded, no two cards stack on the same screen ray (every card stays
-  // clickable). Clickable core (links + operator) fills the front arc; lore /
-  // flavor wraps around the sides and behind.
+  // clickable).
   private placePanel(i: number, yawDeg: number, pitchDeg: number, dist: number, near: boolean): void {
     const datum = PANEL_DATA[i]
+    // Normal blending, not additive: the card's dark plate has to be able to
+    // darken the city behind it, or the text loses every contrast fight.
     const mat = new THREE.MeshBasicMaterial({
       map: drawPanelTexture(datum, this.palette),
       transparent: true,
       opacity: 0,
-      blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
     })
@@ -363,13 +363,16 @@ export class CoplandScene {
   }
 
   private buildPanels(): void {
-    // spread all panels evenly around the viewer, each at its own direction
-    const n = PANEL_DATA.length
-    for (let i = 0; i < n; i++) {
-      const yawDeg = (i / n) * 360 + 18
-      const pitchDeg = i % 2 === 0 ? 6 : -8
-      const dist = 6.4 + (i % 2) * 0.6
-      this.placePanel(i, yawDeg, pitchDeg, dist, true)
+    // The access points hold a tidy arc ahead of the viewer, ordered left to
+    // right in PANEL_DATA order, so nothing important starts behind your back.
+    // Alternating pitch and distance keep neighbouring cards off each other's
+    // screen rays.
+    const yaws = [-40, -13, 13, 40]
+    const pitches = [4, -5, -5, 4]
+    const dists = [7.6, 6.6, 6.6, 7.6]
+    for (let i = 0; i < PANEL_DATA.length; i++) {
+      const k = i % yaws.length
+      this.placePanel(i, yaws[k], pitches[k], dists[k], true)
     }
   }
 
@@ -623,14 +626,14 @@ export class CoplandScene {
       )
       pn.mesh.lookAt(this.camera.position)
       pn.mesh.scale.setScalar(1 + pn.hover * 0.12)
-      pn.mat.opacity = this.panelOpacity * (0.78 + pn.hover * 0.5)
+      pn.mat.opacity = this.panelOpacity * (0.88 + pn.hover * 0.12)
     }
 
     // --- phosphor flicker on the bloom ---------------------------------------
     const flick = Math.sin(t * 30) * 0.04 + (Math.random() < 0.015 ? -0.3 : 0)
     this.bloom.strength = this.reduced
-      ? 1.0
-      : (1.2 + this.audioLevel * 0.7 + flick) * this.qualityBloom
+      ? 0.85
+      : (0.95 + this.audioLevel * 0.5 + flick) * this.qualityBloom
 
     this.composer.render()
   }
