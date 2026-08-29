@@ -196,10 +196,13 @@ export default function CoplandOS() {
       <div className="copland-overlay" aria-hidden="true">
         {/* boot splash caption (logo itself is rendered in 3D) */}
         {(phase === 'logo' || phase === 'boot') && (
-          <div className={`copland-splash${phase === 'boot' ? ' is-dim' : ''}`}>
-            <div className="copland-wordmark">Copland OS Enterprise</div>
-            <div className="copland-tachibana">Produced By Tachibana Lab</div>
-          </div>
+          <>
+            <div className={`copland-splash${phase === 'boot' ? ' is-dim' : ''}`}>
+              <div className="copland-wordmark">Copland OS Enterprise</div>
+              <div className="copland-tachibana">Produced By Tachibana Lab</div>
+            </div>
+            <div className="copland-skiphint">click anywhere to skip</div>
+          </>
         )}
 
         {/* streaming boot log */}
@@ -228,7 +231,7 @@ export default function CoplandOS() {
           <>
             <div className="copland-hud copland-hud-tl">
               <span className="hud-key">COPLAND OS</span>
-              <span className="hud-sub">ENTERPRISE · TACHIBANA LAB</span>
+              <span className="hud-sub">ENTERPRISE :: TACHIBANA LAB</span>
             </div>
             <div className="copland-hud copland-hud-tr">
               <span className="hud-clock">{clock}</span>
@@ -254,6 +257,24 @@ export default function CoplandOS() {
           </>
         )}
       </div>
+
+      {/* the access bar: every link reachable in one click, no hunting the 3D
+          panels required; the 3D cards stay as the atmospheric way in */}
+      {phase === 'desktop' && !webglFailed && (
+        <nav className="copland-access" aria-label="Access points">
+          <span className="access-hint" aria-hidden="true">drag to look :: scroll to fly</span>
+          <div className="access-row">
+            {PANEL_DATA.filter((d) => d.kind === 'link').map((d) => (
+              <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer">
+                {d.label}
+              </a>
+            ))}
+            <button type="button" onClick={() => setMuted((m) => !m)}>
+              {muted ? 'SOUND: OFF' : 'SOUND: ON'}
+            </button>
+          </div>
+        </nav>
+      )}
 
       {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
       <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
