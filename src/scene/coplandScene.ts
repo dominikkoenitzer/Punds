@@ -383,13 +383,15 @@ export class CoplandScene {
     // The access points hang scattered ahead of the viewer, ordered left to
     // right in PANEL_DATA order, so nothing important starts behind your back.
     // The shape is a lightning bolt on its side, not an arc: heights jump
-    // high / low / high / lowest across the screen, yaw gaps are uneven, and
+    // high / low / high / lowest across the sweep, yaw gaps are uneven, and
     // every card sits at its own depth and standing tilt, so no two cards ever
-    // line up. Screen-space gaps between neighbours stay well above a card's
-    // angular width, so nothing crowds anything else's ray.
-    const yaws = [-48, -22, 15, 42]
-    const pitches = [14, -10, 7, -16]
-    const dists = [11.5, 9.0, 10.5, 12.5]
+    // line up. The four cards use the whole frontal hemisphere (~180 degrees):
+    // the outer pair lives near the edges of it, so you turn to find them.
+    // The middle pair stays outside the central logo's screen footprint
+    // (~15 degrees either side of dead ahead), so no card overlaps the logo.
+    const yaws = [-80, -40, 36, 76]
+    const pitches = [15, -11, 8, -17]
+    const dists = [11.5, 9.5, 10.5, 12.5]
     const tilts: [number, number, number][] = [
       [3, 12, -3],
       [-4, -9, 2],
