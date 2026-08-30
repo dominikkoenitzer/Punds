@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CoplandScene, CoplandPhase, HoverInfo } from '../scene/coplandScene'
+import type { CoplandScene, CoplandPhase } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
 import { PANEL_DATA } from '../scene/panelData'
 import './CoplandOS.css'
@@ -10,7 +10,8 @@ import './CoplandOS.css'
 // React boot shell paints immediately while three streams in behind the boot
 // sequence.
 // This layer drives boot phases and the crisp DOM overlay (boot log, operator
-// welcome, desktop HUD).
+// welcome). The desktop itself carries no HUD: once you're in, only the scene
+// and the CRT texture remain on screen.
 
 // The NAVI addresses its operator by name on boot. Retune freely.
 const OPERATOR = 'LAIN'
@@ -33,8 +34,6 @@ const BOOT_LINES: string[] = [
   '> no matter where you go, everyone is connected',
 ]
 
-const pad = (n: number): string => n.toString().padStart(2, '0')
-
 function supportsWebGL(): boolean {
   try {
     const c = document.createElement('canvas')
@@ -53,8 +52,6 @@ export default function CoplandOS() {
   const [phase, setPhase] = useState<CoplandPhase>('logo')
   const [bootLines, setBootLines] = useState<string[]>([])
   const [skipped, setSkipped] = useState(false)
-  const [now, setNow] = useState<Date>(() => new Date())
-  const [hovered, setHovered] = useState<HoverInfo | null>(null)
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
   const [webglFailed] = useState(() => !supportsWebGL())
@@ -75,7 +72,6 @@ export default function CoplandOS() {
             setBootLines(BOOT_LINES)
             setPhase('desktop')
           },
-          onHover: (info) => setHovered(info),
         })
         sceneRef.current = scene
         scene.start()
@@ -111,12 +107,6 @@ export default function CoplandOS() {
       v?.speak(`welcome, ${OPERATOR}`, { delay: 2200, pitch: 0.62 })
     }
   }, [phase])
-
-  // --- clock ----------------------------------------------------------------
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
 
   // --- boot orchestration ---------------------------------------------------
   useEffect(() => {
@@ -178,8 +168,6 @@ export default function CoplandOS() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const clock = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
-
   return (
     <div className="copland-root">
       {/* Decoration: everything the canvas draws is also written out for real
@@ -226,64 +214,16 @@ export default function CoplandOS() {
           </div>
         )}
 
-        {/* desktop HUD */}
-        {phase === 'desktop' && (
-          <>
-            <div className="copland-hud copland-hud-tl">
-              <span className="hud-key">COPLAND OS</span>
-              <span className="hud-sub">ENTERPRISE :: TACHIBANA LAB</span>
-            </div>
-            <div className="copland-hud copland-hud-tr">
-              <span className="hud-clock">{clock}</span>
-              <span className="hud-sub">PROTOCOL 7 // CONNECTED</span>
-            </div>
-            <div className="copland-hud copland-hud-bl">
-              <span className="hud-sub">OPERATOR</span>
-              <span className="hud-key">{OPERATOR}</span>
-            </div>
-            <div className="copland-hud copland-hud-br">
-              <span className="hud-sub">CARRIER 7.83 Hz</span>
-              <span className="hud-sub copland-mirror">txEn eht nepO</span>
-            </div>
-            <div className={`copland-focus${hovered ? ' is-on' : ''}`}>
-              {hovered && (
-                <>
-                  <span className="focus-label">{hovered.label}</span>
-                  <span className="focus-sub">{hovered.detail}</span>
-                  <span className="focus-hint">{hovered.href ? '▸ click to open' : '▸ click to focus'}</span>
-                </>
-              )}
-            </div>
-          </>
-        )}
       </div>
-
-      {/* the access bar: every link reachable in one click, no hunting the 3D
-          panels required; the 3D cards stay as the atmospheric way in */}
-      {phase === 'desktop' && !webglFailed && (
-        <nav className="copland-access" aria-label="Access points">
-          <span className="access-hint" aria-hidden="true">drag to look :: scroll to fly</span>
-          <div className="access-row">
-            {PANEL_DATA.filter((d) => d.kind === 'link').map((d) => (
-              <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer">
-                {d.label}
-              </a>
-            ))}
-            <button type="button" onClick={() => setMuted((m) => !m)}>
-              {muted ? 'SOUND: OFF' : 'SOUND: ON'}
-            </button>
-          </div>
-        </nav>
-      )}
 
       {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
       <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
-        <h1>Copland OS Enterprise — dominikkoenitzer</h1>
+        <h1>Copland OS Enterprise :: dominikkoenitzer</h1>
         <p>A Serial Experiments Lain NAVI terminal. Access points:</p>
         <nav>
           {PANEL_DATA.filter((d) => d.kind === 'link').map((d) => (
             <a key={d.label} href={d.href} target="_blank" rel="noopener noreferrer">
-              {d.label} — {d.lines[0]}
+              {d.label} :: {d.lines[0]}
             </a>
           ))}
         </nav>
