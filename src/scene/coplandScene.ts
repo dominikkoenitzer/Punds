@@ -62,6 +62,11 @@ interface Panel {
   bobPhase: number
   bobSpeed: number
   bobAmp: number
+  // Standing tilt (radians) applied after the billboard lookAt so the card
+  // doesn't face the camera dead-on; eases to zero while hovered.
+  tiltX: number
+  tiltY: number
+  tiltZ: number
   hover: number
 }
 
@@ -157,7 +162,9 @@ export class CoplandScene {
   private yawTarget = 0
   private pitchTarget = 0
   private dolly = -26
-  private dollyTarget = 0
+  // Rest a little behind the origin so the opening view doesn't sit on top of
+  // the cards; scrolling still flies you in.
+  private dollyTarget = -2
   private dragging = false
   private moved = 0
   private lastX = 0
@@ -326,7 +333,14 @@ export class CoplandScene {
   // Place each panel at a DISTINCT direction from the camera origin so that,
   // billboarded, no two cards stack on the same screen ray (every card stays
   // clickable).
-  private placePanel(i: number, yawDeg: number, pitchDeg: number, dist: number, near: boolean): void {
+  private placePanel(
+    i: number,
+    yawDeg: number,
+    pitchDeg: number,
+    dist: number,
+    tiltDeg: [number, number, number],
+    near: boolean,
+  ): void {
     const datum = PANEL_DATA[i]
     // Normal blending, not additive: the card's dark plate has to be able to
     // darken the city behind it, or the text loses every contrast fight.
@@ -356,6 +370,9 @@ export class CoplandScene {
       bobPhase: Math.random() * Math.PI * 2,
       bobSpeed: 0.25 + Math.random() * 0.35,
       bobAmp: 0.1 + Math.random() * 0.14,
+      tiltX: (tiltDeg[0] * Math.PI) / 180,
+      tiltY: (tiltDeg[1] * Math.PI) / 180,
+      tiltZ: (tiltDeg[2] * Math.PI) / 180,
       hover: 0,
     })
     this.scene.add(mesh)
@@ -363,16 +380,25 @@ export class CoplandScene {
   }
 
   private buildPanels(): void {
-    // The access points hold a tidy arc ahead of the viewer, ordered left to
+    // The access points hang scattered ahead of the viewer, ordered left to
     // right in PANEL_DATA order, so nothing important starts behind your back.
-    // Alternating pitch and distance keep neighbouring cards off each other's
-    // screen rays.
-    const yaws = [-40, -13, 13, 40]
-    const pitches = [4, -5, -5, 4]
-    const dists = [7.6, 6.6, 6.6, 7.6]
+    // The shape is a lightning bolt on its side, not an arc: heights jump
+    // high / low / high / lowest across the screen, yaw gaps are uneven, and
+    // every card sits at its own depth and standing tilt, so no two cards ever
+    // line up. Screen-space gaps between neighbours stay well above a card's
+    // angular width, so nothing crowds anything else's ray.
+    const yaws = [-48, -22, 15, 42]
+    const pitches = [14, -10, 7, -16]
+    const dists = [11.5, 9.0, 10.5, 12.5]
+    const tilts: [number, number, number][] = [
+      [3, 12, -3],
+      [-4, -9, 2],
+      [2, 10, 2.5],
+      [-3, -14, -2],
+    ]
     for (let i = 0; i < PANEL_DATA.length; i++) {
       const k = i % yaws.length
-      this.placePanel(i, yaws[k], pitches[k], dists[k], true)
+      this.placePanel(i, yaws[k], pitches[k], dists[k], tilts[k], true)
     }
   }
 
@@ -592,7 +618,7 @@ export class CoplandScene {
     }
     if (this.diveTimer > 0) {
       this.diveTimer -= dt
-      if (this.diveTimer <= 0) this.dollyTarget = 1.2 // ease back out after the lunge
+      if (this.diveTimer <= 0) this.dollyTarget = -2 // ease back out to the resting view
     }
 
     // --- drifting particle field (endless: wrap Y) ---------------------------
@@ -613,18 +639,31 @@ export class CoplandScene {
     this.logo.scale.setScalar(1 + Math.sin(t * 0.6) * 0.015 * motion + this.audioLevel * 0.06)
     this.logo.lookAt(this.camera.position)
 
-    // --- panels: fade + bob + billboard + hover ------------------------------
+    // --- panels: fade + bob/drift + billboard + tilt + hover -----------------
     this.panelOpacity += (this.panelTarget - this.panelOpacity) * Math.min(dt * 1.4, 1)
     if (this.currentPhase === 'desktop' && this.frame % 4 === 0) this.updateHover()
     for (const pn of this.panels) {
       const hoverTarget = this.hovered === pn ? 1 : 0
       pn.hover += (hoverTarget - pn.hover) * 0.12
+      // Quick bob plus slower wanders on every axis, so each card visibly
+      // floats around its anchor. Wander amplitudes stay far below the gaps
+      // between anchors, so cards never drift into each other.
       pn.mesh.position.set(
-        pn.baseX + Math.cos(t * pn.bobSpeed * 0.7 + pn.bobPhase) * 0.1 * motion,
-        pn.baseY + Math.sin(t * pn.bobSpeed + pn.bobPhase) * pn.bobAmp * motion,
-        pn.baseZ,
+        pn.baseX +
+          (Math.cos(t * pn.bobSpeed * 0.7 + pn.bobPhase) * 0.12 + Math.sin(t * 0.11 + pn.bobPhase * 2.7) * 0.7) *
+            motion,
+        pn.baseY +
+          (Math.sin(t * pn.bobSpeed + pn.bobPhase) * pn.bobAmp + Math.sin(t * 0.09 + pn.bobPhase * 3.3) * 0.5) *
+            motion,
+        pn.baseZ + Math.sin(t * 0.08 + pn.bobPhase * 1.9) * 0.8 * motion,
       )
       pn.mesh.lookAt(this.camera.position)
+      // Standing tilt on top of the billboard so the cards never face the
+      // camera dead-on; hovering straightens the card up to meet you.
+      const settle = 1 - pn.hover
+      pn.mesh.rotateY(pn.tiltY * settle)
+      pn.mesh.rotateX(pn.tiltX * settle)
+      pn.mesh.rotateZ((pn.tiltZ + Math.sin(t * 0.4 + pn.bobPhase) * 0.02 * motion) * settle)
       pn.mesh.scale.setScalar(1 + pn.hover * 0.12)
       pn.mat.opacity = this.panelOpacity * (0.88 + pn.hover * 0.12)
     }
