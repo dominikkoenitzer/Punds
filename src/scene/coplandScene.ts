@@ -352,7 +352,7 @@ export class CoplandScene {
       side: THREE.DoubleSide,
     })
     const aspect = 512 / 320
-    const hgt = near ? 2.3 : 2.0
+    const hgt = near ? 3.0 : 2.6
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(hgt * aspect, hgt), mat)
     const yaw = (yawDeg * Math.PI) / 180
     const pitch = (pitchDeg * Math.PI) / 180
