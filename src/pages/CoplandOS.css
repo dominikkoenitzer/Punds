@@ -136,81 +136,6 @@
   text-shadow: 0 0 22px rgba(118, 228, 255, 0.9), 0 0 6px var(--tachibana);
 }
 
-/* desktop HUD */
-.copland-hud {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-family: var(--mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.18em;
-  animation: copland-fade 1.8s ease both;
-  text-shadow: 0 0 10px rgba(118, 228, 255, 0.35);
-  /* faint backing plate so dim sublabels keep contrast over the bright,
-     bloom-blown parts of the scene that drift through the corners */
-  padding: 0.4rem 0.6rem;
-  border-radius: 2px;
-  background: rgba(4, 16, 28, 0.68);
-  backdrop-filter: blur(2px);
-}
-.copland-hud-tl { top: 1.4rem; left: 1.6rem; }
-.copland-hud-tr { top: 1.4rem; right: 1.6rem; text-align: right; align-items: flex-end; }
-.copland-hud-bl { bottom: 1.6rem; left: 1.6rem; }
-.copland-hud-br { bottom: 1.6rem; right: 1.6rem; text-align: right; align-items: flex-end; }
-
-.hud-key {
-  color: var(--phosphor);
-  font-size: 0.9rem;
-  letter-spacing: 0.3em;
-}
-.hud-sub { color: #8fc3e4; }
-.hud-clock {
-  color: var(--phosphor);
-  font-size: 1.1rem;
-  letter-spacing: 0.2em;
-}
-.copland-mirror { color: var(--tachibana); opacity: 0.75; }
-
-/* hovered-panel readout card (raycaster) */
-.copland-focus {
-  position: absolute;
-  left: 50%;
-  top: 63%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.28rem;
-  padding: 0.55rem 1.3rem;
-  font-family: var(--mono);
-  text-align: center;
-  border: 1px solid rgba(118, 228, 255, 0.28);
-  background: rgba(4, 16, 28, 0.72);
-  backdrop-filter: blur(2px);
-  box-shadow: 0 0 24px rgba(0, 8, 16, 0.5);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-.copland-focus.is-on { opacity: 1; }
-.focus-label {
-  font-size: 0.95rem;
-  letter-spacing: 0.26em;
-  color: var(--phosphor);
-  text-shadow: 0 0 14px rgba(118, 228, 255, 0.6);
-}
-.focus-sub {
-  font-size: 0.66rem;
-  letter-spacing: 0.16em;
-  color: var(--copland-text);
-  opacity: 0.95;
-}
-.focus-hint {
-  font-size: 0.62rem;
-  letter-spacing: 0.24em;
-  color: var(--tachibana);
-}
-
 /* boot skip hint
    NB: centred with left/right + text-align, not translateX, because the
    copland-fade keyframes animate transform and would cancel it */
@@ -226,70 +151,6 @@
   text-shadow: 0 1px 4px rgba(0, 6, 12, 0.9);
   animation: copland-fade 1.2s ease both;
   animation-delay: 1.6s;
-}
-
-/* --- access bar: every link one click away ------------------------------- */
-.copland-access {
-  position: absolute;
-  left: 1rem;
-  right: 1rem;
-  bottom: 1.7rem;
-  z-index: 11; /* above the canvas, below the CRT layers so it keeps the look */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--mono);
-  animation: copland-fade 1.8s ease both;
-}
-.access-hint {
-  font-size: 0.6rem;
-  letter-spacing: 0.22em;
-  color: #8fc3e4;
-  text-shadow: 0 1px 4px rgba(0, 6, 12, 0.9);
-}
-.access-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
-}
-.access-row a,
-.access-row button {
-  padding: 0.5rem 0.9rem;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.2em;
-  color: var(--phosphor);
-  text-decoration: none;
-  border: 1px solid rgba(118, 228, 255, 0.35);
-  border-radius: 2px;
-  background: rgba(4, 16, 28, 0.72);
-  backdrop-filter: blur(3px);
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
-}
-.access-row a:hover,
-.access-row a:focus-visible,
-.access-row button:hover,
-.access-row button:focus-visible {
-  color: #ffffff;
-  border-color: var(--tachibana);
-  background: rgba(8, 24, 44, 0.85);
-  outline: none;
-}
-.access-row button { color: #8fc3e4; }
-
-@media (max-width: 640px) {
-  .copland-access {
-    bottom: 6rem;
-  }
-  .access-row a,
-  .access-row button {
-    padding: 0.45rem 0.7rem;
-    font-size: 0.62rem;
-    letter-spacing: 0.14em;
-  }
 }
 
 /* --- constant-motion overlays -------------------------------------------- */
@@ -409,6 +270,5 @@
 @media (prefers-reduced-motion: reduce) {
   .copland-scan::after { animation: none; display: none; }
   .copland-grain { animation: none; }
-  .copland-splash, .copland-welcome, .copland-hud,
-  .copland-access, .copland-skiphint { animation-duration: 0.01ms; }
+  .copland-splash, .copland-welcome, .copland-skiphint { animation-duration: 0.01ms; }
 }
