@@ -26,7 +26,6 @@ You can report in either of these ways:
 - **GitHub private security advisories.** Go to the
   [Security tab](https://github.com/dominikkoenitzer/Punds/security/advisories)
   of the repository and click *Report a vulnerability*.
-- **Email:** [dominikkoenitzer@users.noreply.github.com](mailto:dominikkoenitzer@users.noreply.github.com).
 
 ### What to include
 
