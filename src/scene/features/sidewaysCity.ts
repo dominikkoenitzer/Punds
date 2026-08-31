@@ -246,7 +246,7 @@ export class SidewaysCity implements SceneFeature {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const k = Math.random()
-        if (k < 0.14) continue // dark window — stays the dark glass base
+        if (k < 0.14) continue // dark window, stays the dark glass base
         let col: THREE.Color
         if (k < 0.66) {
           // cool reflective-blue glass (the dominant look)

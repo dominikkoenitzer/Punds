@@ -11,7 +11,7 @@ import type { ScenePalette, FeatureContext, SceneFeature } from './types'
 // ---------------------------------------------------------------------------
 
 const CANVAS_W = 128
-const CANVAS_H = 1024 // 1:8 strip — plane aspect matches to keep glyphs square
+const CANVAS_H = 1024 // 1:8 strip, plane aspect matches to keep glyphs square
 const STREAM_COUNT = 13
 const ROWS = 32 // divides CANVAS_H exactly so vertical tiling is seamless
 const COLS = 5

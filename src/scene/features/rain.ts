@@ -258,7 +258,7 @@ export class InnerRain implements SceneFeature {
         break
       }
     }
-    if (slot < 0) return // pool exhausted — drop this landing
+    if (slot < 0) return // pool exhausted, drop this landing
 
     const r = this.ripples[slot]
     const ang = Math.random() * Math.PI * 2
