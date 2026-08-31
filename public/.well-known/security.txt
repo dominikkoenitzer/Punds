@@ -1,4 +1,4 @@
-Contact: mailto:dominikkoenitzer@users.noreply.github.com
+Contact: https://github.com/dominikkoenitzer/Punds/security/advisories/new
 Expires: 2027-12-31T23:59:59.000Z
 Preferred-Languages: en, de, fr
 Canonical: https://punds.ch/.well-known/security.txt

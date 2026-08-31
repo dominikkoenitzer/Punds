@@ -218,7 +218,7 @@ export default function CoplandOS() {
 
       {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
       <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
-        <h1>Copland OS Enterprise :: dominikkoenitzer</h1>
+        <h1>Copland OS Enterprise :: punds.ch</h1>
         <p>A Serial Experiments Lain NAVI terminal. Access points:</p>
         <nav>
           {PANEL_DATA.filter((d) => d.kind === 'link').map((d) => (
