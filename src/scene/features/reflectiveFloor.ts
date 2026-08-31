@@ -85,7 +85,7 @@ export class ReflectiveFloor implements SceneFeature {
     this.reflectorGeo.rotateX(-Math.PI / 2) // lay flat, normal pointing up (+Y)
     this.reflector = new Reflector(this.reflectorGeo, {
       color: this.baseTint,
-      textureWidth: 1024, // modest — this RT is re-rendered every frame
+      textureWidth: 1024, // modest; this RT is re-rendered every frame
       textureHeight: 1024,
       clipBias: 0.003,
       multisample: 4, // 4x MSAA smooths reflected thin lines/edges at grazing angles

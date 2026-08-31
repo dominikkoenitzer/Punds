@@ -174,7 +174,7 @@ export default function CoplandOS() {
           in the .copland-sr fallback below. */}
       <div aria-hidden="true" className="copland-canvas" ref={containerRef} />
 
-      {/* ambient overlays — always on, the "constant motion" */}
+      {/* ambient overlays: always on, the "constant motion" */}
       <div className="copland-scan" aria-hidden="true" />
       <div className="copland-grain" aria-hidden="true" />
       <div className="copland-vignette" aria-hidden="true" />
@@ -216,7 +216,7 @@ export default function CoplandOS() {
 
       </div>
 
-      {/* accessible / no-WebGL fallback — real content for screen readers + crawlers */}
+      {/* accessible / no-WebGL fallback: real content for screen readers + crawlers */}
       <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
         <h1>Copland OS Enterprise :: punds.ch</h1>
         <p>A Serial Experiments Lain NAVI terminal. Access points:</p>

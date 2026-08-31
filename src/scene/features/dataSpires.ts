@@ -305,7 +305,7 @@ export class DataSpires implements SceneFeature {
     const heroStart = Math.random() * TAU
     for (let i = 0; i < HERO_TOWERS; i++) {
       const ang = heroStart + (i / HERO_TOWERS) * TAU + (Math.random() * 2 - 1) * 0.18
-      const r = 30 + Math.random() * 16 // 30..46 — landmarks rising over the near wall
+      const r = 30 + Math.random() * 16 // 30..46, landmarks rising over the near wall
       const cx = Math.cos(ang) * r
       const cz = Math.sin(ang) * r
       emitTower(cx, cz, 8 + Math.random() * 4, 8 + Math.random() * 4, 52 + Math.random() * 26, true, ang)
