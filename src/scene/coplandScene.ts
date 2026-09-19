@@ -261,6 +261,14 @@ export class CoplandScene {
       this.moved = 0
       this.lastX = e.clientX
       this.lastY = e.clientY
+      // A touch tap emits no pointermove, so without this the raycast would
+      // still be aimed wherever the pointer last was, which is the centre of
+      // the screen on first contact.
+      this.parallaxTarget.set(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -((e.clientY / window.innerHeight) * 2 - 1),
+      )
+      this.ndc.copy(this.parallaxTarget)
       this.renderer.domElement.style.cursor = 'grabbing'
     }
     this.onPointerMove = (e: PointerEvent) => {
