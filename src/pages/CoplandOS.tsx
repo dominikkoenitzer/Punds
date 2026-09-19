@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CoplandScene, CoplandPhase } from '../scene/coplandScene'
 import { NaviVoice } from '../scene/naviVoice'
 import { PANEL_DATA } from '../scene/panelData'
@@ -48,6 +48,7 @@ export default function CoplandOS() {
   const sceneRef = useRef<CoplandScene | null>(null)
   const voiceRef = useRef<NaviVoice | null>(null)
   const phaseRef = useRef<CoplandPhase>('logo')
+  const skipArmedRef = useRef(false)
 
   const [phase, setPhase] = useState<CoplandPhase>('logo')
   const [bootLines, setBootLines] = useState<string[]>([])
@@ -55,6 +56,16 @@ export default function CoplandOS() {
   const [muted, setMuted] = useState(false)
   const mutedRef = useRef(false)
   const [webglFailed] = useState(() => !supportsWebGL())
+  const [sceneFailed, setSceneFailed] = useState(false)
+  // no scene is ever coming: the written fallback owns the screen
+  const noScene = webglFailed || sceneFailed
+
+  // filling the log first keeps the skip off a half-written screen; `skipped` drops the boot timers
+  const skipBoot = useCallback(() => {
+    setSkipped(true)
+    setBootLines(BOOT_LINES)
+    setPhase('desktop')
+  }, [])
 
   // --- scene lifecycle (lazy-loads the heavy Three.js layer) ----------------
   useEffect(() => {
@@ -66,19 +77,15 @@ export default function CoplandOS() {
       try {
         const mod = await import('../scene/coplandScene')
         if (cancelled) return
-        scene = new mod.CoplandScene(container, {
-          onActivate: () => {
-            setSkipped(true)
-            setBootLines(BOOT_LINES)
-            setPhase('desktop')
-          },
-        })
+        scene = new mod.CoplandScene(container, { onActivate: skipBoot })
         sceneRef.current = scene
         scene.start()
         scene.setPhase(phaseRef.current) // sync to whatever phase we reached while loading
         scene.setMuted(mutedRef.current)
       } catch {
-        sceneRef.current = null // rare: WebGL reported but init failed; canvas stays blank
+        // chunk never arrived or init threw: show the written fallback instead of a blank canvas
+        sceneRef.current = null
+        if (!cancelled) setSceneFailed(true)
       }
     })()
     return () => {
@@ -86,7 +93,7 @@ export default function CoplandOS() {
       scene?.dispose()
       sceneRef.current = null
     }
-  }, [webglFailed])
+  }, [webglFailed, skipBoot])
 
   // --- NAVI voice -----------------------------------------------------------
   useEffect(() => {
@@ -169,7 +176,18 @@ export default function CoplandOS() {
   }, [])
 
   return (
-    <div className="copland-root">
+    <div
+      className="copland-root"
+      onPointerDown={(e) => {
+        // arm only on gestures the scene cannot see: primary button, no scene yet, one still coming
+        skipArmedRef.current = e.button === 0 && !sceneRef.current && !noScene
+      }}
+      onPointerUp={() => {
+        const armed = skipArmedRef.current
+        skipArmedRef.current = false
+        if (armed && phase !== 'desktop') skipBoot()
+      }}
+    >
       {/* Decoration: everything the canvas draws is also written out for real
           in the .copland-sr fallback below. */}
       <div aria-hidden="true" className="copland-canvas" ref={containerRef} />
@@ -217,7 +235,7 @@ export default function CoplandOS() {
       </div>
 
       {/* accessible / no-WebGL fallback: real content for screen readers + crawlers */}
-      <main className={webglFailed ? 'copland-fallback' : 'copland-sr'}>
+      <main className={noScene ? 'copland-fallback' : 'copland-sr'}>
         <h1>Copland OS Enterprise :: punds.ch</h1>
         <p>A Serial Experiments Lain NAVI terminal. Access points:</p>
         <nav>
