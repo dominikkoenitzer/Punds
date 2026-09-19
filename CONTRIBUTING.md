@@ -37,6 +37,7 @@ Open http://localhost:1000 to see the site. The dev server hot-reloads on save.
 | `bun run dev`     | Start the Vite dev server on **port 1000** (`host: true`)           |
 | `bun run build`   | Type-check all project refs (`tsc -b`) then build the bundle        |
 | `bun run lint`    | Run ESLint over the repo                                            |
+| `bun run test`    | Run the Vitest unit tests once (`test:watch` re-runs)               |
 | `bun run preview` | Serve the built `dist/` locally                                     |
 
 ## Branch & PR workflow
@@ -81,12 +82,14 @@ disabling the rule.
 
 ## Testing
 
-There is **no test runner** configured. Manual verification in the browser is expected: run
-`bun run dev`, then watch the full boot sequence (logo → boot log → "present day, present time"
-→ desktop) and exercise the part you touched: drag to look around, scroll to fly, hover and
-click the floating panels. A WebGL-capable browser is required; without WebGL you get the
-accessible link fallback. For build-affecting changes, also sanity-check `bun run preview`
-against the production bundle.
+Unit tests run under **Vitest**: `bun run test` once, `bun run test:watch` while you work. The
+only suite today is [`src/scene/qualityStepper.test.ts`](src/scene/qualityStepper.test.ts),
+the adaptive quality stepper. The rest is visual, so manual verification in the browser is
+still expected: run `bun run dev`, then watch the full boot sequence (logo → boot log →
+"present day, present time" → desktop) and exercise the part you touched: drag to look around,
+scroll to fly, hover and click the floating panels. A WebGL-capable browser is required;
+without WebGL you get the accessible link fallback. For build-affecting changes, also
+sanity-check `bun run preview` against the production bundle.
 
 ## Code conventions
 
@@ -96,10 +99,10 @@ The app is a thin **React layer** over a self-contained **Three.js scene engine*
 data layer. React state is local `useState` inside `CoplandOS`.
 
 - **Know which layer you're in.** [`CoplandOS.tsx`](src/pages/CoplandOS.tsx) drives the boot
-  phase machine (`logo` → `boot` → `welcome` → `desktop`) and the DOM overlays (CRT layers, HUD,
-  boot log, the accessible no-WebGL fallback). The 3D world lives in
-  [`src/scene/coplandScene.ts`](src/scene/coplandScene.ts) (the `CoplandScene` class) and its
-  feature modules, so touch the scene there and not in React.
+  phase machine (`logo` → `boot` → `welcome` → `desktop`) and the DOM overlays (CRT layers,
+  boot log, the accessible no-WebGL fallback). The desktop carries no HUD by design. The 3D
+  world lives in [`src/scene/coplandScene.ts`](src/scene/coplandScene.ts) (the `CoplandScene`
+  class) and its feature modules, so touch the scene there and not in React.
 - **Features implement a contract.** Each module in [`src/scene/features/`](src/scene/features)
   implements `SceneFeature { group, update(ctx), dispose() }` (see
   [`features/types.ts`](src/scene/features/types.ts)). To add one, implement the interface and
@@ -110,11 +113,11 @@ data layer. React state is local `useState` inside `CoplandOS`.
   name are constants at the top of [`CoplandOS.tsx`](src/pages/CoplandOS.tsx).
 - **Styling is 100% hand-written CSS.** No Tailwind, no CSS-in-JS. Global resets and the
   `TrixieCyrG` `@font-face` live in [`src/index.css`](src/index.css); the scene colour-palette
-  `:root` variables (read back by the 3D engine via `getComputedStyle`) and all overlay/HUD
+  `:root` variables (read back by the 3D engine via `getComputedStyle`) and all overlay and boot
   styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css). Retune the palette there
   and the 3D follows.
 - **Every `useEffect` timer or event listener must return its own cleanup.** The scene
-  lifecycle, clock, boot orchestration, NAVI whispers, and keyboard shortcuts each set up and
+  lifecycle, boot orchestration, NAVI whispers, and keyboard shortcuts each set up and
   tear down their own interval or listener; follow that pattern when adding one.
 - **Add runtime dependencies deliberately.** The only runtime deps today are `react`,
   `react-dom`, and `three`. Prefer reaching for those (or plain CSS/canvas) before adding

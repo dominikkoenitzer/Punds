@@ -45,7 +45,7 @@ The site is intentionally **`noindex` / `nofollow` for every crawler**, search e
 - **Idle "dread".** Sit still and the fog, audio and whispers slowly intensify.
 - **Adaptive quality.** An FPS sampler auto-steps quality tiers up and down so it stays smooth.
 - **Accessible fallback.** A screen-reader and no-WebGL layer exposes the real links as plain HTML.
-- **CRT presentation.** Scanline, grain and vignette overlays, plus a four-corner HUD.
+- **CRT presentation.** Scanline, grain and vignette overlays. No HUD: the desktop is the bare scene.
 
 ## Tech Stack
 
@@ -87,6 +87,7 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 | `bun run dev`     | Start the Vite dev server on port **1000**, exposed on the network.      |
 | `bun run build`   | Type-check all project references (`tsc -b`), then build to `dist/`.      |
 | `bun run lint`    | Run ESLint over the repository.                                          |
+| `bun run test`    | Run the Vitest unit tests once (`test:watch` re-runs on change).         |
 | `bun run preview` | Serve the built `dist/` locally to preview the production bundle.        |
 
 ## Project Structure
@@ -110,7 +111,7 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
     ├── App.css                                 # #root full-viewport sizing
     ├── pages/
     │   ├── CoplandOS.tsx                       # React layer: boot phases + DOM overlays
-    │   └── CoplandOS.css                       # scene palette vars + overlay/HUD styling
+    │   └── CoplandOS.css                       # scene palette vars + overlay styling
     └── scene/                                  # the Three.js engine
         ├── coplandScene.ts                     # CoplandScene class (renderer, camera, post, loop)
         ├── audioEngine.ts                      # ambient Web Audio drone + bass analyser
@@ -132,11 +133,11 @@ The app is a thin **React layer** over a self-contained **Three.js scene engine*
 
 `main.tsx` is the React 19 `createRoot` entry (in `StrictMode`); it renders `App.tsx`, which renders [`CoplandOS`](src/pages/CoplandOS.tsx). There is no router, no global state, and no data layer.
 
-- **The React layer ([`CoplandOS.tsx`](src/pages/CoplandOS.tsx))** drives a boot **phase machine**: `logo` → `boot` (streaming boot log) → `welcome` ("present day / present time" plus a NAVI voice greeting) → `desktop` (the HUD). It constructs and disposes the 3D scene in a `useEffect`, wires its hover/click handlers, and renders the crisp **DOM overlays** the canvas sits behind: CRT scan/grain/vignette, the four-corner HUD with a live clock and a hover focus label, and the boot/welcome theatre. It also renders an accessible **screen-reader / no-WebGL fallback** containing the real links. The heavy 3D scene is **lazy-loaded** so this boot shell paints first. Tapping during boot skips to the desktop; `M` mutes the audio.
+- **The React layer ([`CoplandOS.tsx`](src/pages/CoplandOS.tsx))** drives a boot **phase machine**: `logo` → `boot` (streaming boot log) → `welcome` ("present day / present time" plus a NAVI voice greeting) → `desktop` (the bare scene, no HUD by design). It constructs and disposes the 3D scene in a `useEffect`, wires its hover/click handlers, and renders the crisp **DOM overlays** the canvas sits behind: CRT scan/grain/vignette and the boot/welcome theatre. It also renders an accessible **screen-reader / no-WebGL fallback** containing the real links. The heavy 3D scene is **lazy-loaded** so this boot shell paints first. Tapping during boot skips to the desktop; `M` mutes the audio.
 - **The scene engine ([`coplandScene.ts`](src/scene/coplandScene.ts))** is the `CoplandScene` class: a `WebGLRenderer` + `PerspectiveCamera` and an `EffectComposer` post chain (`RenderPass` → `UnrealBloomPass` → `GlitchPass` → `OutputPass`). It builds the central logo, a drifting particle field, the billboarded link panels, and all feature modules, then runs a `requestAnimationFrame` loop. A **camera rig** lets you drag to look and scroll to fly; a `Raycaster` drives panel hover/click (clicking a link panel dives the camera in and opens the link, clicking a network-graph node "jacks in" a layer deeper). An **idle "dread"** value ramps up while you hold still, and an **FPS-driven auto quality** system steps tiers up and down. The colour palette is read from CSS custom properties, so retuning the CSS retunes the 3D.
 - **Feature modules ([`src/scene/features/`](src/scene/features))** each implement `SceneFeature { group, update(ctx), dispose() }`: `InnerSky`, `ReflectiveFloor`, `SidewaysCity`, `CableTangle`, `DataRain`, `DataSpires`, `HolographicFish` (koi), `InnerRain`, `Watcher`, `WiredIntercepts`, `WatchingEyes`, `Apparition`, `GiantEye`, `TerminalText` and `NetworkGraph`, plus a vertical **mirror twin** of the city overhead. `CoplandScene` adds each group, calls `update` every frame, and `dispose`s on teardown.
 - **Audio & voice.** [`audioEngine.ts`](src/scene/audioEngine.ts) is an ambient Web Audio drone with a bass analyser the scene reads each frame to drive the bloom and particles; [`naviVoice.ts`](src/scene/naviVoice.ts) is a Web Speech wrapper for the NAVI's utterances.
-- **Styling.** Hand-written CSS only. Global resets, the `TrixieCyrG` `@font-face`, and base `:root` vars live in [`src/index.css`](src/index.css); `#root` sizing in [`src/App.css`](src/App.css); the scene colour-palette `:root` variables (read back by the 3D engine) and all overlay/HUD/boot styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css).
+- **Styling.** Hand-written CSS only. Global resets, the `TrixieCyrG` `@font-face`, and base `:root` vars live in [`src/index.css`](src/index.css); `#root` sizing in [`src/App.css`](src/App.css); the scene colour-palette `:root` variables (read back by the 3D engine) and all overlay and boot styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css).
 
 ## Customizing Content
 
