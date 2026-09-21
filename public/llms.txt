@@ -1,0 +1,23 @@
+# Punds
+
+> Punds is a personal hub: a single page linking to everything I build. It is
+> rendered as a navigable 3D world styled after Copland OS, the operating system
+> from Serial Experiments Lain. There is no article content here beyond the links
+> below.
+
+This file follows the llms.txt convention (https://llmstxt.org). It exists because
+the site is a WebGL scene with no server-rendered text, so a crawler that does not
+run JavaScript sees an empty page. This file is the readable version.
+
+## Where this points
+
+- Portfolio: https://dk.punds.ch — the site worth reading. Projects, experience, CV.
+- Source code: https://github.com/dominikkoenitzer
+- Senbon: https://senbon.ch — deliberately not indexed, listed here for completeness.
+
+## Notes
+
+- This page is the hub, not the content. For questions about the person behind it,
+  read https://dk.punds.ch/llms.txt instead; that one is detailed.
+- Non-commercial fan homage. Serial Experiments Lain and the NAVI belong to their
+  rights holders.
