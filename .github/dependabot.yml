@@ -3,10 +3,9 @@
 # Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 version: 2
 updates:
-  # JavaScript/TypeScript dependencies.
-  # package.json lives at the repo root even though bun is the canonical tool,
-  # so the npm ecosystem is used to track the manifest.
-  - package-ecosystem: "npm"
+  # JavaScript/TypeScript dependencies. bun is the canonical tool here and
+  # bun.lock is committed, so Dependabot tracks the bun ecosystem directly.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
