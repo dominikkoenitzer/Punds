@@ -29,8 +29,6 @@ A personal landing page styled as **Copland OS / the NAVI** from *Serial Experim
 
 It is a fan homage. *Serial Experiments Lain* and the NAVI are the property of their respective rights holders; this project is non-commercial and exists out of affection for the aesthetic.
 
-The site is intentionally **`noindex` / `nofollow` for every crawler**, search engines and AI bots alike, through meta tags and `robots.txt`. It is deliberately not meant to be indexed; if you found it, you went looking.
-
 > Present day, present time.
 
 ## Features
@@ -94,7 +92,7 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 
 ```
 .
-├── index.html                                  # HTML entry: noindex meta tags, font preload
+├── index.html                                  # HTML entry: font preload
 ├── vite.config.ts                              # Vite config (port 1000, host: true)
 ├── package.json                                # scripts and dependencies (Bun)
 ├── bun.lock
