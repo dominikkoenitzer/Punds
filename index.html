@@ -6,6 +6,22 @@
 
     <title>Copland OS Enterprise</title>
 
+    <!-- Crawler metadata only. Everything below lives in <head> and renders
+         nothing: the page the visitor sees is unchanged. No og:image, because
+         there is no logo mark and inventing one would be worse than none. -->
+    <meta name="description" content="Punds is a personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
+    <link rel="canonical" href="https://punds.ch/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Punds" />
+    <meta property="og:url" content="https://punds.ch/" />
+    <meta property="og:title" content="Punds" />
+    <meta property="og:description" content="A personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Punds" />
+    <meta name="twitter:description" content="A personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"WebSite","name":"Punds","url":"https://punds.ch/","description":"A personal hub linking to a portfolio, source code and projects."}
+    </script>
     <!-- Icon: browsers request /favicon.ico unprompted, so ship both rather
          than serve a 404 for it. -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
