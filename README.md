@@ -11,7 +11,7 @@ A personal landing page styled as **Copland OS / the NAVI** from *Serial Experim
 [![CI](https://github.com/dominikkoenitzer/Punds/actions/workflows/ci.yml/badge.svg)](https://github.com/dominikkoenitzer/Punds/actions/workflows/ci.yml)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![Three.js](https://img.shields.io/badge/Three.js-r185-000000?logo=three.js&logoColor=white)](https://threejs.org/)
+[![Three.js](https://img.shields.io/badge/Three.js-r186-000000?logo=three.js&logoColor=white)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)](https://bun.sh/)
@@ -50,7 +50,7 @@ It is a fan homage. *Serial Experiments Lain* and the NAVI are the property of t
 | Layer            | Choice                                             |
 | ---------------- | -------------------------------------------------- |
 | Framework        | React 19                                           |
-| 3D / rendering   | Three.js (r185) + EffectComposer post-processing   |
+| 3D / rendering   | Three.js (r186) + EffectComposer post-processing   |
 | Audio / voice    | Web Audio API + Web Speech API                     |
 | Language         | TypeScript (strict mode)                           |
 | Build tool       | Vite 8                                             |
@@ -101,7 +101,7 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 ├── public/
 │   ├── fonts/
 │   │   └── TrixieCyrG-Plain-Regular.otf        # custom NAVI font
-│   └── robots.txt                              # disallow all crawlers
+│   └── robots.txt                              # every crawler welcome
 └── src/
     ├── main.tsx                                # React 19 createRoot entry (StrictMode)
     ├── App.tsx                                 # renders <CoplandOS />
