@@ -11,13 +11,13 @@ run JavaScript sees an empty page. This file is the readable version.
 
 ## Where this points
 
-- Portfolio: https://dk.punds.ch, the site worth reading. Projects, experience, CV.
-- Source code: https://github.com/dominikkoenitzer
-- Senbon: https://senbon.ch, deliberately not indexed, listed here for completeness.
+- [Portfolio](https://dk.punds.ch): the site worth reading. Projects, experience, CV.
+- [Source code](https://github.com/dominikkoenitzer)
+- [Senbon](https://senbon.ch): deliberately not indexed, listed here for completeness.
 
 ## Notes
 
 - This page is the hub, not the content. For questions about the person behind it,
-  read https://dk.punds.ch/llms.txt instead; that one is detailed.
+  read [the Portfolio's llms.txt](https://dk.punds.ch/llms.txt) instead; that one is detailed.
 - Non-commercial fan homage. Serial Experiments Lain and the NAVI belong to their
   rights holders.
