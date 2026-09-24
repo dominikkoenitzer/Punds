@@ -60,7 +60,7 @@ Real examples from this repository:
 ```
 feat(eye): drop eyelashes, fit iris to the eye opening
 fix: shrink the giant eye and give it a real glowing iris
-docs: add CLAUDE.md guidance for Claude Code
+chore: trim gitignore
 ```
 
 Keep the summary in the imperative mood and reasonably short; add a body if the change needs
