@@ -9,7 +9,7 @@ By participating in this project you agree to abide by our
 
 ## Prerequisites
 
-- [bun](https://bun.sh) (the canonical package manager; version `1.3.14` is used here)
+- [bun](https://bun.sh) (the canonical package manager; version `1.4.2` is used here)
 
 That's it. bun runs the dev server, the build, and the linter; you don't need a separate Node
 setup, though Node 22 also works.
