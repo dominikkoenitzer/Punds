@@ -54,7 +54,7 @@ It is a fan homage. *Serial Experiments Lain* and the NAVI are the property of t
 | Audio / voice    | Web Audio API + Web Speech API                     |
 | Language         | TypeScript (strict mode)                           |
 | Build tool       | Vite 8                                             |
-| Package manager  | Bun 1.3.14                                         |
+| Package manager  | Bun 1.4.2                                         |
 | Styling          | Hand-written CSS (no Tailwind, no CSS-in-JS)       |
 
 There is **no router, no global state and no data layer**. React state is local `useState`. Runtime dependencies are just `react`, `react-dom`, and `three`.
