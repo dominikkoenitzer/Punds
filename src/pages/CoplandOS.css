@@ -228,6 +228,12 @@
   white-space: nowrap;
   border: 0;
 }
+/* clip on the box also clipped its fixed children, so the rescued link below
+   stayed invisible; lift it while a link has focus. The 1px box with
+   overflow hidden still hides the other links, and cannot clip a fixed one. */
+.copland-sr:focus-within {
+  clip: auto;
+}
 /* keyboard focus pulls an otherwise-invisible fallback link on-screen so
    sighted keyboard users get a visible target (WCAG 2.4.7) */
 .copland-sr a:focus,
