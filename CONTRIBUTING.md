@@ -68,10 +68,11 @@ more context.
 
 ## Quality gate
 
-Before opening a PR, **both** of these must pass cleanly:
+Before opening a PR, **all three** of these must pass cleanly, the same steps CI runs:
 
 ```bash
 bun run lint
+bun run test
 bun run build
 ```
 
