@@ -201,7 +201,7 @@ export default function CoplandOS() {
       <div className="copland-vignette" aria-hidden="true" />
 
       {/* the visual chrome is decorative + duplicated by the .copland-sr fallback,
-          so hide it from assistive tech (real controls live outside this div) */}
+          so hide it from assistive tech (the real links live in that fallback) */}
       <div className="copland-overlay" aria-hidden="true">
         {/* boot splash caption (logo itself is rendered in 3D) */}
         {(phase === 'logo' || phase === 'boot') && (
