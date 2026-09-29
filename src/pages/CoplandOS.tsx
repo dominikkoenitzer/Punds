@@ -169,6 +169,9 @@ export default function CoplandOS() {
   // --- shortcuts: M mutes ---------------------------------------------------
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Cmd+M minimises on macOS and must not mute too; holding M must not
+      // flip the sound on every repeat.
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key.toLowerCase() === 'm') setMuted((m) => !m)
     }
     window.addEventListener('keydown', onKey)
