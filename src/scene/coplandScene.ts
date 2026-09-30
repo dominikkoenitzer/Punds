@@ -108,14 +108,30 @@ function makeVerticalMirror(src: THREE.Object3D, foldY: number): THREE.Group {
   return g
 }
 
+// Give the main thread back to the browser for a moment. scheduler.yield()
+// resumes ahead of other queued work; the fallback is a message task, not a
+// timer, so a build in a background tab is not throttled to one step a second.
+function yieldToMain(): Promise<void> {
+  if (globalThis.scheduler?.yield) return globalThis.scheduler.yield()
+  return new Promise((resolve) => {
+    const { port1, port2 } = new MessageChannel()
+    port1.onmessage = () => {
+      port1.close()
+      resolve()
+    }
+    port2.postMessage(null)
+  })
+}
+
 export class CoplandScene {
   private container: HTMLElement
   private renderer: THREE.WebGLRenderer
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
-  private composer: EffectComposer
-  private bloom: UnrealBloomPass
-  private glitch: GlitchPass
+  // built in the last step of build(), absent until then
+  private composer!: EffectComposer
+  private bloom!: UnrealBloomPass
+  private glitch!: GlitchPass
   private glitchTimer = 0
   private audio = new AudioEngine()
   private audioLevel = 0
@@ -206,9 +222,10 @@ export class CoplandScene {
     this.renderer.toneMappingExposure = 1.05
     this.renderer.domElement.style.cursor = 'grab'
 
-    // The renderer/canvas exist now; if any of the heavy build work below throws
-    // (2D context exhaustion, render-target allocation, etc.) the caller's `new`
-    // yields nothing and can never dispose us, so tear the GL context down here.
+    // The renderer/canvas exist now; if any of the build work below throws
+    // (2D context exhaustion etc.) the caller's `new` yields nothing and can
+    // never dispose us, so tear the GL context down here. The heavier rest of
+    // the world is built in build(), called from start().
     try {
       this.scene = new THREE.Scene()
       this.scene.background = this.palette.voidColor.clone()
@@ -233,21 +250,6 @@ export class CoplandScene {
       this.logo = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), this.logoMat)
       this.logo.position.set(0, EYE_HEIGHT, -9)
       this.scene.add(this.logo)
-
-      this.buildPanels()
-      this.buildFeatures()
-
-      this.composer = new EffectComposer(this.renderer)
-      this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
-      this.composer.setSize(w, h)
-      this.composer.addPass(new RenderPass(this.scene, this.camera))
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.6, 0.85)
-      this.composer.addPass(this.bloom)
-      this.glitch = new GlitchPass()
-      this.glitch.enabled = false
-      this.composer.addPass(this.glitch)
-      this.composer.addPass(new OutputPass())
-      this.applyTier(this.qualityState.tier)
     } catch (err) {
       this.renderer.dispose()
       this.renderer.forceContextLoss()
@@ -312,8 +314,42 @@ export class CoplandScene {
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
 
+    // observed once the composer exists (end of build), since resize() sizes it
     this.resizeObs = new ResizeObserver(() => this.resize())
-    this.resizeObs.observe(container)
+  }
+
+  // The heavy half of construction, one step per task, so the browser can
+  // paint and handle input in between instead of sitting through one long
+  // task. The steps run in the order the one-task build ran them, so every
+  // object and material gets the id it always had and the draw order holds.
+  private async build(): Promise<void> {
+    await this.step(() => this.buildPanels())
+    await this.buildFeatures()
+    await this.step(() => {
+      // sized like the renderer was in the constructor; the first resize
+      // observation brings everything to the live size together
+      const size = this.renderer.getSize(new THREE.Vector2())
+      this.composer = new EffectComposer(this.renderer)
+      this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
+      this.composer.setSize(size.x, size.y)
+      this.composer.addPass(new RenderPass(this.scene, this.camera))
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.95, 0.6, 0.85)
+      this.composer.addPass(this.bloom)
+      this.glitch = new GlitchPass()
+      this.glitch.enabled = false
+      this.composer.addPass(this.glitch)
+      this.composer.addPass(new OutputPass())
+      this.applyTier(this.qualityState.tier)
+    })
+    this.resizeObs.observe(this.container)
+  }
+
+  // Run one build step in a fresh task. Stops the build if the scene was
+  // disposed while it waited.
+  private async step<T>(make: () => T): Promise<T> {
+    await yieldToMain()
+    if (this.disposed) throw new Error('scene disposed while building')
+    return make()
   }
 
   private buildParticles(): { points: THREE.Points; speeds: Float32Array } {
@@ -415,34 +451,48 @@ export class CoplandScene {
     }
   }
 
-  private buildFeatures(): void {
-    this.graph = new NetworkGraph(this.palette)
-    const spires = new DataSpires(this.palette)
-    const floor = new ReflectiveFloor(this.palette)
-    const sideways = new SidewaysCity(this.palette)
-    const fish = new HolographicFish(this.palette)
+  private async buildFeatures(): Promise<void> {
+    const p = this.palette
+    // One feature per task, constructed in the order they always were; the
+    // features array below keeps the update and scene order it always had.
+    const graph = await this.step(() => new NetworkGraph(p))
+    this.graph = graph
+    const spires = await this.step(() => new DataSpires(p))
+    const floor = await this.step(() => new ReflectiveFloor(p))
+    const sideways = await this.step(() => new SidewaysCity(p))
+    const fish = await this.step(() => new HolographicFish(p))
+    const sky = await this.step(() => new InnerSky(p))
+    const cables = await this.step(() => new CableTangle(p))
+    const dataRain = await this.step(() => new DataRain(p))
+    const rain = await this.step(() => new InnerRain(p))
+    const watcher = await this.step(() => new Watcher(p))
+    const intercepts = await this.step(() => new WiredIntercepts(p))
+    const eyes = await this.step(() => new WatchingEyes(p))
+    const apparition = await this.step(() => new Apparition(p))
+    const giantEye = await this.step(() => new GiantEye(p))
+    const terminal = await this.step(() => new TerminalText(p))
     this.features = [
-      new InnerSky(this.palette),
+      sky,
       floor,
       sideways,
-      new CableTangle(this.palette),
-      new DataRain(this.palette),
+      cables,
+      dataRain,
       spires,
       fish,
-      new InnerRain(this.palette),
-      new Watcher(this.palette),
-      new WiredIntercepts(this.palette),
-      new WatchingEyes(this.palette),
-      new Apparition(this.palette),
-      new GiantEye(this.palette),
-      new TerminalText(this.palette),
-      this.graph,
+      rain,
+      watcher,
+      intercepts,
+      eyes,
+      apparition,
+      giantEye,
+      terminal,
+      graph,
     ]
     for (const f of this.features) this.scene.add(f.group)
 
     // The top of the world mirrors the bottom: an inverted twin of the city
     // hangs overhead ("as above, so below").
-    const mirror = makeVerticalMirror(spires.group, MIRROR_FOLD_Y)
+    const mirror = await this.step(() => makeVerticalMirror(spires.group, MIRROR_FOLD_Y))
     this.scene.add(mirror)
 
     // Heaviest things dropped on the Low quality tier: the reflection pass is
@@ -575,6 +625,12 @@ export class CoplandScene {
   // that frame followed construction directly; before then it would only show
   // an empty buffer.
   async start(): Promise<void> {
+    try {
+      await this.build()
+    } catch (err) {
+      this.dispose()
+      throw err
+    }
     try {
       await this.precompile()
     } catch {
@@ -740,6 +796,7 @@ export class CoplandScene {
   }
 
   dispose(): void {
+    if (this.disposed) return
     this.disposed = true
     cancelAnimationFrame(this.rafId)
     this.resizeObs.disconnect()
@@ -766,9 +823,10 @@ export class CoplandScene {
       }
     })
     this.spriteTex.dispose()
-    this.composer.dispose()
-    this.bloom.dispose()
-    this.glitch.dispose()
+    // absent when disposed before build() got that far
+    this.composer?.dispose()
+    this.bloom?.dispose()
+    this.glitch?.dispose()
     this.renderer.dispose()
     this.renderer.forceContextLoss()
     if (el.parentNode) el.parentNode.removeChild(el)
