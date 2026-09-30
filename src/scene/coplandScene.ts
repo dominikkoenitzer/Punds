@@ -628,9 +628,9 @@ export class CoplandScene {
     this.bloom.setSize(w, h)
   }
 
-  // The canvas joins the page together with its first frame, as it did when
-  // that frame followed construction directly; before then it would only show
-  // an empty buffer.
+  // Finish building, compile the shaders, then run. The canvas joins the page
+  // together with its first frame, as it did when that frame followed
+  // construction directly; before then it would only show an empty buffer.
   async start(): Promise<void> {
     try {
       await this.build()
