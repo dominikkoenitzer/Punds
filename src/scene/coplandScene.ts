@@ -136,6 +136,7 @@ export class CoplandScene {
   private dread = 0
   private timer = new THREE.Timer()
   private rafId = 0
+  private disposed = false
   private resizeObs: ResizeObserver
   private palette: ScenePalette
   private handlers: CoplandHandlers
@@ -204,7 +205,6 @@ export class CoplandScene {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.domElement.style.cursor = 'grab'
-    container.appendChild(this.renderer.domElement)
 
     // The renderer/canvas exist now; if any of the heavy build work below throws
     // (2D context exhaustion, render-target allocation, etc.) the caller's `new`
@@ -571,8 +571,38 @@ export class CoplandScene {
     this.bloom.setSize(w, h)
   }
 
-  start(): void {
+  // The canvas joins the page together with its first frame, as it did when
+  // that frame followed construction directly; before then it would only show
+  // an empty buffer.
+  async start(): Promise<void> {
+    try {
+      await this.precompile()
+    } catch {
+      // nothing lost: the first frame compiles whatever is missing, as before
+    }
+    if (this.disposed) return
+    this.container.appendChild(this.renderer.domElement)
     this.animate()
+  }
+
+  // Hand every scene material to the driver before the first frame. Where
+  // KHR_parallel_shader_compile exists the programs link off the main thread,
+  // so the opening frames draw instead of stalling on shader compiles.
+  private async precompile(): Promise<void> {
+    // The scene pass draws into the composer's target, and the program cache
+    // key depends on the bound target (tone mapping, output colour space), so
+    // compile against that target or the first frame would build them again.
+    const previous = this.renderer.getRenderTarget()
+    this.renderer.setRenderTarget(this.composer.readBuffer)
+    let compiled: Promise<unknown>
+    try {
+      compiled = this.renderer.compileAsync(this.scene, this.camera)
+    } finally {
+      this.renderer.setRenderTarget(previous)
+    }
+    // A lost context never reports a program as ready. Past this bound the
+    // first frame simply finishes the job, exactly as it used to.
+    await Promise.race([compiled, new Promise((resolve) => setTimeout(resolve, 3000))])
   }
 
   private animate = (): void => {
@@ -710,6 +740,7 @@ export class CoplandScene {
   }
 
   dispose(): void {
+    this.disposed = true
     cancelAnimationFrame(this.rafId)
     this.resizeObs.disconnect()
     const el = this.renderer.domElement
