@@ -78,8 +78,11 @@ export default function CoplandOS() {
         const mod = await import('../scene/coplandScene')
         if (cancelled) return
         scene = new mod.CoplandScene(container, { onActivate: skipBoot })
+        // until the first frame is up the canvas is not on the page, so taps
+        // stay with the React skip handler below
+        await scene.start()
+        if (cancelled) return
         sceneRef.current = scene
-        scene.start()
         scene.setPhase(phaseRef.current) // sync to whatever phase we reached while loading
         scene.setMuted(mutedRef.current)
       } catch {
