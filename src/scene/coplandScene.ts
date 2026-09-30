@@ -108,6 +108,10 @@ function makeVerticalMirror(src: THREE.Object3D, foldY: number): THREE.Group {
   return g
 }
 
+// Scratch objects for the frame loop, reused so a frame allocates nothing.
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ')
+const _forward = new THREE.Vector3()
+
 // Give the main thread back to the browser for a moment. scheduler.yield()
 // resumes ahead of other queued work; the fallback is a message task, not a
 // timer, so a build in a background tab is not throttled to one step a second.
@@ -157,6 +161,8 @@ export class CoplandScene {
   private palette: ScenePalette
   private handlers: CoplandHandlers
 
+  // handed to every feature each frame; refilled in place, never kept by them
+  private frameCtx: FeatureContext
   private particles: THREE.Points
   private particleSpeeds: Float32Array
   private spriteTex: THREE.CanvasTexture
@@ -233,6 +239,7 @@ export class CoplandScene {
       this.scene.fog = new THREE.FogExp2(new THREE.Color(horizonStr).getHex(), 0.018)
 
       this.camera = new THREE.PerspectiveCamera(70, w / h, 0.1, 240)
+      this.frameCtx = { dt: 0, t: 0, motion: 1, audio: 0, dread: 0, camera: this.camera }
 
       this.spriteTex = makeSpriteTexture()
       const built = this.buildParticles()
@@ -692,14 +699,14 @@ export class CoplandScene {
     this.dolly += (this.dollyTarget - this.dolly) * 0.05
     this.parallax.lerp(this.parallaxTarget, 0.04)
 
-    const e = new THREE.Euler(
+    _euler.set(
       this.pitch + this.parallax.y * 0.05,
       this.yaw + this.parallax.x * 0.06,
       0,
       'YXZ',
     )
-    this.camera.quaternion.setFromEuler(e)
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion)
+    this.camera.quaternion.setFromEuler(_euler)
+    const forward = _forward.set(0, 0, -1).applyQuaternion(this.camera.quaternion)
     this.camera.position.copy(this.base).addScaledVector(forward, this.dolly)
     this.camera.position.y = Math.max(this.camera.position.y, -2)
 
@@ -707,7 +714,12 @@ export class CoplandScene {
     this.fogPulse += (0 - this.fogPulse) * 0.02
     const fog = this.scene.fog as THREE.FogExp2
     fog.density = 0.018 + this.fogPulse + this.dread * 0.012
-    const ctx: FeatureContext = { dt, t, motion, audio: this.audioLevel, dread: this.dread, camera: this.camera }
+    const ctx = this.frameCtx
+    ctx.dt = dt
+    ctx.t = t
+    ctx.motion = motion
+    ctx.audio = this.audioLevel
+    ctx.dread = this.dread
     for (const f of this.features) f.update(ctx)
     if (this.glitchTimer > 0) {
       this.glitchTimer -= dt
