@@ -196,6 +196,9 @@ export class CoplandScene {
     // (see applyTier); the default drawing buffer only ever shows OutputPass's
     // full-screen quad, so a multisampled canvas would just waste a resolve.
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+    // Reading back each program's link status blocks until the driver finishes
+    // compiling it. Worth it while developing, dead weight once the shaders ship.
+    this.renderer.debug.checkShaderErrors = import.meta.env.DEV
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
     this.renderer.setSize(w, h)
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
