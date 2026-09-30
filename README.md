@@ -100,7 +100,8 @@ The dev server runs on **http://localhost:1000** and is exposed on the network (
 ├── eslint.config.js
 ├── public/
 │   ├── fonts/
-│   │   └── TrixieCyrG-Plain-Regular.otf        # custom NAVI font
+│   │   ├── TrixieCyrG-Plain-Regular.woff2      # custom NAVI font, served first
+│   │   └── TrixieCyrG-Plain-Regular.otf        # the same font, fallback for old browsers
 │   └── robots.txt                              # every crawler welcome
 └── src/
     ├── main.tsx                                # React 19 createRoot entry (StrictMode)
