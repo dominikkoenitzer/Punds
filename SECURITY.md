@@ -21,7 +21,7 @@ fixes. There are no older releases to patch.
 Please report security issues **privately**. Don't open a public issue for
 something exploitable.
 
-You can report in either of these ways:
+You can report through GitHub private security advisories:
 
 - **GitHub private security advisories.** Go to the
   [Security tab](https://github.com/dominikkoenitzer/Punds/security/advisories)
