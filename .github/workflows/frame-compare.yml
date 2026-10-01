@@ -1,0 +1,107 @@
+name: Frame compare
+
+# Builds main and this branch, renders both frame by frame in headless
+# Chromium on a fake clock, and fails on any pixel that differs. Main is
+# rendered a second time and compared with itself, which shows the capture
+# repeats exactly on the same runner.
+on:
+  push:
+    branches:
+      - 'verify/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: ${{ matrix.scenario }} / ${{ matrix.viewport }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [boot, skip]
+        viewport: [desktop, mobile]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      # the main commit this branch is built on, so nothing that lands on
+      # main later gets mixed into the comparison
+      - name: Build main
+        run: |
+          base=$(git merge-base HEAD origin/main)
+          echo "main:   $base"
+          echo "branch: $(git rev-parse HEAD)"
+          git worktree add --detach "$RUNNER_TEMP/main-src" "$base"
+          cd "$RUNNER_TEMP/main-src"
+          bun install --frozen-lockfile
+          bun run build
+          mv dist "$RUNNER_TEMP/dist-main"
+
+      - name: Build branch
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+          mv dist "$RUNNER_TEMP/dist-branch"
+
+      - name: Install the capture tools
+        run: |
+          mkdir "$RUNNER_TEMP/fc"
+          cp .github/frame-compare/* "$RUNNER_TEMP/fc/"
+          cd "$RUNNER_TEMP/fc"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.63.0 pngjs@7.0.0 pixelmatch@7.2.0
+          npx playwright install --with-deps --only-shell chromium
+          node --version
+
+      - name: Capture main
+        working-directory: ${{ runner.temp }}/fc
+        run: node capture.mjs --dist "$RUNNER_TEMP/dist-main" --out "$RUNNER_TEMP/out/main" --scenario ${{ matrix.scenario }} --viewport ${{ matrix.viewport }}
+
+      - name: Capture branch
+        if: ${{ !cancelled() }}
+        working-directory: ${{ runner.temp }}/fc
+        run: node capture.mjs --dist "$RUNNER_TEMP/dist-branch" --out "$RUNNER_TEMP/out/branch" --scenario ${{ matrix.scenario }} --viewport ${{ matrix.viewport }}
+
+      - name: Capture main again
+        if: ${{ !cancelled() }}
+        working-directory: ${{ runner.temp }}/fc
+        run: node capture.mjs --dist "$RUNNER_TEMP/dist-main" --out "$RUNNER_TEMP/out/main-again" --scenario ${{ matrix.scenario }} --viewport ${{ matrix.viewport }}
+
+      - name: Compare
+        if: ${{ !cancelled() }}
+        working-directory: ${{ runner.temp }}/fc
+        run: >-
+          node compare.mjs "$RUNNER_TEMP/out/report.md"
+          "main vs main" "$RUNNER_TEMP/out/main" "$RUNNER_TEMP/out/main-again"
+          "main vs branch" "$RUNNER_TEMP/out/main" "$RUNNER_TEMP/out/branch"
+
+      - name: Job summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "## ${{ matrix.scenario }} / ${{ matrix.viewport }}"
+            echo
+            cat "$RUNNER_TEMP/out/report.md" 2> /dev/null || echo "No report: the comparison did not run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload frames
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: frames-${{ matrix.scenario }}-${{ matrix.viewport }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
