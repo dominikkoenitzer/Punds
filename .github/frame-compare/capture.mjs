@@ -330,7 +330,9 @@ async function main() {
       const info = gl.getExtension('WEBGL_debug_renderer_info')
       return {
         renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
-        parallelShaderCompile: !!gl.getExtension('KHR_parallel_shader_compile'),
+        // the browser's own extension; getExtension() would also count the
+        // harness stand-in
+        parallelShaderCompile: !window.__fc.parallelCompileStandIn,
       }
     })
   } catch (err) {

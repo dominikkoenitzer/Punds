@@ -50,6 +50,7 @@ function describe(name, meta) {
     `font: ${meta.fontResponses?.join(', ') || 'none fetched'}`,
     `font loaded before the scene: ${meta.fontLoadedBeforeScene ?? '?'}`,
     `GL: ${meta.gl?.renderer ?? '?'}`,
+    `KHR_parallel_shader_compile: ${end.parallelCompileStandIn ? 'missing, harness stand-in used' : 'native'}`,
     `${meta.realSeconds ?? '?'} s`,
   ]
   let line = `- ${name}: ${parts.join(', ')}`
