@@ -77,7 +77,7 @@ const SCENARIOS = {
         [10650, 'desktop, glitch'],
         [10900, 'desktop, panels fading in'],
         [11200, 'desktop, panels fading in'],
-        [11600, 'desktop'],
+        [11500, 'desktop'],
       ],
       shot: 'desktop',
     },
