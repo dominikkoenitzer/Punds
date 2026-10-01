@@ -177,21 +177,12 @@ async function writeCaptures(dir, captures, log) {
   }
 }
 
-// CSS animations run on the document timeline, which the fake clock does not
-// drive, so the scanline sweep sits wherever wall-clock time has carried it.
-// Playwright's own "disabled" cancels them, yet the sweep still showed up at
-// different heights between runs; switching every animation and transition
-// off in the stylesheet for the shot leaves each element at its resting
-// style, the end state of the fade-ins and the start of the sweep.
-const STILL = '*, *::before, *::after { animation: none !important; transition: none !important; }'
-
 async function shoot(page, dir, tick, note, log) {
   const fontsLoaded = await page.evaluate(() =>
     document.fonts.ready.then(() => document.fonts.check('16px "TrixieCyrG"')),
   )
   const name = `t${pad(tick)}`
-  const options = { animations: 'disabled', caret: 'hide', style: STILL }
-  await page.screenshot({ path: join(dir, `page-${name}.png`), ...options })
+  await page.screenshot({ path: join(dir, `page-${name}.png`), animations: 'disabled', caret: 'hide' })
   // the same view with the canvas and the scanline, grain and vignette layers
   // hidden, which leaves the DOM text on its background
   await page.evaluate(() => {
@@ -201,7 +192,7 @@ async function shoot(page, dir, tick, note, log) {
       '.copland-canvas, .copland-scan, .copland-grain, .copland-vignette { visibility: hidden !important; }'
     document.head.append(style)
   })
-  await page.screenshot({ path: join(dir, `text-${name}.png`), ...options })
+  await page.screenshot({ path: join(dir, `text-${name}.png`), animations: 'disabled', caret: 'hide' })
   await page.evaluate(() => document.getElementById('fc-text-only').remove())
   log.push({ file: `page-${name}.png`, kind: 'page', note, tick, fontsLoaded })
   log.push({ file: `text-${name}.png`, kind: 'text', note, tick, fontsLoaded })
