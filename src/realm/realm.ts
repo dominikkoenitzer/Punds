@@ -231,7 +231,12 @@ export class Realm {
     this.renderer.shadowMap.needsUpdate = true
     // compile its programs now, in parallel where the browser allows, so the
     // driver works while the next part is being built
+    // with the HDR target bound, as when it is drawn, or every program
+    // would be built once for the screen and again for the target
+    const before = this.renderer.getRenderTarget()
+    this.renderer.setRenderTarget(this.pipeline.main)
     this.compiling.push(this.renderer.compileAsync(part.object, this.camera, this.scene).catch(() => {}))
+    this.renderer.setRenderTarget(before)
   }
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
