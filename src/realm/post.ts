@@ -206,7 +206,7 @@ void main() {
 
   // depth of field from the blurred mips: background only grows soft
   // slowly, the near field a little faster, like a long lens
-  float far = smoothstep(uFocus + uFocusRange * 1.5, uFocus + uFocusRange * 8.0 + 60.0, z);
+  float far = smoothstep(uFocus + uFocusRange * 3.0 + 25.0, uFocus + uFocusRange * 12.0 + 140.0, z);
   float near = 1.0 - smoothstep(max(uFocus - uFocusRange, 0.2) * 0.35, max(uFocus - uFocusRange, 0.3), z);
   float coc = clamp(max(far, near) * uBlur, 0.0, 1.0);
   // waking up: everything starts soft and comes into focus
@@ -234,7 +234,10 @@ void main() {
   // eyelids: a soft dark edge that opens from the middle
   float opening = smoothstep(0.0, 0.7, uWake) * 1.35;
   float fromMiddle = abs(vUv.y - 0.5) * 2.0;
-  col *= (1.0 - smoothstep(opening - 0.35, opening, fromMiddle)) * smoothstep(0.0, 0.4, uWake);
+  float lids = (1.0 - smoothstep(opening - 0.35, opening, fromMiddle)) * smoothstep(0.0, 0.4, uWake);
+  // closed eyes in daylight are not black: a dim warm glow through the lids
+  vec3 glow = vec3(0.05, 0.018, 0.01) * (0.85 + 0.15 * sin(uTime * 1.3)) * (1.0 - length(vUv - 0.5) * 0.9);
+  col = col * lids + glow * (1.0 - lids);
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>

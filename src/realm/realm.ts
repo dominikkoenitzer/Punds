@@ -296,6 +296,8 @@ export class Realm {
 
   private wake(dt: number): number {
     if (this.reduced) return 1
+    // the eyes stay closed until the island is there to see
+    if (!this.ready) return 0
     this.wakeT += dt
     const t = this.wakeT
     // eyes open part way, close once, then open for good
