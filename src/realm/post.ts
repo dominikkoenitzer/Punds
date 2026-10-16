@@ -165,12 +165,21 @@ const DOWN_FRAG = /* glsl */ `
 uniform sampler2D tSrc;
 uniform vec2 uTexel;
 uniform float uFirst;
+uniform float uThreshold;
 varying vec2 vUv;
 vec3 tap(vec2 o) {
   vec3 c = texture2D(tSrc, vUv + o * uTexel).rgb;
   if (uFirst > 0.5) {
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c *= min(1.0, 24.0 / max(l, 1e-4));
+    // the bloom chain keeps only what is brighter than the threshold, with
+    // a soft knee; the depth of field chain passes 0 and keeps everything
+    if (uThreshold > 0.0) {
+      float knee = uThreshold * 0.5;
+      float soft = clamp(l - uThreshold + knee, 0.0, 2.0 * knee);
+      soft = soft * soft / (4.0 * knee + 1e-4);
+      c *= max(soft, l - uThreshold) / max(l, 1e-4);
+    }
   }
   return c;
 }
@@ -298,8 +307,7 @@ void main() {
   col = mix(col, blurred, smoothstep(0.0, 0.6, coc));
 
   // bloom from the highlights only, not a veil over everything
-  vec3 bl = texture2D(tBloom, vUv).rgb;
-  col += max(bl - vec3(1.4), 0.0) * uBloom;
+  col += texture2D(tBloom, vUv).rgb * uBloom;
   col += texture2D(tShafts, vUv).r * uSunColor * uShafts;
 
   col *= uExposure;
@@ -360,6 +368,7 @@ export class Pipeline {
   private atmos: THREE.WebGLRenderTarget
   private down: THREE.WebGLRenderTarget[] = []
   private up: THREE.WebGLRenderTarget[] = []
+  private dof: THREE.WebGLRenderTarget[] = []
   private shaftMask: THREE.WebGLRenderTarget
   private shaftA: THREE.WebGLRenderTarget
   private shaftB: THREE.WebGLRenderTarget
@@ -397,6 +406,7 @@ export class Pipeline {
       this.down.push(makeTarget(1, 1))
       this.up.push(makeTarget(1, 1))
     }
+    this.dof.push(makeTarget(1, 1), makeTarget(1, 1))
     this.shaftMask = makeTarget(1, 1, THREE.UnsignedByteType)
     this.shaftA = makeTarget(1, 1, THREE.UnsignedByteType)
     this.shaftB = makeTarget(1, 1, THREE.UnsignedByteType)
@@ -443,6 +453,7 @@ export class Pipeline {
       tSrc: { value: null },
       uTexel: { value: new THREE.Vector2() },
       uFirst: { value: 0 },
+      uThreshold: { value: 0 },
     })
     this.upMat = makePass(UP_FRAG, {
       tLow: { value: null },
@@ -466,8 +477,8 @@ export class Pipeline {
         tScene: { value: this.atmos.texture },
         tDepth: { value: depth },
         tBloom: { value: null },
-        tBlurNear: { value: this.down[0].texture },
-        tBlurFar: { value: this.down[1].texture },
+        tBlurNear: { value: this.dof[0].texture },
+        tBlurFar: { value: this.dof[1].texture },
         tShafts: { value: this.shaftB.texture },
         uBloom: { value: 0.05 },
         uShafts: { value: 0 },
@@ -505,6 +516,7 @@ export class Pipeline {
       mh = Math.max(1, Math.round(mh / 2))
       this.down[i].setSize(mw, mh)
       this.up[i].setSize(mw, mh)
+      if (i < 2) this.dof[i].setSize(mw, mh)
     }
     const sw = Math.max(1, Math.round(w / 4))
     const sh = Math.max(1, Math.round(h / 4))
@@ -563,10 +575,26 @@ export class Pipeline {
     a.uHaze.value = p.haze
     this.draw(this.atmosMat, this.atmos)
 
-    // mip chain: down then up
+    // two soft copies for the depth of field
     let src: THREE.Texture = this.atmos.texture
     let sw = this.width
     let sh = this.height
+    this.downMat.uniforms.uThreshold.value = 0
+    for (let i = 0; i < 2; i++) {
+      this.downMat.uniforms.tSrc.value = src
+      this.downMat.uniforms.uTexel.value.set(1 / sw, 1 / sh)
+      this.downMat.uniforms.uFirst.value = i === 0 ? 1 : 0
+      this.draw(this.downMat, this.dof[i])
+      src = this.dof[i].texture
+      sw = this.dof[i].width
+      sh = this.dof[i].height
+    }
+
+    // the bloom chain: highlights, down then up
+    src = this.atmos.texture
+    sw = this.width
+    sh = this.height
+    this.downMat.uniforms.uThreshold.value = 1.6
     for (let i = 0; i < MIPS; i++) {
       this.downMat.uniforms.tSrc.value = src
       this.downMat.uniforms.uTexel.value.set(1 / sw, 1 / sh)
@@ -627,7 +655,7 @@ export class Pipeline {
     this.main.depthTexture?.dispose()
     this.main.dispose()
     this.atmos.dispose()
-    for (const rt of [...this.down, ...this.up]) rt.dispose()
+    for (const rt of [...this.down, ...this.up, ...this.dof]) rt.dispose()
     this.shaftMask.dispose()
     this.shaftA.dispose()
     this.shaftB.dispose()
