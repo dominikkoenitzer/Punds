@@ -167,20 +167,20 @@ function makeMoss(tier: Tier): Strand[] {
   const rand = rng(90210)
   const phone = tier === 'phone'
   const strands: Strand[] = []
-  const curtains = phone ? 7 : 16
+  const curtains = phone ? 5 : 10
   for (let c = 0; c < curtains; c++) {
     const centre = bearing(rand, null, 0)
-    const n = phone ? 6 : 12
+    const n = phone ? 5 : 8
     for (let i = 0; i < n; i++) {
       const a = bearing(rand, centre, 0.035)
-      const length = 0.25 + Math.pow(rand(), 1.8) * 1.6
+      const length = 0.2 + Math.pow(rand(), 2.2) * 0.9
       undersidePoint(a, 0.004 + rand() * 0.01, Q)
       const pts = [Q.clone()]
       const out = 1 + 0.03 / Math.max(Math.hypot(Q.x, Q.z), 1)
       pts.push(new THREE.Vector3(Q.x * out, Q.y - 0.06, Q.z * out))
       hangDown(pts, a, length, 0, 0.02, 0.002, rand() * 100)
       if (pts.length < 3) continue
-      strands.push({ curve: new THREE.CatmullRomCurve3(pts, false, 'centripetal'), a, r0: 0.012 + rand() * 0.012, hold: 0 })
+      strands.push({ curve: new THREE.CatmullRomCurve3(pts, false, 'centripetal'), a, r0: 0.01 + rand() * 0.008, hold: 0 })
     }
   }
   return strands
@@ -253,7 +253,7 @@ export class Roots implements RealmPart {
     const mossGeo = buildGeometry(makeMoss(tier), phone ? 3 : 4, phone ? 3 : 5)
     const mossMat = new THREE.MeshStandardMaterial({
       map: moss.map,
-      color: new THREE.Color(0.4, 0.46, 0.3),
+      color: new THREE.Color(0.3, 0.36, 0.2),
       roughness: 1,
       metalness: 0,
     })
