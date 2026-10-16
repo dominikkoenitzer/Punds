@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
 import { realmUniforms, WIND_GLSL } from './atmosphere'
 import { loadPbr } from './assets'
-import { CHERRY, groundHeight, noise2, pondSdf, POND_LEVEL, rng } from './layout'
+import { CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
 
 type Rand = () => number
 
@@ -22,6 +22,12 @@ interface Tip {
 }
 
 const UP = new THREE.Vector3(0, 1, 0)
+
+// the walk runs along x = 0; nothing of a tree may hang lower than this over it
+const WALK_CLEAR = 2.45
+function overWalk(worldX: number): boolean {
+  return Math.abs(worldX) < PATH_HALF_WIDTH + 0.7
+}
 
 function randUnit(r: Rand, out: THREE.Vector3): THREE.Vector3 {
   const z = r() * 2 - 1
@@ -298,6 +304,8 @@ interface FoliageOpts {
   instanced: boolean
   // distance at which cards begin to merge into fewer, larger ones
   farStart: number
+  // soft coverage edges (needs enough multisamples; off on phones)
+  softEdge: boolean
 }
 
 function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
@@ -360,11 +368,14 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
         '#include <alphatest_fragment>',
         `vec3 cardN = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
         diffuseColor.a *= smoothstep(0.06, 0.3, abs(dot(cardN, normalize(vViewPosition))));
-        // a soft ramp around the cutoff, spread over about a pixel, so the
-        // multisampled coverage resolves edges calmly instead of in hard stair steps
-        float aw = max(fwidth(diffuseColor.a) * 1.1, 0.03);
+        ${o.softEdge
+          ? `// a narrow ramp around the cutoff, under a pixel wide, so the multisampled
+        // coverage smooths edges without a visible screen-door pattern
+        float aw = max(fwidth(diffuseColor.a) * 0.7, 0.015);
         diffuseColor.a = smoothstep(alphaTest - aw, alphaTest + aw, diffuseColor.a);
-        if (diffuseColor.a < 0.02) discard;`,
+        if (diffuseColor.a < 0.02) discard;`
+          : // few samples on phones would dither partial coverage into a checker: a hard cut
+            'if (diffuseColor.a < alphaTest) discard; diffuseColor.a = 1.0;'}`,
       )
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <normal_fragment_begin>',
@@ -372,7 +383,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
       )
     }
   }
-  mat.customProgramCacheKey = () => `realm-foliage-${o.key}`
+  mat.customProgramCacheKey = () => `realm-foliage-${o.key}-${o.softEdge ? 'soft' : 'hard'}`
   return mat
 }
 
@@ -706,15 +717,16 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
     uy: number
   }
   const flowers: F[] = []
-  const umbels = 13 + Math.floor(r() * 5)
-  const R0 = S * 0.042
+  // full bloom: the cluster is a packed ball of flowers with only small gaps
+  const umbels = 24 + Math.floor(r() * 6)
+  const R0 = S * 0.047
   for (let u = 0; u < umbels; u++) {
     const t = twigs[Math.floor(r() * twigs.length)]!
     const p = t[1 + Math.floor(r() * (t.length - 1))]!
     const n = 3 + Math.floor(r() * 3)
     for (let k = 0; k < n; k++) {
       const a = r() * Math.PI * 2
-      const l = S * (0.025 + r() * 0.05)
+      const l = S * (0.02 + r() * 0.04)
       const R = R0 * (0.8 + r() * 0.4)
       const fx = p.x + Math.cos(a) * l
       const fy = p.y + Math.sin(a) * l
@@ -892,6 +904,14 @@ interface CardOpts {
   plate: number
   // how much darker the inside of the crown is
   depthShade: number
+  // cards gather into balls of blossom or plates of leaves along the twigs, with
+  // gaps between them that show the limbs and the sky
+  clusterRadius: number
+  perCluster: number
+  // vertical squash of a cluster (1 a ball, below 1 a plate)
+  flat: number
+  // true where no card may hang (the walk below the canopy)
+  reject: (p: THREE.Vector3) => boolean
 }
 
 function crownOutward(c: CrownShape, p: THREE.Vector3, out: THREE.Vector3): number {
@@ -920,48 +940,79 @@ function buildCards(o: CardOpts): THREE.BufferGeometry {
   const out = new THREE.Vector3()
   const v = new THREE.Vector3()
   const vn = new THREE.Vector3()
+  const bo = new THREE.Vector3()
   const tmp = new THREE.Vector3()
-  for (let i = 0; i < o.count; i++) {
+  // cluster seats along the twigs, kept apart so each one reads on its own
+  const R = o.clusterRadius
+  const want = Math.max(1, Math.round(o.count / o.perCluster))
+  const seats: Tip[] = []
+  const minGap = R * 1.25
+  for (let i = 0; i < want * 6 && seats.length < want; i++) {
     const tip = o.tips[Math.floor(r() * o.tips.length)]!
-    c.copy(tip.p).add(randUnit(r, tmp).multiplyScalar(0.12 * r()))
+    if (o.reject(tip.p)) continue
+    let free = true
+    for (const s of seats) {
+      if (s.p.distanceToSquared(tip.p) < minGap * minGap) {
+        free = false
+        break
+      }
+    }
+    if (free) seats.push(tip)
+  }
+  if (seats.length === 0) seats.push(o.tips[0]!)
+  let made = 0
+  for (let i = 0; i < o.count * 2 && made < o.count; i++) {
+    const seat = seats[i % seats.length]!
+    // a point in the cluster, pushed towards its shell so it has a surface
+    randUnit(r, tmp)
+    const rr = Math.pow(r(), 0.45) * R
+    c.set(tmp.x * rr, tmp.y * rr * o.flat, tmp.z * rr).add(seat.p)
+    if (o.reject(c)) continue
+    bo.set(tmp.x, tmp.y / Math.max(0.2, o.flat), tmp.z).normalize()
     crownOutward(o.crown, c, out)
     if (o.plate > 0) {
-      n.set(0, 1, 0).addScaledVector(randUnit(r, tmp), 0.75).addScaledVector(out, 0.45).normalize()
+      n.set(0, 1, 0).addScaledVector(bo, 0.45).addScaledVector(randUnit(r, tmp), 0.5).normalize()
     } else {
-      n.copy(out).addScaledVector(randUnit(r, tmp), 0.9).addScaledVector(UP, 0.25).normalize()
+      n.copy(bo).addScaledVector(out, 0.4).addScaledVector(randUnit(r, tmp), 0.6).normalize()
     }
     randUnit(r, tmp)
     t1.crossVectors(n, tmp).normalize()
     t2.crossVectors(n, t1).normalize()
     const hs = (o.size[0] + (o.size[1] - o.size[0]) * r()) * 0.5
-    // cards hang off their twig rather than centring on it
-    c.addScaledVector(out, hs * 0.35)
     const cell = Math.floor(r() * 4)
     const u0 = (cell % 2) * 0.5
     const v0 = Math.floor(cell / 2) * 0.5
     const ph = r() * 40
     const tint = 0.94 + r() * 0.08
+    const shell = rr / R
     const base = pos.length / 3
     for (let k = 0; k < 4; k++) {
       const sx = k === 0 || k === 3 ? -1 : 1
       const sy = k < 2 ? -1 : 1
       v.copy(c).addScaledVector(t1, sx * hs).addScaledVector(t2, sy * hs)
       pos.push(v.x, v.y, v.z)
+      // the normal rounds over the cluster first and the whole crown second
       const ev = crownOutward(o.crown, v, vn)
+      tmp.subVectors(v, seat.p)
+      tmp.y /= Math.max(0.2, o.flat)
+      tmp.normalize()
+      vn.multiplyScalar(0.35).addScaledVector(tmp, 0.65).normalize()
       vn.multiplyScalar(o.volume).addScaledVector(n.dot(vn) >= 0 ? n : n.clone().negate(), 1 - o.volume).normalize()
       nor.push(vn.x, vn.y, vn.z)
       uv.push(u0 + 0.004 + (sx * 0.5 + 0.5) * 0.492, v0 + 0.004 + (sy * 0.5 + 0.5) * 0.492)
-      // inner and lower parts of the crown get less sky
+      // the heart of each cluster and the inner and lower crown get less sky
       const inner = THREE.MathUtils.smoothstep(ev, 0.25, 1.0)
-      const low = THREE.MathUtils.smoothstep(v.y, o.crown.centre.y - o.crown.radii.y, o.crown.centre.y + o.crown.radii.y * 0.6)
-      const ao = (1 - o.depthShade + o.depthShade * inner) * (0.72 + 0.28 * low) * tint
+      const low = THREE.MathUtils.smoothstep(v.y, o.crown.centre.y - o.crown.lowY, o.crown.centre.y + o.crown.radii.y * 0.6)
+      const ball = 0.55 + 0.45 * THREE.MathUtils.smoothstep(shell, 0.2, 0.95)
+      const ao = (1 - o.depthShade + o.depthShade * inner) * (0.7 + 0.3 * low) * ball * tint
       col.push(ao, ao * (0.985 + 0.03 * r()), ao)
-      anchor.push(tip.p.x, tip.p.y, tip.p.z)
+      anchor.push(seat.p.x, seat.p.y, seat.p.z)
       centre.push(c.x, c.y, c.z)
-      sway.push(tip.sway)
+      sway.push(seat.sway)
       phase.push(ph)
     }
     idx.push(base, base + 1, base + 2, base, base + 2, base + 3)
+    made++
   }
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
@@ -1127,6 +1178,8 @@ export class CherryTree extends Tree {
           out.set(p.x - crown.centre.x, 0, p.z - crown.centre.z)
           if (out.lengthSq() > 1e-4) d.addScaledVector(out.normalize(), 0.06)
           if (p.y > crown.centre.y + crown.radii.y * 0.85) d.y -= 0.08
+          // over the walk the limbs lift to clear the visitor's head
+          if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.4) d.y += 0.22
         },
       })
       limbs.push(limb)
@@ -1154,13 +1207,22 @@ export class CherryTree extends Tree {
       }
     }
 
+    const walkDx = -opts.x
+    const walkDz = 1.6
+    const walkAz = Math.atan2(walkDz, walkDx)
+    const walkReach = Math.hypot(walkDx, walkDz) + 1.3
+    const reachesWalk = Math.abs(opts.x) < W * 1.5
     // five spreading scaffolds and one that climbs, so the crown has a roof
     const scaffolds = 6
     const az0 = r() * Math.PI * 2
     for (let k = 0; k < scaffolds; k++) {
       // the first scaffold reaches out low over the water and weeps towards it
-      const az = (towardPond ? pondAz : az0) + (k / 5) * Math.PI * 2 + (k === 0 ? 0 : (r() - 0.5) * 0.5)
-      const elev = k === 5 ? 1.0 : k === 0 && towardPond ? 0.1 : 0.22 + r() * 0.28
+      // one scaffold reaches over the walk, a little towards the arrival, so the
+      // visitor passes under blossom
+      const toWalk = k === 2 && reachesWalk
+      let az = (towardPond ? pondAz : az0) + (k / 5) * Math.PI * 2 + (k === 0 ? 0 : (r() - 0.5) * 0.5)
+      if (toWalk) az = walkAz
+      const elev = k === 5 ? 1.0 : k === 0 && towardPond ? 0.1 : toWalk ? 0.3 : 0.22 + r() * 0.28
       const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
       d.addScaledVector(leanDir, 0.3).normalize()
       // the climbing limb leans back against the trunk, so the middle of the crown is not a gap
@@ -1172,8 +1234,8 @@ export class CherryTree extends Tree {
       }
       const start = trunk.pts[trunk.pts.length - 1 - (k % 2)]!.clone()
       const low = k === 0 && towardPond
-      const len = W * (k === 5 ? 0.72 : low ? 1.22 : 0.88 + r() * 0.14)
-      branch(start, d, len, 0.17 * scale * (k === 5 ? 0.75 : low ? 1.05 : 0.85 + r() * 0.25), 1, trunkLen, low ? 2.1 : 1.15)
+      const len = toWalk ? walkReach : W * (k === 5 ? 0.72 : low ? 1.22 : 0.88 + r() * 0.14)
+      branch(start, d, len, 0.17 * scale * (k === 5 ? 0.75 : low ? 1.05 : 0.85 + r() * 0.25), 1, trunkLen, low ? 2.1 : toWalk ? 0.5 : 1.15)
     }
 
     const tubes = new TubeBuilder()
@@ -1193,18 +1255,22 @@ export class CherryTree extends Tree {
     this.addMesh(tubes.build(), bark, true)
 
     const atlas = acquireAtlas('blossom', opts.tier)
-    // the inner limbs carry blossom too, so the crown reads as a ceiling from below
-    const tips = collectTips(limbs, maxDepth - 2, 0.3, 0.1)
-    // and the scaffold ends, which otherwise reach out bare
-    tips.push(...collectTips(limbs.filter((l) => l.depth === 1), 1, 0.86, 0.1))
-    const count = opts.tier === 'ultra' ? 6000 : opts.tier === 'high' ? 4400 : 2200
-    const sz: [number, number] = opts.tier === 'phone' ? [0.62, 1.0] : [0.5, 0.85]
-    const cards = buildCards({ tips, count, size: sz, crown, rand: r, volume: 0.72, plate: 0, depthShade: 0.32 })
+    // blossom sits on the outer twigs and the scaffold ends; the thick limbs inside
+    // stay bare, so they read dark between the clusters
+    const tips = collectTips(limbs, maxDepth - 1, 0.3, 0.1)
+    tips.push(...collectTips(limbs.filter((l) => l.depth === 1 || l.depth === 2), 1, 0.85, 0.1))
+    const count = opts.tier === 'ultra' ? 6000 : opts.tier === 'high' ? 4400 : 2400
+    const sz: [number, number] = opts.tier === 'phone' ? [0.46, 0.74] : [0.36, 0.6]
+    const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
+    const cards = buildCards({
+      tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.5,
+      clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 15 : 24, flat: 0.8, reject,
+    })
     const mat = foliageMaterial({
       key: 'blossom',
       map: atlas.map,
       normalMap: atlas.normalMap,
-      trans: 0.8,
+      trans: 1.05,
       transTint: new THREE.Color(1.0, 0.86, 0.88),
       roughness: 0.8,
       branchAmp: 0.11,
@@ -1213,6 +1279,7 @@ export class CherryTree extends Tree {
       volumeNormals: true,
       instanced: false,
       farStart: 9,
+      softEdge: opts.tier !== 'phone',
     })
     this.addMesh(cards, mat, true)
     this.place(opts.x, opts.z)
@@ -1263,11 +1330,12 @@ export class MapleTree extends Tree {
         depth,
         sway0,
         segLen,
-        bend: (d, s) => {
+        bend: (d, s, p) => {
           d.x += (r() - 0.5) * 0.26
           d.z += (r() - 0.5) * 0.26
           // ease into the horizontal: the layered habit of the tree
           d.y += (0.03 - d.y) * (0.05 + s * 0.16)
+          if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.3) d.y += 0.22
         },
       })
       limbs.push(limb)
@@ -1347,7 +1415,11 @@ export class MapleTree extends Tree {
     const tips = collectTips(limbs, 2, 0.15, 0.1)
     const count = opts.tier === 'ultra' ? 2300 : opts.tier === 'high' ? 1700 : 850
     const sz: [number, number] = opts.tier === 'phone' ? [0.55, 0.85] : [0.42, 0.7]
-    const cards = buildCards({ tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.55 })
+    const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
+    const cards = buildCards({
+      tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.6,
+      clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 9 : 13, flat: 0.45, reject,
+    })
     const mat = foliageMaterial({
       key: 'maple',
       map: atlas.map,
@@ -1361,6 +1433,7 @@ export class MapleTree extends Tree {
       volumeNormals: true,
       instanced: false,
       farStart: 10,
+      softEdge: opts.tier !== 'phone',
     })
     this.addMesh(cards, mat, true)
     this.place(opts.x, opts.z)
@@ -1519,6 +1592,8 @@ export class Petals implements RealmPart {
   private water: Uint8Array
   private crownCentre: THREE.Vector3
   private crownRadii: THREE.Vector3
+  private offIsland: Uint8Array
+  private frameNo = 0
   private m = new THREE.Matrix4()
   private q = new THREE.Quaternion()
   private dq = new THREE.Quaternion()
@@ -1531,7 +1606,7 @@ export class Petals implements RealmPart {
   private started = false
 
   constructor(opts: { tier: Tier }) {
-    this.n = opts.tier === 'ultra' ? 1000 : opts.tier === 'high' ? 700 : 300
+    this.n = opts.tier === 'ultra' ? 340 : opts.tier === 'high' ? 240 : 110
     const n = this.n
     this.pos = new Float32Array(n * 3)
     this.vel = new Float32Array(n * 3)
@@ -1543,6 +1618,7 @@ export class Petals implements RealmPart {
     this.state = new Uint8Array(n)
     this.size = new Float32Array(n)
     this.yaw = new Float32Array(n)
+    this.offIsland = new Uint8Array(n)
     this.gw = Math.ceil(38 / this.gStep) + 1
     this.gh = Math.ceil(52 / this.gStep) + 1
     this.heights = new Float32Array(this.gw * this.gh)
@@ -1565,15 +1641,16 @@ export class Petals implements RealmPart {
       key: 'petal',
       map: this.texture,
       normalMap: null,
-      trans: 0.6,
+      trans: 1.15,
       transTint: new THREE.Color(1.0, 0.85, 0.88),
-      roughness: 0.6,
+      roughness: 0.5,
       branchAmp: 0,
       cardAmp: 0,
       swayNorm: 1,
       volumeNormals: false,
       instanced: true,
       farStart: 1000,
+      softEdge: false,
     })
     this.object = new THREE.InstancedMesh(this.geometry, this.material, n)
     this.object.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
@@ -1598,29 +1675,47 @@ export class Petals implements RealmPart {
     return { h, water: false }
   }
 
+  // petals drift from the cherry; near the maples a few that blew across
+  private nearAnyTree(x: number, z: number): boolean {
+    const cx = x - this.crownCentre.x
+    const cz = z - this.crownCentre.z
+    if (cx * cx + cz * cz < (this.crownRadii.x + 3.5) ** 2) return true
+    for (const m of MAPLES) {
+      const mx = x - m.x
+      const mz = z - m.z
+      if (mx * mx + mz * mz < (m.spread + 0.5) ** 2) return true
+    }
+    return false
+  }
+
   private spawn(i: number, cam: THREE.PerspectiveCamera, anywhere: boolean): void {
     const r = this.rand
     const p = this.p
     const dx = cam.position.x - this.crownCentre.x
     const dz = cam.position.z - this.crownCentre.z
-    const nearTree = dx * dx + dz * dz < 26 * 26
-    if (nearTree && r() < 0.3) {
+    const nearTree = dx * dx + dz * dz < 30 * 30
+    // in the view ahead, but only where a tree is close: never loose in open sky
+    let placed = false
+    if (!nearTree || r() > 0.6) {
+      for (let tries = 0; tries < 6 && !placed; tries++) {
+        const depth = 1.0 + Math.pow(r(), 0.8) * 8
+        const halfH = Math.tan(THREE.MathUtils.degToRad(cam.fov * 0.5)) * depth
+        const halfW = halfH * cam.aspect
+        const top = anywhere ? halfH : halfH * 1.6
+        p.set((r() * 2 - 1) * halfW * 1.15, -halfH + r() * (halfH + top), -depth)
+        if (!anywhere && r() < 0.5) p.y = halfH * (1 + r() * 0.6)
+        p.applyMatrix4(cam.matrixWorld)
+        const g = this.ground(p.x, p.z).h
+        if (p.y < g + 0.15) p.y = g + 0.15 + r() * 2
+        placed = p.y < g + 4.5 && this.nearAnyTree(p.x, p.z)
+      }
+    }
+    if (!placed) {
       // detach from the crown, mostly from its lower and outer shell
       randUnit(r, this.axis)
       if (this.axis.y > 0.3) this.axis.y *= 0.4
       this.axis.normalize().multiplyScalar(0.7 + r() * 0.3)
       p.set(this.axis.x * this.crownRadii.x, this.axis.y * this.crownRadii.y, this.axis.z * this.crownRadii.z).add(this.crownCentre)
-    } else {
-      // somewhere in the view ahead; more above eye level so they fall into it
-      const depth = 1.0 + Math.pow(r(), 0.8) * 10
-      const halfH = Math.tan(THREE.MathUtils.degToRad(cam.fov * 0.5)) * depth
-      const halfW = halfH * cam.aspect
-      const top = anywhere ? halfH : halfH * 1.6
-      p.set((r() * 2 - 1) * halfW * 1.15, -halfH + r() * (halfH + top), -depth)
-      if (!anywhere && r() < 0.5) p.y = halfH * (1 + r() * 0.6)
-      p.applyMatrix4(cam.matrixWorld)
-      const g = this.ground(p.x, p.z).h
-      if (p.y < g + 0.15) p.y = g + 0.15 + r() * 2
     }
     const o = i * 3
     this.pos[o] = p.x
@@ -1632,7 +1727,8 @@ export class Petals implements RealmPart {
     this.euler.set(r() * 6.3, r() * 6.3, r() * 6.3)
     this.q.setFromEuler(this.euler)
     this.q.toArray(this.quat, i * 4)
-    const sp = 2 + r() * 5
+    // a clear tumble: flips and spins of a few turns a second
+    const sp = 4 + r() * 6
     randUnit(r, this.axis).multiplyScalar(sp)
     this.spin[o] = this.axis.x
     this.spin[o + 1] = this.axis.y
@@ -1641,7 +1737,9 @@ export class Petals implements RealmPart {
     this.age[i] = 0
     this.rest[i] = 0
     this.state[i] = AIR
-    this.size[i] = 0.85 + r() * 0.3
+    this.offIsland[i] = 0
+    // 2 to 3 cm, the size of a real petal
+    this.size[i] = 1.35 + r() * 0.55
     this.yaw[i] = r() * 6.3
   }
 
@@ -1658,6 +1756,7 @@ export class Petals implements RealmPart {
       }
     }
     const dt = Math.min(0.05, frame.dt) * frame.motion
+    this.frameNo++
     const t = frame.t
     const wind = realmUniforms.uWind.value
     const wx = wind.x
@@ -1720,7 +1819,7 @@ export class Petals implements RealmPart {
         y += vy * dt
         z += vz * dt
         // tumble, faster in stronger flow
-        const sm = (0.6 + g) * dt
+        const sm = (0.8 + g) * dt
         this.axis.set(this.spin[o]!, this.spin[o + 1]!, this.spin[o + 2]!)
         const w = this.axis.length()
         if (w > 1e-4) {
@@ -1774,6 +1873,9 @@ export class Petals implements RealmPart {
 
       // respawn what has faded, what is out of view and what is too far away
       const restLimit = this.state[i] === WATER ? 9 : 3.5
+      // one blown past the rim fades out rather than drifting on as a speck over the clouds
+      if (this.state[i] === AIR && (i + this.frameNo) % 8 === 0 && islandSdf(x, z) < 0) this.offIsland[i] = 1
+      if (this.offIsland[i]) this.rest[i] = Math.max(this.rest[i]!, restLimit) + dt
       this.camLocal.set(x, y, z).applyMatrix4(inv)
       const depth = -this.camLocal.z
       const outside =
