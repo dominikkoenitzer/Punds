@@ -4,6 +4,7 @@ import { buildSky, type SkyResult } from './sky'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { setMaxAnisotropy } from './assets'
 import { Walk, heading } from './walk'
+import { Ambience } from './ambience'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
@@ -82,6 +83,7 @@ export class Realm {
   private parallax = new THREE.Vector2()
   private post: PostParams
   private frameTimes: number[] = []
+  private ambience = new Ambience()
   private debugView: { from: THREE.Vector3; to: THREE.Vector3 } | null = null
   private down: { x: number; y: number; t: number } | null = null
   private mouse = false
@@ -261,6 +263,15 @@ export class Realm {
     this.debugView = from ? { from: new THREE.Vector3(...from), to: new THREE.Vector3(...to) } : null
   }
 
+  // water and wind; call from a click or key handler
+  setSound(on: boolean): void {
+    this.ambience.setEnabled(on)
+  }
+
+  get sound(): boolean {
+    return this.ambience.on
+  }
+
   skipWake(): void {
     this.wakeT = 10
   }
@@ -359,6 +370,7 @@ export class Realm {
     this.frame.dt = dt
     this.frame.progress = p
     for (const part of this.parts) part.update(this.frame)
+    this.ambience.update(dt, this.camera.position, realmUniforms.uGust.value)
     for (const part of this.parts) if (hasPrerender(part)) part.prerender(this.renderer, this.scene, this.camera)
 
     const pp = this.post
@@ -397,6 +409,7 @@ export class Realm {
     cancelAnimationFrame(this.raf)
     this.resizeObs.disconnect()
     this.walk.dispose()
+    this.ambience.dispose()
     const el = this.renderer.domElement
     el.removeEventListener('pointermove', this.onPointerMove)
     el.removeEventListener('pointerdown', this.onPointerDown)

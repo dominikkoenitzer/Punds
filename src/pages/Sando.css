@@ -47,6 +47,35 @@
   outline-offset: 6px;
 }
 
+.sando-sound {
+  position: absolute;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  padding: 10px 6px;
+  border: 0;
+  background: none;
+  color: #f4ede2;
+  font: 13px/1 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.14em;
+  opacity: 0.42;
+  cursor: pointer;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.4s ease;
+}
+
+.sando-sound[aria-pressed='true'] {
+  opacity: 0.9;
+}
+
+.sando-sound:hover {
+  opacity: 0.75;
+}
+
+.sando-sound:focus-visible {
+  outline: 1px solid rgba(244, 237, 226, 0.6);
+  outline-offset: 2px;
+}
+
 .sando-fallback {
   position: absolute;
   inset: 0;

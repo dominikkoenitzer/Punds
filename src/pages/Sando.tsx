@@ -26,6 +26,26 @@ export default function Sando() {
   const containerRef = useRef<HTMLDivElement>(null)
   const realmRef = useRef<Realm | null>(null)
   const [noScene, setNoScene] = useState(() => !supportsWebGL2())
+  const [sound, setSound] = useState(false)
+
+  const toggleSound = () => {
+    const next = !(realmRef.current?.sound ?? sound)
+    realmRef.current?.setSound(next)
+    setSound(next)
+  }
+
+  // M switches the sound too; held keys and shortcuts with modifiers do not
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key.toLowerCase() !== 'm') return
+      const next = !(realmRef.current?.sound ?? false)
+      realmRef.current?.setSound(next)
+      setSound(next)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -58,6 +78,11 @@ export default function Sando() {
   return (
     <div className="sando-root">
       <div aria-hidden="true" className="sando-canvas" ref={containerRef} />
+      {!noScene && (
+        <button type="button" className="sando-sound" aria-pressed={sound} onClick={toggleSound}>
+          sound
+        </button>
+      )}
       <main className={noScene ? 'sando-fallback' : 'sando-sr'}>
         <h1>Punds</h1>
         <nav>
