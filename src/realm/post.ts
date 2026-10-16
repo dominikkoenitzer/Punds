@@ -46,6 +46,8 @@ uniform float uFogDensity;
 uniform float uFogHeight;
 uniform float uFogFalloff;
 uniform float uHaze;
+uniform sampler2D tAo;
+uniform float uAo;
 varying vec2 vUv;
 
 float heightFog(vec3 ro, vec3 rd, float dist) {
@@ -62,6 +64,7 @@ void main() {
   col = min(col, vec3(6e4));
   float d = texture2D(tDepth, vUv).r;
   if (d < 1.0) {
+    col *= mix(1.0, texture2D(tAo, vUv).r, uAo);
     vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
     vp /= vp.w;
     vec3 wp = (uCamWorld * vec4(vp.xyz, 1.0)).xyz;
@@ -77,6 +80,82 @@ void main() {
     col = mix(col, fogCol, clamp(max(heightFog(uCamPos, rd, dist), haze), 0.0, 1.0) * near);
   }
   gl_FragColor = vec4(col, 1.0);
+}
+`
+
+// Ambient occlusion from the depth buffer at half resolution: twelve samples
+// in a hemisphere around the reconstructed normal, so stones sit in the
+// ground and the shrine's eaves darken the wall below them.
+const AO_FRAG = /* glsl */ `
+uniform sampler2D tDepth;
+uniform mat4 uProj;
+uniform mat4 uInvProj;
+uniform vec2 uTexel;
+uniform float uRadius;
+varying vec2 vUv;
+vec3 viewPos(vec2 uv) {
+  float d = texture2D(tDepth, uv).r;
+  vec4 p = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  return p.xyz / p.w;
+}
+float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+void main() {
+  float d = texture2D(tDepth, vUv).r;
+  if (d >= 1.0) { gl_FragColor = vec4(1.0); return; }
+  vec3 P = viewPos(vUv);
+  vec3 px = viewPos(vUv + vec2(uTexel.x, 0.0)) - P;
+  vec3 nx = P - viewPos(vUv - vec2(uTexel.x, 0.0));
+  vec3 py = viewPos(vUv + vec2(0.0, uTexel.y)) - P;
+  vec3 ny = P - viewPos(vUv - vec2(0.0, uTexel.y));
+  vec3 dx = abs(px.z) < abs(nx.z) ? px : nx;
+  vec3 dy = abs(py.z) < abs(ny.z) ? py : ny;
+  vec3 N = normalize(cross(dx, dy));
+  float rot = ign(gl_FragCoord.xy) * 6.2831853;
+  vec3 T = normalize(cross(N, abs(N.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+  vec3 B = cross(N, T);
+  float r = uRadius * clamp(-P.z / 6.0, 0.35, 1.6);
+  float occ = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    float a = fi * 2.39996 + rot;
+    float t = (fi + 0.5) / 12.0;
+    vec3 h = vec3(cos(a) * sqrt(t), sin(a) * sqrt(t), sqrt(1.0 - t));
+    vec3 S = P + (T * h.x + B * h.y + N * h.z) * r * mix(0.25, 1.0, t);
+    vec4 c = uProj * vec4(S, 1.0);
+    vec2 uv = c.xy / c.w * 0.5 + 0.5;
+    vec3 Q = viewPos(uv);
+    // an occluder far in front of the point is something else entirely
+    float range = smoothstep(0.0, 1.0, r / max(abs(P.z - Q.z) * 2.0, 1e-3));
+    occ += (Q.z >= S.z + 0.02 * r && Q.z - P.z < r * 2.5 ? 1.0 : 0.0) * range;
+  }
+  float ao = 1.0 - occ / 12.0;
+  // fade out with distance; far things are lit by the sky as a whole
+  ao = mix(ao, 1.0, smoothstep(40.0, 90.0, -P.z));
+  gl_FragColor = vec4(ao, ao, ao, 1.0);
+}
+`
+
+const AO_BLUR_FRAG = /* glsl */ `
+uniform sampler2D tAo;
+uniform sampler2D tDepth;
+uniform vec2 uDir;
+uniform float uNear;
+uniform float uFar;
+varying vec2 vUv;
+float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+void main() {
+  float z0 = lin(texture2D(tDepth, vUv).r);
+  float sum = 0.0;
+  float wsum = 0.0;
+  for (int i = -4; i <= 4; i++) {
+    vec2 uv = vUv + uDir * float(i);
+    float z = lin(texture2D(tDepth, uv).r);
+    float w = exp(-float(i * i) / 8.0) * exp(-abs(z - z0) / max(z0 * 0.04, 0.02));
+    sum += texture2D(tAo, uv).r * w;
+    wsum += w;
+  }
+  float v = sum / max(wsum, 1e-4);
+  gl_FragColor = vec4(v, v, v, 1.0);
 }
 `
 
@@ -208,7 +287,9 @@ void main() {
   // slowly, the near field a little faster, like a long lens
   float far = smoothstep(uFocus + uFocusRange * 3.0 + 25.0, uFocus + uFocusRange * 12.0 + 140.0, z);
   float near = 1.0 - smoothstep(max(uFocus - uFocusRange, 0.2) * 0.35, max(uFocus - uFocusRange, 0.3), z);
-  float coc = clamp(max(far, near) * uBlur, 0.0, 1.0);
+  // the sky is soft already, and blurring it would drag dark edges of
+  // things in front out over it
+  float coc = d >= 1.0 ? 0.0 : clamp(max(far, near) * uBlur, 0.0, 1.0);
   // waking up: everything starts soft and comes into focus
   coc = max(coc, 1.0 - smoothstep(0.15, 0.95, uWake));
   vec3 blurA = texture2D(tBlurNear, vUv).rgb;
@@ -216,10 +297,14 @@ void main() {
   vec3 blurred = mix(blurA, blurB, smoothstep(0.45, 1.0, coc));
   col = mix(col, blurred, smoothstep(0.0, 0.6, coc));
 
-  col += texture2D(tBloom, vUv).rgb * uBloom;
+  // bloom from the highlights only, not a veil over everything
+  vec3 bl = texture2D(tBloom, vUv).rgb;
+  col += max(bl - vec3(1.4), 0.0) * uBloom;
   col += texture2D(tShafts, vUv).r * uSunColor * uShafts;
 
   col *= uExposure;
+  // filmic contrast around middle grey, before the curve
+  col = 0.18 * pow(max(col, 0.0) / 0.18, vec3(1.1));
 
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(luma), col, uSaturation), 0.0);
@@ -278,6 +363,10 @@ export class Pipeline {
   private shaftMask: THREE.WebGLRenderTarget
   private shaftA: THREE.WebGLRenderTarget
   private shaftB: THREE.WebGLRenderTarget
+  private aoA: THREE.WebGLRenderTarget
+  private aoB: THREE.WebGLRenderTarget
+  private aoMat: THREE.ShaderMaterial
+  private aoBlurMat: THREE.ShaderMaterial
   private quad: THREE.Mesh
   private quadScene = new THREE.Scene()
   private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
@@ -311,6 +400,8 @@ export class Pipeline {
     this.shaftMask = makeTarget(1, 1, THREE.UnsignedByteType)
     this.shaftA = makeTarget(1, 1, THREE.UnsignedByteType)
     this.shaftB = makeTarget(1, 1, THREE.UnsignedByteType)
+    this.aoA = makeTarget(1, 1, THREE.UnsignedByteType)
+    this.aoB = makeTarget(1, 1, THREE.UnsignedByteType)
 
     const geo = new THREE.BufferGeometry()
     geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3))
@@ -331,6 +422,22 @@ export class Pipeline {
       uFogHeight: { value: 0 },
       uFogFalloff: { value: 0.1 },
       uHaze: { value: 0 },
+      tAo: { value: this.aoB.texture },
+      uAo: { value: tier === 'phone' ? 0 : 0.85 },
+    })
+    this.aoMat = makePass(AO_FRAG, {
+      tDepth: { value: depth },
+      uProj: { value: new THREE.Matrix4() },
+      uInvProj: { value: new THREE.Matrix4() },
+      uTexel: { value: new THREE.Vector2() },
+      uRadius: { value: 0.45 },
+    })
+    this.aoBlurMat = makePass(AO_BLUR_FRAG, {
+      tAo: { value: null },
+      tDepth: { value: depth },
+      uDir: { value: new THREE.Vector2() },
+      uNear: { value: 0.1 },
+      uFar: { value: 1000 },
     })
     this.downMat = makePass(DOWN_FRAG, {
       tSrc: { value: null },
@@ -401,6 +508,11 @@ export class Pipeline {
     }
     const sw = Math.max(1, Math.round(w / 4))
     const sh = Math.max(1, Math.round(h / 4))
+    const aw = Math.max(1, Math.round(w / 2))
+    const ah = Math.max(1, Math.round(h / 2))
+    this.aoA.setSize(aw, ah)
+    this.aoB.setSize(aw, ah)
+    this.aoMat.uniforms.uTexel.value.set(1 / aw, 1 / ah)
     this.shaftMask.setSize(sw, sh)
     this.shaftA.setSize(sw, sh)
     this.shaftB.setSize(sw, sh)
@@ -418,6 +530,24 @@ export class Pipeline {
     const r = this.renderer
     r.setRenderTarget(this.main)
     r.render(scene, camera)
+
+    // ambient occlusion, skipped on phones where the scans' own occlusion
+    // carries it
+    if (this.tier !== 'phone') {
+      this.aoMat.uniforms.uProj.value.copy(camera.projectionMatrix)
+      this.aoMat.uniforms.uInvProj.value.copy(camera.projectionMatrixInverse)
+      this.draw(this.aoMat, this.aoA)
+      const bu = this.aoBlurMat.uniforms
+      bu.uNear.value = camera.near
+      bu.uFar.value = camera.far
+      bu.tAo.value = this.aoA.texture
+      bu.uDir.value.set(1 / this.aoA.width, 0)
+      this.draw(this.aoBlurMat, this.aoB)
+      bu.tAo.value = this.aoB.texture
+      bu.uDir.value.set(0, 1 / this.aoA.height)
+      this.draw(this.aoBlurMat, this.aoA)
+      this.atmosMat.uniforms.tAo.value = this.aoA.texture
+    }
 
     // fog and haze
     const a = this.atmosMat.uniforms
@@ -501,6 +631,10 @@ export class Pipeline {
     this.shaftMask.dispose()
     this.shaftA.dispose()
     this.shaftB.dispose()
+    this.aoA.dispose()
+    this.aoB.dispose()
+    this.aoMat.dispose()
+    this.aoBlurMat.dispose()
     this.quad.geometry.dispose()
     for (const m of [this.atmosMat, this.downMat, this.upMat, this.maskMat, this.blurMat, this.finalMat]) m.dispose()
   }
