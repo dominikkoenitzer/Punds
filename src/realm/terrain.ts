@@ -417,12 +417,14 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   // the lower part closes in a short, broken base instead of running out
   // into a point; the rock fingers hang below it
   const base = smooth(BASE_F, 1, f)
-  const rag = base * (fbm3(c * 2.4 + 1.7, s * 2.4, 7.3, 3) - 0.3) * 6
+  // ragged, with short points hanging all over it
+  const spike = noise3(c * 7 + 2.1, s * 7, f * 6)
+  const rag = base * ((fbm3(c * 2.4 + 1.7, s * 2.4, 7.3, 3) - 0.3) * 6 + spike * spike * spike * 7 * smooth(0.55, 0.8, f))
   const y = yRim - fallFraction(f) * undersideDepth(a) - (f > 0 ? 0.15 : 0) - rag
   return out.set(rx * sc, y, rz * sc)
 }
 
-const BASE_F = 0.46
+const BASE_F = 0.4
 function fallFraction(f: number): number {
   return f < BASE_F ? f : BASE_F + (f - BASE_F) * 0.4
 }
@@ -484,17 +486,28 @@ function buildFingers(tier: Tier, pos: number[], uv: number[], rock: number[], i
   const segs = phone ? 18 : 40
   const rand = rng(2203)
   const p = new THREE.Vector3()
-  const count = phone ? 6 : 8
-  for (let n = 0; n < count; n++) {
-    // the longest hang near the middle, shorter ones further out, most of
-    // them to one side and one straying to the other
-    const rank = n / (count - 1)
-    const b = n === count - 1 ? 4.6 + rand() * 0.6 : 1.2 + n * 0.62 + (rand() - 0.5) * 0.4
-    const r0 = (2.6 - rank * 1.3) * (0.8 + rand() * 0.4)
+  // bearing, distance out as a share of the base, radius, visible length:
+  // a long one off the middle, the rest spread to the base's edge, getting
+  // thinner and shorter the further out they hang
+  const specs: [number, number, number, number][] = [
+    [1.6, 0.25, 2.3, 15],
+    [2.5, 0.45, 1.8, 10],
+    [0.8, 0.55, 1.5, 8],
+    [3.1, 0.82, 1.0, 5],
+    [4.7, 0.6, 1.4, 7],
+    [5.7, 0.86, 0.75, 3.5],
+    [0.1, 0.88, 0.85, 4],
+    [2.0, 0.9, 0.8, 4.5],
+  ]
+  const used = phone ? specs.slice(0, 6) : specs
+  for (const [n, spec] of used.entries()) {
+    const [b0, share, rr, visible] = spec
+    const b = b0 + (rand() - 0.5) * 0.3
+    const r0 = rr * (0.85 + rand() * 0.3)
     // each one starts a little way up inside the broken base, wherever it hangs
     undersidePoint(b, BASE_F, p)
     const rb = Math.hypot(p.x, p.z)
-    const d = Math.min(2 + rank * 5.5 + rand() * 1.5, rb - r0 - 0.5)
+    const d = Math.min(share * rb, rb - r0 - 0.5)
     const cx = Math.cos(b) * d
     const cz = Math.sin(b) * d
     const q = d / rb
@@ -502,7 +515,7 @@ function buildFingers(tier: Tier, pos: number[], uv: number[], rock: number[], i
     // buried, down past the base by its own visible length
     const y0 = p.y + 1.5
     const hidden = 1.5 + (1 - q * q) * (1 - BASE_F) * 0.4 * undersideDepth(b) + 3
-    const length = (16 - rank * 11) * (0.75 + rand() * 0.5) + hidden
+    const length = visible * (0.85 + rand() * 0.3) + hidden
     const lx = (rand() - 0.5) * 0.12
     const lz = (rand() - 0.5) * 0.12
     const seed = n * 13.7
