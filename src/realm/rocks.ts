@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { getMaxAnisotropy } from './assets'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf } from './layout'
@@ -48,6 +49,10 @@ async function loadScan(name: string): Promise<Scan> {
   const size = geometry.boundingBox!.getSize(new THREE.Vector3())
   const material = mesh.material as THREE.MeshStandardMaterial
   material.side = THREE.FrontSide
+  // the scans' own maps come in unfiltered: seen at a slant they blur
+  for (const t of [material.map, material.normalMap, material.roughnessMap, material.aoMap]) {
+    if (t) t.anisotropy = getMaxAnisotropy()
+  }
   return { geometry, material, size }
 }
 

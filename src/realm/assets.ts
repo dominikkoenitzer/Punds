@@ -20,6 +20,10 @@ export function setMaxAnisotropy(value: number): void {
   maxAnisotropy = value
 }
 
+export function getMaxAnisotropy(): number {
+  return maxAnisotropy
+}
+
 function load(url: string, color: boolean): Promise<THREE.Texture> {
   let p = cache.get(url)
   if (!p) {
