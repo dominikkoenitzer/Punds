@@ -10,6 +10,8 @@ import {
   lawnWeight,
   pathWeight,
   TERRACE_FRONT_Z,
+  CHERRY,
+  MAPLES,
   PATH_HALF_WIDTH,
   GRAVEL_HALF_WIDTH,
   LANTERNS,
@@ -42,7 +44,13 @@ function mossWeight(x: number, z: number): number {
   const pond = 1 - smooth(0.2, 2.6, pondSdf(x, z))
   const wall = (1 - smooth(0, 1.4, Math.abs(z - (TERRACE_FRONT_Z + 0.6)))) * (z > TERRACE_FRONT_Z ? 1 : 0)
   const patches = smooth(0.52, 0.72, fbm2(x * 0.18 + 3.3, z * 0.18 - 7.1, 4))
-  return Math.max(pond * 0.85, wall * 0.9, patches * 0.75)
+  // under the trees' crowns the ground stays shaded and damp: a moss carpet
+  let shade = 0
+  for (const t of [{ x: CHERRY.x, z: CHERRY.z, r: CHERRY.spread }, ...MAPLES.map((m) => ({ x: m.x, z: m.z, r: m.spread }))]) {
+    const d = Math.hypot(x - t.x, z - t.z) / t.r
+    shade = Math.max(shade, 1 - smooth(0.35, 1.05, d))
+  }
+  return Math.max(pond * 0.85, wall * 0.9, patches * 0.75, shade * 0.9)
 }
 
 // Gravel: raked in lines along the approach that turn into rings around the
@@ -164,6 +172,9 @@ const SPLAT_MAP = /* glsl */ `
   sampleSet(tGravelD, tGravelN, tGravelA, xz / 1.6, d1, n1, a1);
   gravelDetail(xz, d1, n1, a1);
   sampleSet(tMossD, tMossN, tMossA, xz / 2.2, d2, n2, a2);
+  // the scan is a forest floor with moss among the leaves: keep its detail
+  // as brightness and colour it the deep green of garden moss
+  d2 = vec3(dot(d2, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.5, 0.82, 0.28) * 2.1;
   sampleSet(tPebD, tPebN, tPebA, xz / 1.4, d3, n3, a3);
   vec4 w = vSplat;
   float soil = max(1.0 - w.x - w.y - w.z, 0.0);
