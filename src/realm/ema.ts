@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { EMA_RACK, TERRACE_Y, rng } from './layout'
+import { EMA_RACK, groundHeight, rng } from './layout'
 import { LINKS, type Link } from '../links'
 import { loadPbr, pbrMaterial, type PbrSet } from './assets'
 import { bevelBox, merge, transformed, worldUv } from './geo'
@@ -411,7 +411,7 @@ export class EmaRack implements RealmPart {
     })
     for (const p of this.plaques) p.turn = p.rest
 
-    this.object.position.set(EMA_RACK.x, TERRACE_Y, EMA_RACK.z)
+    this.object.position.set(EMA_RACK.x, groundHeight(EMA_RACK.x, EMA_RACK.z), EMA_RACK.z)
     this.object.rotation.y = EMA_RACK.rotation
   }
 
@@ -425,6 +425,11 @@ export class EmaRack implements RealmPart {
   // the cursor the host should show over the canvas
   get pointing(): boolean {
     return this.hovered !== null
+  }
+
+  // the name on the plaque under the pointer, if it is a link
+  get hoveredName(): string | null {
+    return this.hovered?.link?.name ?? null
   }
 
   // a mouse hover; touches go through tap()
@@ -476,7 +481,7 @@ export class EmaRack implements RealmPart {
       const breeze = frame.motion * (Math.sin(p.phase * 1.3) * 0.05 + Math.sin(p.phase * 2.9) * 0.02)
       p.pivot.rotation.set(Math.sin(p.phase * 1.7) * 0.03 * frame.motion, p.turn + breeze, p.swing)
       // the three new plaques hold a little of the low sun even in shade
-      if (p.glow) p.glow.emissiveIntensity = 0.045 + p.focus * 0.12
+      if (p.glow) p.glow.emissiveIntensity = 0.1 + p.focus * 0.16
     }
   }
 

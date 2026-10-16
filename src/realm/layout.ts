@@ -98,7 +98,9 @@ export const GRAVEL_HALF_WIDTH = 2.75
 export const FORECOURT = { xMin: -6.8, xMax: 8.2, zMin: -20, zMax: -9 }
 
 export const SHRINE = { x: 0, z: -16.2, width: 7.2, depth: 5.4, rotation: 0 }
-export const EMA_RACK = { x: 5.6, z: -13.6, rotation: -0.45 }
+// on the lawn beside the path, under the maple, in plain sight from the
+// centre of the garden and facing it
+export const EMA_RACK = { x: 5.0, z: -3.6, rotation: -0.45 }
 export const BASIN = { x: -4.6, z: -11.6, rotation: 0.5 }
 
 // stone lanterns in the order they light
@@ -281,6 +283,16 @@ export function lawnWeight(x: number, z: number): number {
   let w = rim * water * hard
   // nothing grows on the steps or the retaining wall face
   if (Math.abs(z - TERRACE_FRONT_Z) < 0.5) w *= smooth(0.0, 0.5, Math.abs(z - TERRACE_FRONT_Z))
+  // trodden bare in front of and under the plaque rack
+  {
+    const c = Math.cos(EMA_RACK.rotation)
+    const s = Math.sin(EMA_RACK.rotation)
+    const dx = x - EMA_RACK.x
+    const dz = z - EMA_RACK.z
+    const u = dx * c - dz * s
+    const v = dx * s + dz * c
+    w *= smooth(0.6, 1.0, Math.hypot(u / 1.7, (v - 0.25) / 0.8))
+  }
   // a bare ring under each lantern base
   for (const l of LANTERNS) {
     const dx = x - l.x
