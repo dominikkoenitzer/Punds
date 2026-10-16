@@ -86,8 +86,19 @@ export default function Sando() {
       <main className={noScene ? 'sando-fallback' : 'sando-sr'}>
         <h1>Punds</h1>
         <nav>
-          {LINKS.map((l) => (
-            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer">
+          {LINKS.map((l, i) => (
+            <a
+              key={l.href}
+              href={l.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onFocus={() => {
+                // a keyboard visitor is taken to the rack and sees the plaque turn
+                realmRef.current?.setProgress(1)
+                realmRef.current?.focusLink(i)
+              }}
+              onBlur={() => realmRef.current?.focusLink(null)}
+            >
               {l.name}
             </a>
           ))}

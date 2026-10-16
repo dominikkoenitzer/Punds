@@ -162,6 +162,7 @@ export class EmaRack implements RealmPart {
   private hits: THREE.Object3D[] = []
   private hovered: Plaque | null = null
   private armed: Plaque | null = null
+  private focused: Plaque | null = null
   private disposables: { dispose(): void }[] = []
   private raycaster = new THREE.Raycaster()
   private camLocal = new THREE.Vector3()
@@ -397,7 +398,13 @@ export class EmaRack implements RealmPart {
 
   // a mouse hover; touches go through tap()
   hover(ray: THREE.Ray | null): void {
-    this.hovered = this.pick(ray)
+    this.hovered = this.pick(ray) ?? this.focused
+  }
+
+  // keyboard focus on one of the page's links turns its plaque
+  focusLink(index: number | null): void {
+    this.focused = index === null ? null : (this.plaques.filter((p) => p.link)[index] ?? null)
+    this.hovered = this.focused
   }
 
   // A click or tap. Mouse: opens the plaque under the pointer. Touch: the
@@ -437,7 +444,8 @@ export class EmaRack implements RealmPart {
       p.phase += dt
       const breeze = frame.motion * (Math.sin(p.phase * 1.3) * 0.05 + Math.sin(p.phase * 2.9) * 0.02)
       p.pivot.rotation.set(Math.sin(p.phase * 1.7) * 0.03 * frame.motion, p.turn + breeze, p.swing)
-      if (p.glow) p.glow.emissiveIntensity = p.focus * 0.12
+      // the three new plaques hold a little of the low sun even in shade
+      if (p.glow) p.glow.emissiveIntensity = 0.045 + p.focus * 0.12
     }
   }
 
