@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { SHRINE, TERRACE_Y } from './layout'
 import { loadPbr, pbrMaterial, type PbrSet } from './assets'
-import { paintedMaterial, weatheredStone } from './materials'
+import { weatheredStone } from './materials'
 import { bevelBox, lathe, merge, tint, transformed, weather, worldUv } from './geo'
 import { realmUniforms, WIND_GLSL } from './atmosphere'
 import type { RealmPart, Tier } from './types'
@@ -302,12 +302,44 @@ function flat(g: Geo): Geo {
   return out
 }
 
-function setWear(g: Geo, f: (x: number, y: number, z: number, ny: number) => number): Geo {
+function setWear(g: Geo, f: (x: number, y: number, z: number, ny: number) => number, name = 'aWear'): Geo {
   const pos = g.getAttribute('position')
   const nor = g.getAttribute('normal')
   const w = new Float32Array(pos.count)
   for (let i = 0; i < pos.count; i++) w[i] = f(pos.getX(i), pos.getY(i), pos.getZ(i), nor.getY(i))
-  g.setAttribute('aWear', new THREE.BufferAttribute(w, 1))
+  g.setAttribute(name, new THREE.BufferAttribute(w, 1))
+  return g
+}
+
+// knock a corner off a block: vertices near the corner pulled in, a small
+// flat break where something heavy once caught it
+function chip(g: Geo, cx: number, cy: number, cz: number, r: number): void {
+  const pos = g.getAttribute('position')
+  for (let i = 0; i < pos.count; i++) {
+    const dx = pos.getX(i) - cx
+    const dy = pos.getY(i) - cy
+    const dz = pos.getZ(i) - cz
+    const d = Math.hypot(dx, dy, dz)
+    if (d >= r) continue
+    const k = ((r - d) / Math.max(d, 1e-4)) * 0.55
+    pos.setXYZ(i, pos.getX(i) - dx * k * 0.6, pos.getY(i) - dy * k, pos.getZ(i) - dz * k * 0.6)
+  }
+  pos.needsUpdate = true
+  g.computeVertexNormals()
+}
+
+// a flat colour in the colour attribute
+function paintAll(g: Geo, c: [number, number, number]): Geo {
+  return tint(g, c[0], c[1], c[2])
+}
+
+// texture coordinates wrapped around a round post, the seam turned to the back
+function postUv(g: Geo, r: number, scale: number): Geo {
+  const pos = g.getAttribute('position')
+  const uv = g.getAttribute('uv')
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (uv.getX(i) * Math.PI * 2 * r) / scale, pos.getY(i) / scale)
+  g.rotateY(Math.PI)
+  g.userData.keepUv = true
   return g
 }
 
@@ -418,7 +450,7 @@ function shideGeo(at: THREE.Vector3[]): Geo {
   const h = 0.09
   for (const p of at) {
     for (let i = 0; i < 4; i++) {
-      const g = new THREE.PlaneGeometry(w, h, 1, 2)
+      const g = new THREE.BoxGeometry(w, h, 0.0025, 1, 2, 1)
       const pos = g.getAttribute('position')
       const uv = g.getAttribute('uv')
       for (let k = 0; k < pos.count; k++) uv.setXY(k, pos.getX(k), (i * h * 0.95 + h / 2 - pos.getY(k)) / (4 * h))
@@ -468,15 +500,15 @@ export class Shrine implements RealmPart {
     this.buildPlinth(stones)
     this.buildBody(red, gold, wood, walls, inside)
     this.buildRoof(cu, red, ochre, gold, walls)
-    this.buildFront(red, gold, dark)
+    this.buildFront(red, gold, dark, inside)
 
     const redMat = this.redMaterial(paint)
-    const ochreMat = paintedMaterial(paint, new THREE.Color().setRGB(0.5, 0.31, 0.09), { roughness: 0.85, metalness: 0 })
-    ochreMat.metalnessMap = null
     const goldMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setRGB(0.66, 0.42, 0.13),
+      color: new THREE.Color().setRGB(0.34, 0.21, 0.06),
       metalness: 1,
-      roughness: 0.42,
+      roughness: 0.48,
+      // dull brass: it should not mirror the bright sky as a pale block
+      envMapIntensity: 0.35,
       normalMap: copper.normalMap,
       normalScale: new THREE.Vector2(0.25, 0.25),
     })
@@ -490,8 +522,9 @@ export class Shrine implements RealmPart {
     const copperMat = this.copperMaterial(copper)
     const interiorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.012, 0.009, 0.007), roughness: 0.92, side: THREE.DoubleSide })
 
-    this.addMesh(red, redMat, 1.4, ['aWear'])
-    this.addMesh(ochre, ochreMat, 0.6, [])
+    // painted end grain shares the vermilion material, flagged per vertex
+    for (const g of ochre) red.push(setWear(g, () => 1, 'aPaint'))
+    this.addMesh(red, redMat, 1.4, ['aWear', 'aPaint'], true)
     this.addMesh(gold, goldMat, 0.5, [])
     this.addMesh(wood, woodMat, 1.6, [])
     this.addMesh(dark, darkMat, 1.2, [])
@@ -506,11 +539,23 @@ export class Shrine implements RealmPart {
     this.object.rotation.y = SHRINE.rotation
   }
 
-  private addMesh(parts: Geo[], mat: THREE.Material, uvScale: number, attrs: string[]): void {
+  private addMesh(parts: Geo[], mat: THREE.Material, uvScale: number, attrs: string[], edgeWear = false): void {
     for (const g of parts) {
-      if (uvScale > 0) worldUv(g, uvScale)
+      if (uvScale > 0 && !g.userData.keepUv) worldUv(g, uvScale)
+      // round parts carry their own wear; only boxed and swept timber
+      // takes the arris wear below
+      const boxed = edgeWear && !g.getAttribute('aWear')
       for (const a of attrs) {
         if (!g.getAttribute(a)) g.setAttribute(a, new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count), 1))
+      }
+      if (boxed) {
+        // paint wears first on the arrises, where the normal turns
+        const w = g.getAttribute('aWear')
+        const nor = g.getAttribute('normal')
+        for (let i = 0; i < w.count; i++) {
+          const m = Math.max(Math.abs(nor.getX(i)), Math.abs(nor.getY(i)), Math.abs(nor.getZ(i)))
+          w.setX(i, Math.max(w.getX(i), clamp01((1 - m - 0.05) / 0.2) * 0.58))
+        }
       }
     }
     const geo = merge(parts)
@@ -539,7 +584,10 @@ export class Shrine implements RealmPart {
           let L = minL + rnd() * (maxL - minL)
           if (x1 - (p + L) < minL * 0.6) L = x1 - p
           const g = alongX ? bevelBox(L - 0.008, h - 0.006, d, 0.024, 3) : bevelBox(d, h - 0.006, L - 0.008, 0.024, 3)
-          weather(g, 0.009, 6 + rnd() * 4, rnd() * 10)
+          weather(g, 0.014, 6 + rnd() * 4, rnd() * 10)
+          const bw = alongX ? L : d
+          const bd = alongX ? d : L
+          for (let c = 0; c < 2; c++) chip(g, (rnd() < 0.5 ? -1 : 1) * bw * 0.5, h * 0.5, (rnd() < 0.5 ? -1 : 1) * bd * 0.5, 0.05 + rnd() * 0.05)
           const c = (fixed + sign * (out - d / 2))
           if (alongX) transformed(g, p + L / 2, y0 + h / 2, c)
           else transformed(g, c, y0 + h / 2, p + L / 2)
@@ -582,7 +630,7 @@ export class Shrine implements RealmPart {
   private buildBody(red: Geo[], gold: Geo[], wood: Geo[], walls: Geo[], inside: Geo[]): void {
     const footWear = (base: number) => (_x: number, y: number) => 1 - clamp01((y - base) / 0.3)
     const post = (x: number, z: number, y0: number, y1: number) => {
-      const g = new THREE.CylinderGeometry(POST_R, POST_R * 1.02, y1 - y0, 24, 1)
+      const g = postUv(new THREE.CylinderGeometry(POST_R, POST_R * 1.02, y1 - y0, 24, 16), POST_R, 1.4)
       return setWear(transformed(g, x, (y0 + y1) / 2, z), footWear(y0))
     }
     const xs = [-HW, -HW + BAY, HW - BAY, HW]
@@ -592,8 +640,8 @@ export class Shrine implements RealmPart {
     // tie beams and applied rails, ends capped in brass
     const beamX = (y: number, h: number, z: number, d: number, x0: number, x1: number) => transformed(bevelBox(x1 - x0, h, d, 0.012, 1), (x0 + x1) / 2, y + h / 2, z)
     const beamZ = (y: number, h: number, x: number, d: number, z0: number, z1: number) => transformed(bevelBox(d, h, z1 - z0, 0.012, 1), x, y + h / 2, (z0 + z1) / 2)
-    const capX = (x: number, y: number, z: number, h: number, d: number) => gold.push(transformed(bevelBox(0.06, h + 0.018, d + 0.018, 0.006, 1), x, y + h / 2, z))
-    const capZ = (x: number, y: number, z: number, h: number, d: number) => gold.push(transformed(bevelBox(d + 0.018, h + 0.018, 0.06, 0.006, 1), x, y + h / 2, z))
+    const capX = (x: number, y: number, z: number, h: number, d: number) => gold.push(transformed(bevelBox(0.035, h + 0.01, d + 0.01, 0.004, 1), x, y + h / 2, z))
+    const capZ = (x: number, y: number, z: number, h: number, d: number) => gold.push(transformed(bevelBox(d + 0.01, h + 0.01, 0.035, 0.004, 1), x, y + h / 2, z))
     const nuY = WALL_TOP - 0.18
     for (const z of [-HD, HD]) {
       red.push(beamX(nuY, 0.17, z, 0.13, -HW - 0.26, HW + 0.26))
@@ -772,7 +820,7 @@ export class Shrine implements RealmPart {
         const p = new THREE.Vector3().lerpVectors(a, b, k / n)
         const end = k === 0 || k === n
         const top = railY[2] + (end ? 0.08 : 0)
-        red.push(setWear(transformed(new THREE.CylinderGeometry(end ? 0.045 : 0.035, end ? 0.045 : 0.035, top - FLOOR, 14, 1), p.x, (top + FLOOR) / 2, p.z), (_x, y, _z, ny) => (ny > 0.5 ? 0.8 : 1 - clamp01((y - FLOOR) / 0.2))))
+        red.push(setWear(transformed(postUv(new THREE.CylinderGeometry(end ? 0.045 : 0.035, end ? 0.045 : 0.035, top - FLOOR, 14, 8), 0.04, 1.4), p.x, (top + FLOOR) / 2, p.z), (_x, y, _z, ny) => (ny > 0.5 ? 0.8 : 1 - clamp01((y - FLOOR) / 0.2))))
         if ((k === 0 && capA) || (k === n && capB)) giboshi(p.x, top, p.z)
       }
       for (const [i, y] of railY.entries()) {
@@ -809,7 +857,7 @@ export class Shrine implements RealmPart {
       red.push(setWear(bar(v3(x, FLOOR - 0.08, zTop), v3(x, 0.17 + rise * 0.5 - 0.08, zBot), 0.07, 0.26, 0.01), (_x, _y, _z, ny) => (ny > 0.6 ? 0.55 : 0)))
       const pTop = v3(x, FLOOR, zTop + 0.02)
       const pBot = v3(x, 0.17, zBot + 0.12)
-      red.push(setWear(transformed(new THREE.CylinderGeometry(0.045, 0.045, 0.78, 14), pBot.x, pBot.y + 0.39 - 0.17 + 0.17, pBot.z), (_x, y, _z, ny) => (ny > 0.5 ? 0.8 : 1 - clamp01((y - 0.17) / 0.25))))
+      red.push(setWear(transformed(postUv(new THREE.CylinderGeometry(0.045, 0.045, 0.78, 14, 8), 0.045, 1.4), pBot.x, pBot.y + 0.39 - 0.17 + 0.17, pBot.z), (_x, y, _z, ny) => (ny > 0.5 ? 0.8 : 1 - clamp01((y - 0.17) / 0.25))))
       giboshi(pBot.x, pBot.y + 0.78, pBot.z)
       red.push(setWear(rod(v3(x, pTop.y + 0.64, pTop.z), v3(x, pBot.y + 0.7, pBot.z), 0.03, 14), (_x, _y, _z, ny) => (ny > 0.55 ? 0.95 : 0.1)))
     }
@@ -1024,10 +1072,10 @@ export class Shrine implements RealmPart {
         red.push(sweep(path, sec, v3(1, 0, 0)))
         const tail: THREE.Vector3[] = []
         for (let k = 0; k <= 2; k++) {
-          const z = z1 - Math.sign(e.z) * 0.13 * (1 - k / 2)
+          const z = z1 - Math.sign(e.z) * 0.05 * (1 - k / 2)
           tail.push(v3(x, under(z) + 0.05 + lift(x, z), z))
         }
-        gold.push(sweep(tail, chamfered(0.077, 0.352, 0.01, -0.346), v3(1, 0, 0)))
+        gold.push(sweep(tail, chamfered(0.071, 0.19, 0.008, -0.343), v3(1, 0, 0)))
         for (const t of [0.3, 0.6]) {
           const p = path[Math.round(t * 36)]
           const ros = lathe(
@@ -1057,12 +1105,12 @@ export class Shrine implements RealmPart {
 
   // the long front slope's own posts, its beam back to the body, the offering
   // box at the foot of the stair
-  private buildFront(red: Geo[], gold: Geo[], dark: Geo[]): void {
+  private buildFront(red: Geo[], gold: Geo[], dark: Geo[], inside: Geo[]): void {
     const plateTop = (x: number) => lowChord(x, KOHAI_Z) - RH
     const plateH = 0.15
     const kTop = plateTop(HW) - plateH - STACK
     for (const x of [-HW, HW]) {
-      const g = new THREE.CylinderGeometry(POST_R, POST_R * 1.02, kTop - 0.15, 24, 1)
+      const g = postUv(new THREE.CylinderGeometry(POST_R, POST_R * 1.02, kTop - 0.15, 24, 16), POST_R, 1.4)
       red.push(setWear(transformed(g, x, (kTop + 0.15) / 2, KOHAI_Z), (_x, y) => 1 - clamp01((y - 0.15) / 0.35)))
       bracket(red, x, kTop, KOHAI_Z, true, false)
       // curved tie beam rising from the front post to the body
@@ -1075,7 +1123,7 @@ export class Shrine implements RealmPart {
         path.push(v3(x, ya + (yb - ya) * t + 0.28 * Math.sin(Math.PI * Math.pow(t, 0.8)), z))
       }
       red.push(sweep(path, chamfered(0.11, 0.19, 0.014), v3(1, 0, 0)))
-      gold.push(transformed(bevelBox(0.13, 0.21, 0.05, 0.005, 1), x, ya, KOHAI_Z + 0.17))
+      gold.push(transformed(bevelBox(0.12, 0.2, 0.025, 0.004, 1), x, ya, KOHAI_Z + 0.165))
     }
     const path: THREE.Vector3[] = []
     for (let k = 0; k <= 24; k++) {
@@ -1085,7 +1133,7 @@ export class Shrine implements RealmPart {
     red.push(sweep(path, chamfered(0.16, plateH, 0.012, 0), v3(0, 0, 1)))
     const tY = kTop - 0.2
     red.push(transformed(bevelBox(2 * HW + 0.5, 0.17, 0.13, 0.012, 1), 0, tY + 0.085, KOHAI_Z))
-    for (const s of [-1, 1]) gold.push(transformed(bevelBox(0.06, 0.188, 0.148, 0.006, 1), s * (HW + 0.25), tY + 0.085, KOHAI_Z))
+    for (const s of [-1, 1]) gold.push(transformed(bevelBox(0.035, 0.18, 0.14, 0.004, 1), s * (HW + 0.25), tY + 0.085, KOHAI_Z))
 
     // offering box: slatted top, brass at the corners
     const bz = 4.02
@@ -1123,53 +1171,50 @@ export class Shrine implements RealmPart {
     }
     gold.push(transformed(lathe(prof, 28), 0, by, bellZ))
     gold.push(transformed(new THREE.TorusGeometry(0.03, 0.009, 8, 18), 0, by + R + 0.025, bellZ))
-    this.bellSlot = { y: by - 0.116, z: bellZ }
+    // the bell's mouth: a dark slot across the lower half
+    inside.push(transformed(bevelBox(0.12, 0.04, 0.016, 0.004, 1), 0, by - 0.116, bellZ))
     this.ropeTop = v3(0, by - R + 0.01, bellZ)
     this.ropeY = tY - 0.03
   }
 
-  private bellSlot = { y: 0, z: 0 }
   private ropeTop = new THREE.Vector3()
   private ropeY = 0
 
   private buildRopes(): void {
-    // the bell's mouth: a dark slot across the lower half
-    const slotMat = new THREE.MeshStandardMaterial({ color: 0x020202, roughness: 1 })
-    const slotGeo = transformed(bevelBox(0.12, 0.04, 0.016, 0.004, 1), 0, this.bellSlot.y, this.bellSlot.z)
-    const slot = new THREE.Mesh(slotGeo, slotMat)
-    this.object.add(slot)
-    this.disposables.push(slotGeo, slotMat)
-
     // shimenawa across the front posts, straw tassels and paper streamers
     const a = v3(-HW + 0.12, this.ropeY, KOHAI_Z + 0.17)
     const b = v3(HW - 0.12, this.ropeY, KOHAI_Z + 0.17)
     const sag = 0.24
-    const strawMat = this.strawMaterial()
-    const tassels: Geo[] = [twistedRope(a, b, sag, 0.12, 0.045, 9)]
+    const STRAW: [number, number, number] = [0.5, 0.38, 0.17]
+    const ropeParts: Geo[] = [paintAll(twistedRope(a, b, sag, 0.12, 0.045, 9), STRAW)]
     const at = (t: number) => v3(a.x + (b.x - a.x) * t, a.y - sag * 4 * t * (1 - t), a.z)
+    let seed = 11
+    const rnd = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    // each tassel a bundle of stalks, bound near the top, splaying and cut
+    // ragged at the bottom
     for (const t of [0.3, 0.5, 0.7]) {
       const p = at(t)
       const r = 0.045 + 0.075 * Math.pow(Math.sin(Math.PI * t), 0.7)
-      const g = lathe(
-        [
-          [0.001, 0],
-          [0.022, 0.005],
-          [0.016, 0.06],
-          [0.02, 0.2],
-          [0.04, 0.44],
-          [0.044, 0.47],
-          [0.001, 0.472],
-        ],
-        14,
-      )
-      tassels.push(transformed(g, p.x, p.y - r * 0.6, p.z, Math.PI, 0, 0))
+      const ty = p.y - r * 0.55
+      for (let k = 0; k < 34; k++) {
+        const ang = (k / 34) * Math.PI * 2 + rnd() * 0.3
+        const rr = 0.004 + rnd() * 0.013
+        const len = 0.4 + rnd() * 0.08
+        const spread = 0.01 + rnd() * 0.016
+        const p0 = v3(p.x + Math.cos(ang) * rr, ty, p.z + Math.sin(ang) * rr)
+        const p1 = v3(p.x + Math.cos(ang) * (rr + spread), ty - len, p.z + Math.sin(ang) * (rr + spread))
+        const g = new THREE.CylinderGeometry(0.0055, 0.0035, 1, 5, 1)
+        _q.setFromUnitVectors(UP, _c.subVectors(p0, p1).normalize())
+        _m4.compose(_a.addVectors(p0, p1).multiplyScalar(0.5), _q, _b.set(1, p0.distanceTo(p1), 1))
+        const k2 = 0.85 + rnd() * 0.3
+        ropeParts.push(paintAll(g.applyMatrix4(_m4), [STRAW[0] * k2, STRAW[1] * k2, STRAW[2] * k2]))
+      }
+      ropeParts.push(paintAll(transformed(new THREE.CylinderGeometry(0.02, 0.019, 0.1, 12, 1), p.x, ty - 0.03, p.z), STRAW))
+      ropeParts.push(paintAll(transformed(new THREE.TorusGeometry(0.02, 0.0045, 6, 16), p.x, ty - 0.065, p.z, Math.PI / 2, 0, 0), [STRAW[0] * 0.7, STRAW[1] * 0.7, STRAW[2] * 0.7]))
     }
-    const ropeGeo = merge(tassels)
-    const rope = new THREE.Mesh(ropeGeo, strawMat)
-    rope.castShadow = true
-    rope.receiveShadow = true
-    this.object.add(rope)
-    this.disposables.push(ropeGeo, strawMat)
 
     const shideAt: THREE.Vector3[] = []
     for (const t of [0.2, 0.4, 0.6, 0.8]) {
@@ -1177,7 +1222,8 @@ export class Shrine implements RealmPart {
       const r = 0.045 + 0.075 * Math.pow(Math.sin(Math.PI * t), 0.7)
       shideAt.push(p.setY(p.y - r * 0.7).setZ(p.z + 0.02))
     }
-    const paperMat = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.85, side: THREE.DoubleSide })
+    // washi: warm off-white, thin enough that the sun shows through it
+    const paperMat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.8, 0.75, 0.62), roughness: 0.9 })
     paperMat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = realmUniforms.uTime
       shader.uniforms.uWind = realmUniforms.uWind
@@ -1193,38 +1239,47 @@ export class Shrine implements RealmPart {
             transformed += windSway(w.xyz, 0.1) * hang * hang;
           }`,
         )
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <lights_fragment_begin>',
+        `#include <lights_fragment_begin>
+        #if NUM_DIR_LIGHTS > 0
+        {
+          // sun from behind the sheet comes through the fibres, brightest
+          // looking straight into it; the shadow is already in the colour
+          float through = max(-dot(normal, directLight.direction), 0.0);
+          float into = pow(max(dot(-geometryViewDir, directLight.direction), 0.0), 4.0);
+          reflectedLight.directDiffuse += diffuseColor.rgb * vec3(1.0, 0.9, 0.72) * directLight.color * (through * 0.35 + into * 0.5) * RECIPROCAL_PI;
+        }
+        #endif`,
+      )
     }
     paperMat.customProgramCacheKey = () => 'realm-shide'
     const shide = shideGeo(shideAt)
     const shideMesh = new THREE.Mesh(shide, paperMat)
+    shideMesh.receiveShadow = true
     this.object.add(shideMesh)
     this.disposables.push(shide, paperMat)
 
-    // the bell rope: three strands of red, white and purple plaited tight,
-    // a cloth tail at the bottom
+    // the bell rope: a fine braid of red, white and purple, strands crossing
+    // both ways round a core, a cloth tail at the bottom
     const top = this.ropeTop
     const len = top.y - 0.95
-    const strands: Geo[] = []
-    const cols = [
+    const cols: [number, number, number][] = [
       [0.42, 0.025, 0.02],
       [0.78, 0.76, 0.7],
       [0.14, 0.03, 0.2],
     ]
-    for (let s = 0; s < 3; s++) {
+    for (let s = 0; s < 6; s++) {
       const pts: THREE.Vector3[] = []
-      const N = 260
+      const N = 420
+      const dir = s < 3 ? 1 : -1
       for (let i = 0; i <= N; i++) {
         const t = i / N
-        const th = t * (len / 0.075) * Math.PI * 2 + (s * Math.PI * 2) / 3
-        const r = 0.011
+        const th = dir * t * (len / 0.042) * Math.PI * 2 + ((s % 3) * Math.PI * 2) / 3 + (s < 3 ? 0 : Math.PI / 3)
+        const r = 0.012 + 0.002 * Math.cos(th * 3)
         pts.push(v3(top.x + Math.cos(th) * r + 0.02 * t * t, top.y - len * t, top.z + Math.sin(th) * r))
       }
-      const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 320, 0.0135, 8, false)
-      const n = g.getAttribute('position').count
-      const c = new Float32Array(n * 3)
-      for (let i = 0; i < n; i++) c.set(cols[s], i * 3)
-      g.setAttribute('color', new THREE.BufferAttribute(c, 3))
-      strands.push(g)
+      ropeParts.push(paintAll(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 560, 0.0085, 6, false), cols[s % 3]))
     }
     const tail = lathe(
       [
@@ -1236,30 +1291,27 @@ export class Shrine implements RealmPart {
       ],
       14,
     )
-    transformed(tail, top.x + 0.02, 0.95 - 0.18, top.z)
-    const tc = new Float32Array(tail.getAttribute('position').count * 3)
-    for (let i = 0; i < tc.length / 3; i++) tc.set(cols[0], i * 3)
-    tail.setAttribute('color', new THREE.BufferAttribute(tc, 3))
-    strands.push(tail)
-    const bellRopeGeo = merge(strands)
-    const bellRopeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 })
-    const bellRope = new THREE.Mesh(bellRopeGeo, bellRopeMat)
-    bellRope.castShadow = true
-    this.object.add(bellRope)
-    this.disposables.push(bellRopeGeo, bellRopeMat)
+    ropeParts.push(paintAll(transformed(tail, top.x + 0.02, 0.95 - 0.18, top.z), cols[0]))
+    const strawMat = this.strawMaterial()
+    const ropeGeo = merge(ropeParts)
+    const rope = new THREE.Mesh(ropeGeo, strawMat)
+    rope.castShadow = true
+    rope.receiveShadow = true
+    this.object.add(rope)
+    this.disposables.push(ropeGeo, strawMat)
   }
 
   // shu paint over timber: bleached and chalky where it faces the sky, grimy
   // near the ground, worn through to grey wood where hands and feet go
   private redMaterial(paint: PbrSet): THREE.MeshStandardMaterial {
-    const mat = pbrMaterial(paint, { color: new THREE.Color().setRGB(0.56, 0.07, 0.028), metalness: 0 })
+    const mat = pbrMaterial(paint, { color: new THREE.Color().setRGB(0.5, 0.085, 0.022), metalness: 0, normalScale: new THREE.Vector2(0.4, 0.4) })
     mat.metalnessMap = null
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float aWear;\nvarying float vWear;\nvarying vec3 vRdP;\nvarying vec3 vRdN;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWear = aWear;\nvRdP = position;\nvRdN = normal;')
+        .replace('#include <common>', '#include <common>\nattribute float aWear;\nattribute float aPaint;\nvarying float vWear;\nvarying float vPaint;\nvarying vec3 vRdP;\nvarying vec3 vRdN;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWear = aWear;\nvPaint = aPaint;\nvRdP = position;\nvRdN = normal;')
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\nvarying float vWear;\nvarying vec3 vRdP;\nvarying vec3 vRdN;\nfloat rdBare;\nfloat rdUp;\n${NOISE_GLSL}`)
+        .replace('#include <common>', `#include <common>\nvarying float vWear;\nvarying float vPaint;\nvarying vec3 vRdP;\nvarying vec3 vRdN;\nfloat rdBare;\nfloat rdUp;\n${NOISE_GLSL}`)
         .replace(
           '#include <map_fragment>',
           `#ifdef USE_MAP
@@ -1267,11 +1319,12 @@ export class Shrine implements RealmPart {
             float l = dot(sampledDiffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
             rdUp = clamp(vRdN.y, 0.0, 1.0);
             float n = nNoise(vRdP * 3.7) * 0.6 + nNoise(vRdP * 17.0) * 0.4;
-            vec3 c = diffuseColor.rgb;
-            c = mix(c, vec3(0.62, 0.25, 0.1), rdUp * (0.3 + 0.35 * n));
+            // end grain is painted yellow ochre over the same timber
+            vec3 c = mix(diffuseColor.rgb, vec3(0.5, 0.31, 0.09), vPaint);
+            c = mix(c, vec3(0.62, 0.25, 0.1), rdUp * (0.3 + 0.35 * n) * (1.0 - vPaint));
             c *= mix(0.55, 1.0, smoothstep(0.0, 1.4, vRdP.y));
             c *= mix(0.85, 1.08, n);
-            c *= clamp(0.55 + l * 1.5, 0.6, 1.2);
+            c *= clamp(0.78 + l * 0.6, 0.82, 1.12);
             rdBare = smoothstep(0.5, 0.72, vWear * (0.55 + 0.8 * n));
             vec3 timber = vec3(0.2, 0.16, 0.115) * (0.55 + l * 1.3);
             diffuseColor.rgb = mix(c, timber, rdBare);
@@ -1280,9 +1333,11 @@ export class Shrine implements RealmPart {
         .replace(
           '#include <roughnessmap_fragment>',
           `#include <roughnessmap_fragment>
-          roughnessFactor = mix(clamp(roughnessFactor * 0.85, 0.6, 0.85) + rdUp * 0.1, 0.92, rdBare);`,
+          roughnessFactor = mix(clamp(roughnessFactor * 0.9, 0.76, 0.9) + rdUp * 0.06, 0.92, rdBare);`,
         )
     }
+    // the scan's occlusion blotches read as grey stains on posts lit only by the sky
+    mat.aoMapIntensity = 0.35
     mat.customProgramCacheKey = () => 'realm-shrine-shu'
     return mat
   }
@@ -1342,6 +1397,7 @@ export class Shrine implements RealmPart {
           varying vec3 vCuT;
           float cuShelter;
           float cuRib;
+          float cuNear;
           float cuTop;
           ${NOISE_GLSL}`,
         )
@@ -1353,32 +1409,34 @@ export class Shrine implements RealmPart {
             vec2 q = vCuUv;
             float up = vCuN.y;
             cuTop = smoothstep(0.3, 0.6, up) * step(q.y, 15.0);
-            // each sheet weathers a little differently; rain leaves thin
-            // runs straight down the slope
-            float sheet = nHash(vec3(floor(q.x / 0.42), floor(q.y / 0.6 + 0.5 * mod(floor(q.x / 0.42), 2.0)), 3.0));
-            float lane = nNoise(vec3(q.x * 22.0, q.y * 0.45, 1.0)) * 0.55 + nNoise(vec3(q.x * 6.0, q.y * 0.3, 5.0)) * 0.45;
-            float pale = nNoise(vec3(q.x * 0.8, q.y * 0.5, 9.0));
-            vec3 c = mix(vec3(0.2, 0.42, 0.34), vec3(0.33, 0.56, 0.47), smoothstep(0.25, 0.8, pale * 0.7 + sheet * 0.3));
-            c = mix(c, vec3(0.07, 0.17, 0.13), smoothstep(0.55, 0.85, lane) * 0.55);
-            c = mix(c, vec3(0.42, 0.6, 0.52), smoothstep(0.66, 0.92, 1.0 - lane) * 0.3);
-            c *= 0.92 + sheet * 0.12;
+            // one continuous skin: broad tone drifts over metres, rain runs
+            // long and thin straight down the slope; the thin runs and the
+            // seams fade out before they can alias into bands
+            float fw = max(fwidth(q.x), 1e-4);
+            cuNear = 1.0 - smoothstep(0.002, 0.007, fw);
+            float thinFade = 1.0 - smoothstep(0.002, 0.008, fw);
+            float big = nNoise(vCuP * 0.3 + 2.0) * 0.6 + nNoise(vCuP * 0.9 + 7.0) * 0.4;
+            vec3 c = mix(vec3(0.2, 0.42, 0.34), vec3(0.33, 0.56, 0.47), smoothstep(0.2, 0.8, big));
+            float runs = (nNoise(vec3(q.x * 26.0, q.y * 0.28, 1.0)) * 0.65 + nNoise(vec3(q.x * 61.0, q.y * 0.5, 4.0)) * 0.35 - 0.5) * thinFade;
+            float wash = nNoise(vec3(q.x * 2.2, q.y * 0.12, 5.0));
+            c = mix(c, vec3(0.08, 0.18, 0.14), clamp(smoothstep(0.6, 0.95, wash) * 0.18 + max(runs, 0.0) * 1.3, 0.0, 0.6));
+            c = mix(c, vec3(0.42, 0.6, 0.52), clamp(max(-runs, 0.0) * 1.0, 0.0, 0.35));
+            float lane = 0.5 + runs;
             // the band just under the ridge cap stays dry: copper shows brown
             c = mix(c, vec3(0.16, 0.1, 0.05), smoothstep(0.7, 0.05, q.y) * cuTop * (0.35 + 0.3 * lane));
             float eave = max(smoothstep(${(EAVE_F.z - 1.5).toFixed(2)}, ${EAVE_F.z.toFixed(2)}, vCuP.z), smoothstep(${(EAVE_B.z + 1.0).toFixed(2)}, ${EAVE_B.z.toFixed(2)}, vCuP.z));
             c = mix(c, vec3(0.06, 0.14, 0.11), eave * (0.35 + 0.35 * lane));
-            float sx = q.x / 0.42;
-            float d = (fract(sx + 0.5) - 0.5) * 0.42;
-            float fw = max(fwidth(q.x), 1e-4);
-            float dirt = exp(-d * d / (0.0012 + fw * fw * 4.0));
-            cuRib = exp(-d * d / (0.00012 + fw * fw));
-            float joint = 1.0 - smoothstep(0.0, 0.012 + fw, abs(fract(q.y / 0.6 + 0.5 * mod(floor(sx), 2.0)) - 0.5) * 0.6 - 0.288);
-            c *= 1.0 - (dirt * 0.3 + joint * 0.15) * cuTop;
+            // standing seams, only close up
+            float d = (fract(q.x / 0.42 + 0.5) - 0.5) * 0.42;
+            float dirt = exp(-d * d / 0.0012) * cuNear;
+            cuRib = exp(-d * d / 0.00012) * cuNear;
+            c *= 1.0 - dirt * 0.25 * cuTop;
             c = mix(c, vec3(0.34, 0.54, 0.46), cuRib * 0.35 * cuTop);
             c = mix(c, vec3(0.07, 0.15, 0.12), (1.0 - abs(up)) * 0.35);
             cuShelter = 1.0 - smoothstep(-0.7, -0.1, up);
             vec3 brown = mix(vec3(0.17, 0.08, 0.04), vec3(0.05, 0.11, 0.08), nNoise(vCuP * 6.0));
             c = mix(c, brown, cuShelter * 0.8);
-            diffuseColor.rgb = c * (0.7 + l * 0.65);
+            diffuseColor.rgb = c * (0.82 + l * 0.35);
           #endif`,
         )
         .replace(
@@ -1399,7 +1457,7 @@ export class Shrine implements RealmPart {
             float fw = fwidth(vCuUv.x);
             float h = exp(-d * d / 0.00012);
             float slope = -2.0 * d / 0.00012 * h * 0.012;
-            normal = normalize(normal - vCuT * slope * cuTop * (1.0 - smoothstep(0.004, 0.014, fw)));
+            normal = normalize(normal - vCuT * slope * cuTop * (1.0 - smoothstep(0.002, 0.007, fw)));
           }`,
         )
     }
@@ -1408,7 +1466,7 @@ export class Shrine implements RealmPart {
   }
 
   private strawMaterial(): THREE.MeshStandardMaterial {
-    const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.5, 0.38, 0.17), roughness: 0.95 })
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 })
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec2 vStraw;')
