@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { TORII_Z, TORII_SPAN } from './layout'
 import { loadPbr, type PbrSet } from './assets'
 import { paintedMaterial } from './materials'
-import { bevelBox, merge, transformed, worldUv } from './geo'
+import { bevelBox, cylinderUv, merge, transformed, worldUv } from './geo'
 import type { RealmPart, Tier } from './types'
 
 // A wooden myojin torii at the island's front landing, proportioned from a
@@ -113,7 +113,8 @@ export class Torii implements RealmPart {
     const red: THREE.BufferGeometry[] = []
     const black: THREE.BufferGeometry[] = []
 
-    red.push(pillar(-1, pillarTop), pillar(1, pillarTop))
+    // round pillars take their grain around and along them
+    const pillars = [-1, 1].map((side) => cylinderUv(pillar(side as -1 | 1, pillarTop), 1.6, (side * TORII_SPAN) / 2, TORII_Z))
 
     const shimaki = curvedBeam(TORII_SPAN + 1.75, shimakiH, 0.3, 0.12, 0.05, 0.012)
     red.push(transformed(shimaki, 0, shimakiY, TORII_Z))
@@ -143,7 +144,7 @@ export class Torii implements RealmPart {
       black.push(transformed(ring, (side * TORII_SPAN) / 2 - side * LEAN * 0.62, 0.74, TORII_Z, Math.PI / 2))
     }
 
-    const redGeo = merge(red.map((g) => worldUv(g, 1.6)))
+    const redGeo = merge([...red.map((g) => worldUv(g, 1.6)), ...pillars])
     const vermilion = new THREE.Color('#c9462a').convertSRGBToLinear()
     const redMat = paintedMaterial(paint, vermilion, { roughness: 0.82, metalness: 0 })
     redMat.metalnessMap = null

@@ -68,6 +68,23 @@ export function worldUv(geo: THREE.BufferGeometry, scale: number, ox = 0, oz = 0
   return geo
 }
 
+// Texture coordinates wrapped around a vertical axis through (cx, cz):
+// around the circumference and up the height, both in metres over `scale`,
+// so a round post shows grain running along it instead of smeared sides.
+export function cylinderUv(geo: THREE.BufferGeometry, scale: number, cx: number, cz: number): THREE.BufferGeometry {
+  const pos = geo.getAttribute('position')
+  const uv = new Float32Array(pos.count * 2)
+  let r = 0
+  for (let i = 0; i < pos.count; i++) r = Math.max(r, Math.hypot(pos.getX(i) - cx, pos.getZ(i) - cz))
+  for (let i = 0; i < pos.count; i++) {
+    const a = Math.atan2(pos.getZ(i) - cz, pos.getX(i) - cx)
+    uv[i * 2] = (a * r) / scale
+    uv[i * 2 + 1] = pos.getY(i) / scale
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  return geo
+}
+
 // a flat per-piece tint in the colour attribute, so a merged run of slabs
 // still varies stone to stone
 export function tint(geo: THREE.BufferGeometry, r: number, g: number, b: number): THREE.BufferGeometry {
