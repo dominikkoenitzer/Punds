@@ -149,7 +149,6 @@ uniform vec2 uLip;
 uniform float uTime;
 uniform vec2 uWind;
 uniform float uGust;
-uniform float uDebugView;
 varying vec3 vWorld;
 varying vec2 vUv;
 varying vec2 vChan;
@@ -232,17 +231,18 @@ void main() {
     float kd = 9.0;
     for (int i = 0; i < 2; i++) {
       vec2 kuv = (vWorld.xz + drift * d - uBounds.xy) / uBounds.zw;
-      kd = texture2D(uKoiDepth, vec2(kuv.x, 1.0 - kuv.y)).r;
+      float near = texture2D(uKoiDepth, vec2(kuv.x, 1.0 - kuv.y)).r;
+      kd = near > 0.02 ? 1.0 - near : 9.0;
       if (kd > 4.0) break;
       d = kd;
     }
     if (kd < 4.0) column = min(column, kd);
   }
   float path = column / cosT;
-  float T = exp(-path * 3.2);
+  float T = exp(-path * 4.6);
 
   // in-scattered light: clear green in the shallows, deep jade further in
-  vec3 albedo = mix(uDeep, uShallow, exp(-bed * 2.2));
+  vec3 albedo = mix(uDeep, uShallow, exp(-bed * 3.5));
   vec3 scatter = albedo * (uSkyColor + uSunColor * max(uSunDir.y, 0.0) * 0.35);
 
   // sun glints on the ripples
@@ -264,10 +264,6 @@ void main() {
   col = mix(col, foam, lipFoam * 0.8);
   alpha = mix(alpha, 1.0, lipFoam * 0.8);
   gl_FragColor = vec4(col * edge, alpha * edge);
-  if (uDebugView > 0.5 && uDebugView < 1.5) gl_FragColor = vec4(bed, column, T, 1.0);
-  if (uDebugView > 1.5 && uDebugView < 2.5) gl_FragColor = vec4(refl, 1.0);
-  if (uDebugView > 2.5 && uDebugView < 3.5) gl_FragColor = vec4(scatter * 20.0, 1.0);
-  if (uDebugView > 3.5) gl_FragColor = vec4(0.0, 0.0, 0.0, alpha * edge);
 }
 `
 
@@ -605,7 +601,9 @@ void main() {
 `
 const KOI_DEPTH_FRAG = /* glsl */ `
 varying float vDepth;
-void main() { gl_FragColor = vec4(max(vDepth, 0.0), 0.0, 0.0, 1.0); }
+// stored as nearness to the surface, 0 where there is no koi, so the
+// filtered edge of a koi fades instead of jumping to a far value
+void main() { gl_FragColor = vec4(clamp(1.0 - vDepth, 0.0, 1.0), 0.0, 0.0, 1.0); }
 `
 
 export class Pond implements RealmPart {
@@ -665,7 +663,6 @@ export class Pond implements RealmPart {
   private readonly q = new THREE.Vector4()
   private readonly size = new THREE.Vector2()
   private readonly prevClear = new THREE.Color()
-  private readonly farDepth = new THREE.Color().setRGB(9, 9, 9, THREE.LinearSRGBColorSpace)
 
   constructor(opts: { tier: Tier }) {
     this.tier = opts.tier
@@ -714,7 +711,7 @@ export class Pond implements RealmPart {
     })
 
     // koi depth seen from above, so the water clears over a koi near the top
-    const kd = phone ? 96 : 160
+    const kd = phone ? 128 : 256
     this.koiDepthRT = new THREE.WebGLRenderTarget(kd, Math.round((kd * BH) / BW), {
       type: THREE.HalfFloatType,
       minFilter: THREE.LinearFilter,
@@ -752,7 +749,6 @@ export class Pond implements RealmPart {
         uTime: realmUniforms.uTime,
         uWind: realmUniforms.uWind,
         uGust: realmUniforms.uGust,
-        uDebugView: { value: typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('pondDebug') ?? 0) : 0 },
       },
       transparent: true,
       depthWrite: true,
@@ -816,7 +812,7 @@ export class Pond implements RealmPart {
         phase: r() * 10,
         size: 0.58 + r() * 0.3,
         seed: r() * 100,
-        depthGoal: 0.12 + r() * 0.3,
+        depthGoal: 0.1 + r() * 0.25,
         rise: 0,
       })
     }
@@ -837,7 +833,7 @@ export class Pond implements RealmPart {
       depthTest: false,
       depthWrite: false,
       blending: THREE.CustomBlending,
-      blendEquation: THREE.MinEquation,
+      blendEquation: THREE.MaxEquation,
       blendSrc: THREE.OneFactor,
       blendDst: THREE.OneFactor,
     })
@@ -1343,7 +1339,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       if (nearTop > 0 && Math.sin(k.phase) > 0.92) {
         const tx = k.x - dx * 0.35 * k.size
         const tz = k.z - dz * 0.35 * k.size
-        this.addDrop(tx, tz, 0.1, 0.003 * nearTop * (0.5 + k.speed * 3) * step * 60)
+        this.addDrop(tx, tz, 0.1, 0.002 * nearTop * (0.5 + k.speed * 3) * step * 60)
       }
     }
     this.koiMesh.instanceMatrix.needsUpdate = true
@@ -1393,7 +1389,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
 
     // koi depth from above
     renderer.setRenderTarget(this.koiDepthRT)
-    renderer.setClearColor(this.farDepth, 1)
+    renderer.setClearColor(0x000000, 1)
     renderer.autoClear = false
     renderer.clear(true, false, false)
     renderer.render(this.koiDepthMesh, this.koiDepthCamera)
