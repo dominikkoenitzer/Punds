@@ -3,13 +3,14 @@ import { Pipeline, type PostParams } from './post'
 import { buildSky, type SkyResult } from './sky'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { setMaxAnisotropy } from './assets'
-import { Walk, heading } from './walk'
+import { Look, heading, type Place } from './look'
+import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
-// The realm host: renderer, camera, sun, the parts of the island, the walk
+// The realm host: renderer, camera, sun, the parts of the island, the look
 // and the frame loop. The page owns one of these for its lifetime.
 
 export interface RealmOptions {
@@ -70,11 +71,11 @@ const UNCAPPED = new URLSearchParams(location.search).has('uncapped')
 const NO_BUDGET = new URLSearchParams(location.search).has('nobudget')
 
 const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
-// and a budget of drawn pixels: a 4K screen is drawn at about 1440p and
-// scaled up, which looks nearly the same at a fraction of the work
-const PIXEL_BUDGET: Record<Tier, number> = { ultra: 2560 * 1440, high: 1920 * 1080, phone: 1300 * 600 }
+// and a budget of drawn pixels for the lighter tiers; a strong desktop draws
+// at its native resolution, and the frame cap below is what spares its GPU
+const PIXEL_BUDGET: Record<Tier, number> = { ultra: Infinity, high: 2560 * 1440, phone: 1300 * 600 }
 
-// light through the walk: warm afternoon gold deepening as the sun sinks
+// the low afternoon sun
 const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
 const SUN_LATE = new THREE.Color(1.0, 0.6, 0.32)
 
@@ -88,7 +89,12 @@ export class Realm {
   private sunColor = new THREE.Color()
   private sky: SkyResult | null = null
   private parts: RealmPart[] = []
-  private walk: Walk
+  private look: Look
+  private drag: { x: number; y: number; moved: boolean } | null = null
+  private hoveredPlace: Place | null = null
+  private lastX = 0
+  private lastY = 0
+  private placeBoxes: Partial<Record<Place, THREE.Box3>> = {}
   private container: HTMLElement
   private opts: RealmOptions
   private frame: Frame
@@ -118,7 +124,7 @@ export class Realm {
   private ray = new THREE.Ray()
   private raycaster = new THREE.Raycaster()
   private dir = new THREE.Vector3()
-  private look = new THREE.Vector3()
+  private aimPoint = new THREE.Vector3()
   private parallax = new THREE.Vector2()
   private post: PostParams
   private frameTimes: number[] = []
@@ -129,7 +135,6 @@ export class Realm {
   private compiling: Promise<unknown>[] = []
   private warming = false
   private lidColor = new THREE.Color()
-  private down: { x: number; y: number; t: number } | null = null
   private mouse = false
 
   constructor(container: HTMLElement, opts: RealmOptions) {
@@ -193,7 +198,9 @@ export class Realm {
       wake: this.reduced ? 1 : 0,
     }
 
-    this.walk = new Walk(this.renderer.domElement, this.reduced, () => this.opts.onMove?.())
+    this.look = new Look(this.reduced)
+    window.addEventListener('keydown', this.onKey)
+    window.addEventListener('popstate', this.onPopState)
 
     const el = this.renderer.domElement
     el.addEventListener('pointermove', this.onPointerMove)
@@ -239,29 +246,136 @@ export class Realm {
     this.pointerNdc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
     this.pointerActive = true
     this.mouse = e.pointerType === 'mouse'
+    const d = this.drag
+    if (d) {
+      // a press that travels is a drag: it turns the head
+      if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) {
+        d.moved = true
+        this.opts.onMove?.()
+      }
+      if (d.moved) this.look.dragBy(-(e.clientX - this.lastX) / Math.max(1, r.width), (e.clientY - this.lastY) / Math.max(1, r.height))
+    } else if (this.mouse) {
+      this.look.setAim(this.pointerNdc.x, this.pointerNdc.y)
+      if (Math.abs(this.pointerNdc.x) > 0.3) this.opts.onMove?.()
+    }
+    this.lastX = e.clientX
+    this.lastY = e.clientY
   }
 
   private onPointerDown = (e: PointerEvent) => {
     this.onPointerMove(e)
-    this.down = { x: e.clientX, y: e.clientY, t: performance.now() }
+    this.drag = { x: e.clientX, y: e.clientY, moved: false }
+    this.renderer.domElement.setPointerCapture?.(e.pointerId)
   }
 
-  // a tap is a press that neither moved nor lingered; it has to be handled
-  // inside the event so a plaque may open its link in a new tab
+  // a tap is a press that did not travel; it has to be handled inside the
+  // event so a plaque may open its link in a new tab
   private onPointerUp = (e: PointerEvent) => {
-    const d = this.down
-    this.down = null
-    if (!d || !this.ready) return
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10 || performance.now() - d.t > 600) return
+    const d = this.drag
+    this.drag = null
+    if (!d || !this.ready || d.moved) return
     this.onPointerMove(e)
     this.raycaster.setFromCamera(this.pointerNdc, this.camera)
-    for (const part of this.parts) {
-      if (isInteractive(part) && part.tap(this.raycaster.ray, e.pointerType !== 'mouse')) break
+    this.click(this.raycaster.ray, e.pointerType !== 'mouse')
+  }
+
+  private click(ray: THREE.Ray, touch: boolean): void {
+    this.opts.onMove?.()
+    const at = this.look.place
+    if (at === null) {
+      const place = this.pickPlace(ray)
+      if (place) this.visit(place)
+      return
     }
+    if (at === 'rack') {
+      for (const part of this.parts) if (isInteractive(part) && part.tap(ray, touch)) return
+    }
+    if (at === 'pond') {
+      const hit = this.pondPoint(ray)
+      if (hit) {
+        this.findPart<{ drop(x: number, z: number): void }>('Pond')?.drop(hit.x, hit.z)
+        return
+      }
+    }
+    // any other click in a close view goes home
+    this.leave()
+  }
+
+  // fly to a place, with a step in the browser's history so back returns
+  visit(place: Place | null): void {
+    if (place === this.look.place) return
+    if (place && !this.look.place) history.pushState({ sandoPlace: place }, '')
+    else if (place) history.replaceState({ sandoPlace: place }, '')
+    this.look.go(place)
+  }
+
+  private leave(): void {
+    if ((history.state as { sandoPlace?: string } | null)?.sandoPlace) history.back()
+    else this.look.go(null)
+  }
+
+  private onPopState = () => {
+    const place = (history.state as { sandoPlace?: Place } | null)?.sandoPlace ?? null
+    this.look.go(place)
+  }
+
+  private onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this.look.place) this.leave()
+  }
+
+  private findPart<T>(name: string): (RealmPart & T) | null {
+    for (const part of this.parts) {
+      const inner = (part as { inner?: RealmPart }).inner ?? part
+      if (inner.constructor.name === name) return inner as RealmPart & T
+    }
+    return null
+  }
+
+  // the world box a place is picked by, from its part, once it is built
+  private placeBox(place: Place): THREE.Box3 | null {
+    if (place === 'pond') return null
+    let box = this.placeBoxes[place]
+    if (!box) {
+      const name = place === 'rack' ? 'EmaRack' : 'Shrine'
+      const part = this.findPart(name)
+      if (!part) return null
+      box = new THREE.Box3().setFromObject(part.object)
+      this.placeBoxes[place] = box
+    }
+    return box
+  }
+
+  private pondPoint(ray: THREE.Ray): THREE.Vector3 | null {
+    if (Math.abs(ray.direction.y) < 1e-3) return null
+    const t = (POND_LEVEL - ray.origin.y) / ray.direction.y
+    if (t <= 0 || t > 40) return null
+    const hit = ray.at(t, new THREE.Vector3())
+    return pondSdf(hit.x, hit.z) < 0 ? hit : null
+  }
+
+  // the nearest place under a ray from the centre
+  private pickPlace(ray: THREE.Ray): Place | null {
+    let best: Place | null = null
+    let bestD = Infinity
+    const v = new THREE.Vector3()
+    for (const place of ['rack', 'shrine'] as const) {
+      const box = this.placeBox(place)
+      if (box && ray.intersectBox(box, v)) {
+        const d = v.distanceTo(ray.origin)
+        if (d < bestD) {
+          bestD = d
+          best = place
+        }
+      }
+    }
+    const water = this.pondPoint(ray)
+    if (water && water.distanceTo(ray.origin) < bestD) best = 'pond'
+    return best
   }
 
   private onPointerLeave = () => {
     this.pointerActive = false
+    this.look.setAim(null)
   }
 
   private resize(): void {
@@ -323,13 +437,12 @@ export class Realm {
     this.buildTimes.push(['compile', Math.round(performance.now() - t0)])
     t0 = performance.now()
     // The passes that draw the scene again (reflection, cloud depth) compile
-    // their programs on first use, and the walk's later views show things the
-    // first view does not. Run a few frames at those views while the eyes are
-    // still closed, so the hitches happen in the dark.
-    const keep = this.walk.target
+    // their programs on first use, and the close views show things the centre
+    // does not. Run a few frames at each while the screen is still dark, so
+    // the hitches happen unseen.
     this.warming = true
-    for (const p of [0, 0.5, 1, keep]) {
-      this.setProgress(p, true)
+    for (const place of ['rack', 'pond', 'shrine', null] as const) {
+      this.look.go(place, true)
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       if (this.disposed) return
@@ -354,8 +467,7 @@ export class Realm {
 
   // used by the page and by headless checks
   setProgress(p: number, immediate = false): void {
-    this.walk.target = THREE.MathUtils.clamp(p, 0, 1)
-    if (immediate) this.walk.progress = this.walk.target
+    this.look.go(p > 0.9 ? 'rack' : null, immediate)
     this.onInput()
   }
 
@@ -378,6 +490,7 @@ export class Realm {
 
   // a link got keyboard focus (or lost it): its plaque turns as on hover
   focusLink(index: number | null): void {
+    if (index !== null) this.visit('rack')
     for (const part of this.parts) {
       const p = part as Partial<{ focusLink(i: number | null): void }>
       if (typeof p.focusLink === 'function') p.focusLink(index)
@@ -409,12 +522,24 @@ export class Realm {
     return this.pipeline.timer.report()
   }
 
+  // where the eyes are: null at the centre, else the close view
+  get place(): Place | null {
+    return this.look.place
+  }
+
+  // headless checks: project a world point to the screen, in CSS pixels
+  toScreen(x: number, y: number, z: number): { x: number; y: number } {
+    const v = new THREE.Vector3(x, y, z).project(this.camera)
+    const r = this.renderer.domElement.getBoundingClientRect()
+    return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height }
+  }
+
   get isReady(): boolean {
     return this.ready
   }
 
   get progress(): number {
-    return this.walk.progress
+    return this.look.place === 'rack' ? this.look.closeness : 0
   }
 
   frameStats(): { avg: number; p95: number; count: number } {
@@ -437,7 +562,7 @@ export class Realm {
     const now = performance.now()
     if (this.ready && !UNCAPPED) {
       const quiet = now - this.lastInput
-      const settled = quiet > IDLE_AFTER_MS && Math.abs(this.walk.target - this.walk.progress) < 1e-3
+      const settled = quiet > IDLE_AFTER_MS && this.look.settled
       if (!document.hasFocus() && quiet > ASLEEP_AFTER_MS) return
       this.calm = this.tier === 'phone' || settled
       // hold the beat: a 144 Hz screen alternates gaps of two and three
@@ -465,9 +590,10 @@ export class Realm {
       this.renderer.clear()
       return
     }
-    const pose = this.walk.update(dt)
+    const pose = this.look.update(dt)
     const wake = this.wake(dt)
-    const p = this.walk.progress
+    // the light of the garden's one hour; the walk once moved it on
+    const p = 0
 
     const breathe = this.reduced ? 0 : 1
     const sway = Math.sin(t * 0.55) * 0.004 + Math.sin(t * 0.31 + 1.3) * 0.003
@@ -479,15 +605,15 @@ export class Realm {
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
     const pitch = pose.pitch + this.parallax.y * 0.015 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
-    // a tall screen sees less across: near the end, where the plaques must
+    // a tall screen sees less across: at the rack, where the plaques must
     // all be in frame, step back along the view to make room
-    if (this.camera.aspect < 1) {
-      const back = (1 - this.camera.aspect) * 2.2 * THREE.MathUtils.smoothstep(p, 0.86, 1)
+    if (this.camera.aspect < 1 && this.look.place === 'rack') {
+      const back = (1 - this.camera.aspect) * 2.2 * this.look.closeness
       this.camera.position.addScaledVector(this.dir, -back)
     }
-    this.look.copy(this.camera.position).add(this.dir)
+    this.aimPoint.copy(this.camera.position).add(this.dir)
     this.camera.up.set(0, 1, 0)
-    this.camera.lookAt(this.look)
+    this.camera.lookAt(this.aimPoint)
     if (this.debugView) {
       this.camera.position.copy(this.debugView.from)
       this.camera.up.set(0, 1, 0)
@@ -503,13 +629,18 @@ export class Realm {
     } else {
       this.frame.pointer = null
     }
+    // from the centre the places answer the pointer; at the rack the plaques
     let pointing = false
+    const centre = this.look.place === null
+    this.hoveredPlace = centre && this.mouse && this.frame.pointer && !this.drag?.moved ? this.pickPlace(this.frame.pointer) : null
     for (const part of this.parts) {
       if (!isInteractive(part)) continue
-      if (this.mouse) part.hover(this.frame.pointer)
-      pointing ||= part.pointing && this.mouse
+      const live = this.look.place === 'rack' || centre
+      if (this.mouse) part.hover(live ? this.frame.pointer : null)
+      pointing ||= part.pointing && this.mouse && this.look.place === 'rack'
     }
-    this.renderer.domElement.style.cursor = pointing ? 'pointer' : 'default'
+    pointing ||= this.hoveredPlace !== null
+    this.renderer.domElement.style.cursor = this.drag?.moved ? 'grabbing' : pointing ? 'pointer' : 'default'
 
     realmUniforms.uTime.value = t
     realmUniforms.uGust.value = 0.5 + 0.5 * Math.sin(t * 0.13) * Math.sin(t * 0.07 + 2.0)
@@ -578,7 +709,8 @@ export class Realm {
     this.visibleObs.disconnect()
     document.removeEventListener('visibilitychange', this.onVisibility)
     for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) window.removeEventListener(type, this.onInput)
-    this.walk.dispose()
+    window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('popstate', this.onPopState)
     this.ambience.dispose()
     const el = this.renderer.domElement
     el.removeEventListener('pointermove', this.onPointerMove)

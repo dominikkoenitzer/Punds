@@ -9,6 +9,40 @@
 .sando-canvas {
   position: absolute;
   inset: 0;
+  /* a finger on the garden turns the head, it never scrolls the page */
+  touch-action: none;
+}
+
+.sando-cue {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  margin: 0;
+  text-align: center;
+  color: #f4ede2;
+  font: 14px/1 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+/* on a narrow screen the hint sits a line above the sound switch */
+@media (max-width: 600px) {
+  .sando-cue {
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 34px);
+  }
+}
+
+.sando-cue[data-state='shown'] {
+  opacity: 0.7;
+}
+
+.sando-cue[data-state='gone'] {
+  opacity: 0;
+  transition-duration: 0.6s;
 }
 
 /* readable by assistive tech, out of sight; a link that gets keyboard focus

@@ -1334,6 +1334,11 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
     }
   }
 
+  // a click on the water from the bank
+  drop(x: number, z: number): void {
+    this.addDrop(x, z, 0.35, 0.03)
+  }
+
   private addDrop(x: number, z: number, radius: number, strength: number): void {
     if (this.dropCount >= MAX_DROPS) return
     this.drops[this.dropCount++]!.set(x, z, radius, strength)

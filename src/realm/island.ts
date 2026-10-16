@@ -98,6 +98,11 @@ class Sheltered implements RealmPart {
     return this.part.constructor.name
   }
 
+  // the wrapped part itself, for the host's clicks
+  get inner(): RealmPart {
+    return this.part
+  }
+
   update(frame: Frame): void {
     this.part.update(frame)
   }

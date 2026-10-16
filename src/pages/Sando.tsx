@@ -28,6 +28,9 @@ export default function Sando() {
   const realmRef = useRef<Realm | null>(null)
   const [noScene, setNoScene] = useState(() => !supportsWebGL2())
   const [sound, setSound] = useState(false)
+  // the one hint: shown once the garden is there, gone at the first look
+  const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
+  const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
 
   const toggleSound = () => {
     const next = !(realmRef.current?.sound ?? sound)
@@ -62,6 +65,10 @@ export default function Sando() {
           onTooSlow: () => {
             if (!cancelled) setNoScene(true)
           },
+          onReady: () => {
+            window.setTimeout(() => setCue((c) => (c === 'waiting' ? 'shown' : c)), 1200)
+          },
+          onMove: () => setCue('gone'),
         })
         realmRef.current = realm
         if (new URLSearchParams(location.search).has('debug')) window.__realm = realm
@@ -83,6 +90,11 @@ export default function Sando() {
     <div className="sando-root">
       <div aria-hidden="true" className="sando-canvas" ref={containerRef} />
       {!noScene && (
+        <p aria-hidden="true" className="sando-cue" data-state={cue}>
+          {touch ? 'drag to look, tap to explore' : 'move to look, click to explore'}
+        </p>
+      )}
+      {!noScene && (
         <button type="button" className="sando-sound" aria-pressed={sound} onClick={toggleSound}>
           sound
         </button>
@@ -98,7 +110,6 @@ export default function Sando() {
               rel="noopener noreferrer"
               onFocus={() => {
                 // a keyboard visitor is taken to the rack and sees the plaque turn
-                realmRef.current?.setProgress(1)
                 realmRef.current?.focusLink(i)
               }}
               onBlur={() => realmRef.current?.focusLink(null)}
