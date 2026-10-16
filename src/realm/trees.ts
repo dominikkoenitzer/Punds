@@ -2,7 +2,8 @@ import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
 import { realmUniforms, SUN_DIRECTION, WIND_GLSL } from './atmosphere'
 import { loadPbr } from './assets'
-import { CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { CEDARS, CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
 
 type Rand = () => number
 
@@ -100,6 +101,8 @@ interface TubeOpts {
   gnarl: number
   flare: number
   seed: number
+  // height of one texture tile over its width (scans of tall bark are 1:2)
+  vAspect?: number
 }
 
 class TubeBuilder {
@@ -168,7 +171,7 @@ class TubeBuilder {
         }
         this.pos.push(c.x + dir.x * rr, c.y + dir.y * rr, c.z + dir.z * rr)
         this.nor.push(dir.x, dir.y, dir.z)
-        this.uv.push((j / radial) * uRepeat, arc / o.texWorld)
+        this.uv.push((j / radial) * uRepeat, arc / (o.texWorld * (o.vAspect ?? 1)))
         this.sway.push(sw)
       }
     }
@@ -186,7 +189,7 @@ class TubeBuilder {
     const apex = this.pos.length / 3
     this.pos.push(c.x + t.x * endRad * 0.6, c.y + t.y * endRad * 0.6, c.z + t.z * endRad * 0.6)
     this.nor.push(t.x, t.y, t.z)
-    this.uv.push(0.5 * uRepeat, (arc + endRad * 0.6) / o.texWorld)
+    this.uv.push(0.5 * uRepeat, (arc + endRad * 0.6) / (o.texWorld * (o.vAspect ?? 1)))
     this.sway.push(limb.sway[nPts]!)
     const lastRow = base + segs * row
     for (let j = 0; j < radial; j++) this.idx.push(lastRow + j, lastRow + j + 1, apex)
@@ -211,6 +214,7 @@ uniform float uTime;
 uniform vec2 uWind;
 uniform float uGust;
 uniform float uBranchAmp;
+uniform float uSwayNorm;
 attribute float aSway;
 ${WIND_GLSL}
 `
@@ -218,21 +222,24 @@ ${WIND_GLSL}
 function barkMaterial(tier: Tier, name: string, fallback: number, tint: number, amp: number, swayNorm: number): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: fallback, roughness: 0.92, metalness: 0 })
   const branchAmp = { value: amp }
+  const norm = { value: swayNorm }
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = realmUniforms.uTime
     shader.uniforms.uWind = realmUniforms.uWind
     shader.uniforms.uGust = realmUniforms.uGust
     shader.uniforms.uBranchAmp = branchAmp
+    shader.uniforms.uSwayNorm = norm
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${SWAY_HEAD}`)
       .replace(
         '#include <begin_vertex>',
         `vec3 transformed = vec3(position);
-        float flex = pow(clamp(aSway / ${swayNorm.toFixed(3)}, 0.0, 1.0), 2.2);
+        float flex = pow(clamp(aSway / uSwayNorm, 0.0, 1.0), 2.2);
         transformed += windSway((modelMatrix * vec4(position, 1.0)).xyz, flex * uBranchAmp);`,
       )
   }
-  mat.customProgramCacheKey = () => `realm-bark-${name}`
+  // every bark shares one program; the differences live in uniforms
+  mat.customProgramCacheKey = () => 'realm-bark'
   const onCompile = mat.onBeforeCompile
   mat.onBeforeCompile = (shader, renderer) => {
     onCompile(shader, renderer)
@@ -265,6 +272,7 @@ uniform vec2 uWind;
 uniform float uGust;
 uniform float uBranchAmp;
 uniform float uCardAmp;
+uniform float uSwayNorm;
 attribute vec3 aAnchor;
 attribute vec3 aCentre;
 attribute vec3 aFaceN;
@@ -327,6 +335,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
   const uniforms = {
     uBranchAmp: { value: o.branchAmp },
     uCardAmp: { value: o.cardAmp },
+    uSwayNorm: { value: o.swayNorm },
     uFar: { value: new THREE.Vector2(o.farStart, o.farStart * 3) },
     uTrans: { value: o.trans },
     uTransTint: { value: o.transTint },
@@ -365,7 +374,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
           vec3 toCam = normalize(cameraPosition - (modelMatrix * vec4(aCentre, 1.0)).xyz);
           float facing = smoothstep(0.08, 0.3, abs(dot(faceW, toCam)));
           transformed = aCentre + (transformed - aCentre) * keep * facing * (1.0 + far * 0.55);
-          float flex = pow(clamp(aSway / ${o.swayNorm.toFixed(3)}, 0.0, 1.0), 2.2);
+          float flex = pow(clamp(aSway / uSwayNorm, 0.0, 1.0), 2.2);
           transformed += windSway(anchorW, flex * uBranchAmp);
           float st = length(uWind) * (0.5 + 0.8 * realmGust(anchorW.xz) * (0.6 + 0.4 * uGust));
           float reach = length(position - aAnchor);
@@ -393,7 +402,8 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
       )
     }
   }
-  mat.customProgramCacheKey = () => `realm-foliage-${o.key}-${o.softEdge ? 'soft' : 'hard'}`
+  // blossom, maple and cedar cards share one program; only uniforms differ
+  mat.customProgramCacheKey = () => `realm-foliage-${o.instanced ? 'i' : 'c'}${o.volumeNormals ? 'v' : 'f'}${o.softEdge ? 's' : 'h'}`
   return mat
 }
 
@@ -888,15 +898,90 @@ function paintMapleCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: 
   for (const l of leaves) drawMapleLeaf(ctx, pass, r, l.x, l.y, l.R, l.ang, 0.62 + l.depth * 0.38)
 }
 
+// A sugi spray: a forking cord of short awl-shaped needles wound round each
+// axis, so it reads as ropy, dense foliage rather than as flat fern fronds.
+function paintCedarCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
+  interface Axis {
+    pts: { x: number; y: number }[]
+    w: number
+    depth: number
+  }
+  const axes: Axis[] = []
+  const sprays = 6 + Math.floor(r() * 3)
+  for (let k = 0; k < sprays; k++) {
+    const sx = ox + S * (0.15 + r() * 0.7)
+    const main = wanderTwig(r, sx, oy + S * (0.75 + r() * 0.3), -Math.PI / 2 + (r() - 0.5) * 1.2, S * (0.45 + r() * 0.35), 14, 0.22)
+    const depth = r()
+    axes.push({ pts: main, w: S * 0.04, depth })
+    for (let i = 2; i < main.length - 1; i += 1) {
+      const at = main[i]!
+      const side = (i >> 1) % 2 === 0 ? -1 : 1
+      const len = S * (0.1 + r() * 0.14) * (1 - (i / main.length) * 0.5)
+      const a = -Math.PI / 2 + side * (0.55 + r() * 0.45)
+      const sub = wanderTwig(r, at.x, at.y, a, len, 6, 0.3)
+      axes.push({ pts: sub, w: S * 0.032, depth })
+      if (r() < 0.5) {
+        const mid = sub[3]!
+        axes.push({ pts: wanderTwig(r, mid.x, mid.y, a - side * 0.6, len * 0.5, 4, 0.3), w: S * 0.026, depth })
+      }
+    }
+  }
+  axes.sort((a, b) => a.depth - b.depth)
+  for (const ax of axes) {
+    const shade = 0.6 + ax.depth * 0.4
+    for (let i = 1; i < ax.pts.length; i++) {
+      const a = ax.pts[i - 1]!
+      const b = ax.pts[i]!
+      const seg = Math.hypot(b.x - a.x, b.y - a.y)
+      const ang = Math.atan2(b.y - a.y, b.x - a.x)
+      const tip = i / (ax.pts.length - 1)
+      const w = ax.w * (1 - tip * 0.45)
+      const steps = Math.max(2, Math.round(seg / (S * 0.006)))
+      for (let k = 0; k < steps; k++) {
+        const f = k / steps
+        const px = a.x + (b.x - a.x) * f
+        const py = a.y + (b.y - a.y) * f
+        for (let n = 0; n < 3; n++) {
+          // needles point forward and out, all round the cord
+          const side = n === 0 ? -1 : n === 1 ? 1 : (r() - 0.5) * 0.6
+          const na = ang + side * (0.5 + r() * 0.35)
+          const nl = w * (0.75 + r() * 0.5)
+          const lit = r()
+          if (pass === 'color') {
+            // dark, slightly blue green; the light needles sit at the tips
+            const g = 0.13 + 0.08 * lit + 0.06 * tip
+            ctx.strokeStyle = rgbStr((0.05 + 0.03 * lit) * shade, g * shade, (0.1 + 0.05 * lit) * shade)
+          } else {
+            ctx.strokeStyle = grey(0.45 + 0.3 * lit * shade)
+          }
+          ctx.lineWidth = Math.max(0.8, S * 0.0045)
+          ctx.lineCap = 'round'
+          ctx.beginPath()
+          ctx.moveTo(px, py)
+          ctx.lineTo(px + Math.cos(na) * nl, py + Math.sin(na) * nl)
+          ctx.stroke()
+        }
+      }
+    }
+  }
+}
+
 // textures shared by every tree of a kind, released with the last tree
 const atlasCache = new Map<string, { atlas: Atlas; users: number }>()
 
-function acquireAtlas(kind: 'blossom' | 'maple', tier: Tier): Atlas {
+type AtlasKind = 'blossom' | 'maple' | 'cedar'
+
+function acquireAtlas(kind: AtlasKind, tier: Tier): Atlas {
   const key = `${kind}-${tier}`
   let e = atlasCache.get(key)
   if (!e) {
     const size = tier === 'phone' ? 1024 : 2048
-    const atlas = kind === 'blossom' ? paintAtlas(size, 4111, paintBlossomCell, 5) : paintAtlas(size, 9001, paintMapleCell, 3)
+    const atlas =
+      kind === 'blossom'
+        ? paintAtlas(size, 4111, paintBlossomCell, 5)
+        : kind === 'maple'
+          ? paintAtlas(size, 9001, paintMapleCell, 3)
+          : paintAtlas(size, 7307, paintCedarCell, 4)
     e = { atlas, users: 0 }
     atlasCache.set(key, e)
   }
@@ -904,7 +989,7 @@ function acquireAtlas(kind: 'blossom' | 'maple', tier: Tier): Atlas {
   return e.atlas
 }
 
-function releaseAtlas(kind: 'blossom' | 'maple', tier: Tier): void {
+function releaseAtlas(kind: AtlasKind, tier: Tier): void {
   const key = `${kind}-${tier}`
   const e = atlasCache.get(key)
   if (!e) return
@@ -1497,6 +1582,248 @@ export class MapleTree extends Tree {
   override dispose(): void {
     super.dispose()
     releaseAtlas('maple', this.tier)
+  }
+}
+
+// --- the cedar grove ------------------------------------------------------------------
+
+function strawRope(cx: number, cy: number, cz: number, ringR: number, seed: number): THREE.BufferGeometry {
+  const r = rng(seed)
+  const pos: number[] = []
+  const nor: number[] = []
+  const col: number[] = []
+  const idx: number[] = []
+  // vertex colours are linear: an aged straw gold
+  const straw = [0.2, 0.14, 0.06]
+  // two thick strands twisted round each other, laid round the trunk with a slight sag
+  const segs = 160
+  const radial = 8
+  const strandR = 0.065
+  for (let strand = 0; strand < 2; strand++) {
+    const base = pos.length / 3
+    for (let i = 0; i <= segs; i++) {
+      const th = (i / segs) * Math.PI * 2
+      const ph = th * 18 + strand * Math.PI
+      const sag = -0.05 * (1 - Math.cos(th - 0.6)) * 0.5
+      const rx = Math.cos(th)
+      const rz = Math.sin(th)
+      const ccx = cx + rx * (ringR + Math.cos(ph) * 0.055)
+      const ccy = cy + sag + Math.sin(ph) * 0.055
+      const ccz = cz + rz * (ringR + Math.cos(ph) * 0.055)
+      for (let j = 0; j <= radial; j++) {
+        const a = (j / radial) * Math.PI * 2
+        const nx = rx * Math.cos(a)
+        const ny = Math.sin(a)
+        const nz = rz * Math.cos(a)
+        pos.push(ccx + nx * strandR, ccy + ny * strandR, ccz + nz * strandR)
+        nor.push(nx, ny, nz)
+        // the twist of the straw shows as faint light and dark bands
+        const band = 0.85 + 0.15 * Math.sin(a * 2 + ph * 3)
+        col.push(straw[0]! * band, straw[1]! * band, straw[2]! * band)
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      for (let j = 0; j < radial; j++) {
+        const a = base + i * (radial + 1) + j
+        const b = a + radial + 1
+        idx.push(a, a + 1, b, a + 1, b + 1, b)
+      }
+    }
+  }
+  // shide: four zigzag paper streamers hanging from the rope's front half
+  for (let k = 0; k < 4; k++) {
+    const th = 0.9 + k * 0.45 + (r() - 0.5) * 0.1
+    const rx = Math.cos(th)
+    const rz = Math.sin(th)
+    const tx = -rz
+    const tz = rx
+    const px = cx + rx * (ringR + 0.12)
+    const pz = cz + rz * (ringR + 0.12)
+    let py = cy - 0.06
+    const w = 0.06
+    for (let s = 0; s < 4; s++) {
+      const off = (s % 2) * w * 0.55
+      const h = 0.085
+      const base = pos.length / 3
+      const x0 = px + tx * (off - w / 2)
+      const z0 = pz + tz * (off - w / 2)
+      const x1 = px + tx * (off + w / 2)
+      const z1 = pz + tz * (off + w / 2)
+      // each fold is slanted, as the cut paper hangs in a lightning shape
+      const lean = (s % 2 === 0 ? 1 : -1) * w * 0.25
+      pos.push(x0, py, z0, x1, py, z1, x1 + tx * lean, py - h, z1 + tz * lean, x0 + tx * lean, py - h, z0 + tz * lean)
+      for (let q = 0; q < 4; q++) {
+        nor.push(rx, 0, rz)
+        col.push(0.82, 0.8, 0.74)
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3)
+      py -= h * 0.92
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  g.setIndex(idx)
+  g.computeBoundingSphere()
+  return g
+}
+
+// Japanese cedars behind the hall: straight columns, bare below, with narrow
+// irregular crowns of dense sprays in the upper half. All trees share one bark
+// mesh and one foliage mesh, built in world space.
+export class CedarGrove extends Tree {
+  private tier: Tier
+
+  constructor(opts: { tier: Tier }) {
+    super()
+    this.tier = opts.tier
+    const tier = opts.tier
+    const r = rng(5501)
+    const tubes = new TubeBuilder()
+    const parts: THREE.BufferGeometry[] = []
+    const atlas = acquireAtlas('cedar', tier)
+    const SWAY_NORM = 10
+    const branchesPer = tier === 'ultra' ? 56 : tier === 'high' ? 44 : 28
+    const cardsPer = tier === 'ultra' ? 1500 : tier === 'high' ? 1100 : 520
+    let rope: THREE.BufferGeometry | null = null
+    for (const c of CEDARS) {
+      const H = c.height
+      const gy = groundHeight(c.x, c.z)
+      const base = new THREE.Vector3(c.x, gy, c.z)
+      const r0 = (0.4 + (H - 18) * 0.03) * (c.sacred ? 1.25 : 1)
+      const limbs: Limb[] = []
+      const lean = new THREE.Vector3((r() - 0.5) * 0.04, 1, (r() - 0.5) * 0.04).normalize()
+      const trunk = grow({
+        start: new THREE.Vector3(0, -0.3, 0),
+        dir: lean,
+        length: H + 0.3,
+        r0,
+        r1: 0.04,
+        depth: 0,
+        sway0: 0,
+        segLen: tier === 'phone' ? 1.6 : 0.9,
+        bend: (d) => {
+          d.x += (r() - 0.5) * 0.012
+          d.z += (r() - 0.5) * 0.012
+        },
+      })
+      // a straight column: the taper is close to linear, not a sapling's
+      for (let i = 0; i < trunk.radii.length; i++) {
+        const s = i / (trunk.radii.length - 1)
+        trunk.radii[i] = 0.04 + (r0 - 0.04) * Math.pow(1 - s, 1.1)
+      }
+      limbs.push(trunk)
+      // the crowns come down to just above the roof line, so the grove reads as a wall
+      const crownBase = H * (0.36 + r() * 0.08)
+      // narrow: a sugi crown is a spire, a fifth as wide as the tree is tall
+      const crownR = H * (0.09 + r() * 0.025)
+      const golden = 2.39996
+      const az0 = r() * 6.28
+      const n = Math.round(branchesPer * (H / 22))
+      const p = new THREE.Vector3()
+      for (let k = 0; k < n; k++) {
+        const u = (k + r() * 0.8) / n
+        const h = crownBase + (H * 0.98 - crownBase) * u
+        limbPoint(trunk, (h + 0.3) / (H + 0.3), p)
+        const az = az0 + k * golden + (r() - 0.5) * 0.5
+        // lower branches droop, upper ones climb; a few are short, which breaks the outline
+        const elev = -0.25 + u * 0.75 + (r() - 0.5) * 0.2
+        const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
+        const short = r() < 0.22 ? 0.5 : 1
+        const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short)
+        const rr = Math.max(0.025, 0.03 + 0.07 * (1 - u)) * (r0 / 0.55)
+        limbs.push(
+          grow({
+            start: p.clone(),
+            dir: d,
+            length: L,
+            r0: Math.min(rr, r0 * 0.3),
+            r1: 0.012,
+            depth: 1,
+            sway0: h,
+            segLen: tier === 'phone' ? 0.8 : 0.45,
+            bend: (dd, s) => {
+              dd.y += (s > 0.5 ? 0.05 : -0.03) + (r() - 0.5) * 0.06
+              dd.x += (r() - 0.5) * 0.1
+              dd.z += (r() - 0.5) * 0.1
+            },
+          }),
+        )
+      }
+      // sway only in the crown: the flex measure starts where the branches start
+      for (const l of limbs) {
+        for (let i = 0; i < l.sway.length; i++) {
+          l.sway[i] = Math.max(0, Math.min(1, (l.sway[i]! - crownBase) / (H - crownBase))) * SWAY_NORM
+        }
+      }
+      const tips = collectTips(limbs.filter((l) => l.depth === 1), 1, 0.2, 0.35)
+      tips.push(...collectTips([trunk], 0, crownBase / H + (1 - crownBase / H) * 0.55, 0.5))
+      // to world space
+      for (const l of limbs) for (const q of l.pts) q.add(base)
+      for (const t of tips) t.p.add(base)
+      for (const l of limbs) {
+        tubes.add(l, {
+          radial: l.depth === 0 ? (tier === 'phone' ? 12 : 20) : tier === 'phone' ? 3 : 5,
+          texWorld: 0.85,
+          vAspect: 2,
+          gnarl: l.depth === 0 ? 0.03 : 0,
+          flare: l.depth === 0 ? 0.32 : 0,
+          seed: r() * 50,
+        })
+      }
+      const crown: CrownShape = {
+        centre: new THREE.Vector3(c.x, gy + (crownBase + H) / 2, c.z),
+        radii: new THREE.Vector3(crownR, (H - crownBase) / 2, crownR),
+        lowY: (H - crownBase) / 2,
+      }
+      const sz: [number, number] = tier === 'phone' ? [1.2, 1.9] : [0.95, 1.6]
+      parts.push(
+        buildCards({
+          tips, count: Math.round(cardsPer * (H / 22)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.6,
+          clusterRadius: 0.7, perCluster: tier === 'phone' ? 8 : 12, flat: 0.42, reject: () => false,
+        }),
+      )
+      if (c.sacred) {
+        // the rope sits at about 2 m, where the trunk is a little thinner than at the flare
+        const at = trunk.radii[Math.min(trunk.radii.length - 1, Math.round((2.3 / (H + 0.3)) * (trunk.radii.length - 1)))]!
+        rope = strawRope(c.x, gy + 2.0, c.z, at + 0.04, 77)
+      }
+    }
+    const bark = barkMaterial(tier, 'cedar_bark', 0x4a3026, 0x9a8a82, 0.3, SWAY_NORM)
+    // the long fibrous strips should catch the low light
+    bark.normalScale.set(1.8, 1.8)
+    this.addMesh(tubes.build(), bark, true)
+    const cards = mergeGeometries(parts)
+    for (const g of parts) g.dispose()
+    const mat = foliageMaterial({
+      key: 'cedar',
+      map: atlas.map,
+      normalMap: atlas.normalMap,
+      trans: 0.9,
+      transTint: new THREE.Color(0.75, 1.0, 0.55),
+      roughness: 0.82,
+      branchAmp: 0.3,
+      cardAmp: 0.05,
+      swayNorm: SWAY_NORM,
+      volumeNormals: true,
+      instanced: false,
+      farStart: 30,
+      softEdge: true,
+    })
+    // sugi foliage is dark and a little blue beside the maples' warm reds
+    mat.color.setRGB(0.78, 0.86, 0.95)
+    this.addFoliage(cards, mat)
+    if (rope) {
+      const ropeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })
+      this.addMesh(rope, ropeMat, true)
+    }
+    this.object.updateMatrixWorld(true)
+  }
+
+  override dispose(): void {
+    super.dispose()
+    releaseAtlas('cedar', this.tier)
   }
 }
 
