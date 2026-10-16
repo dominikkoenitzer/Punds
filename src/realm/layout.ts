@@ -214,6 +214,13 @@ export function groundHeight(x: number, z: number): number {
   const flat = z < TERRACE_FRONT_Z ? TERRACE_Y : 0
   h += (flat - h) * pathFlatten(x, z)
   if (z < TERRACE_FRONT_Z - 0.4) h = TERRACE_Y + (h - TERRACE_Y) * (1 - forecourtWeight(x, z))
+  // the stair: the ground follows the flight so no step is buried
+  const sx = Math.abs(x) - (STEPS.halfWidth + 0.34)
+  if (sx < 0.3 && z < STEPS.zFront + 0.3 && z > STEPS.zBack - 0.1) {
+    const t = Math.min(1, Math.max(0, (STEPS.zFront - z) / (STEPS.zFront - STEPS.zBack)))
+    const stair = TERRACE_Y * t - 0.05
+    h = Math.min(h, stair + (h - stair) * smooth(0, 0.3, sx))
+  }
   // the pond basin: a bowl below the water line, with a soft bank
   const pd = pondSdf(x, z)
   if (pd < 1.2) {
@@ -247,7 +254,8 @@ export function gravelWeight(x: number, z: number): number {
     (1 - smooth(GRAVEL_HALF_WIDTH - 0.15, GRAVEL_HALF_WIDTH + 0.15, Math.abs(x))) *
     smooth(LANDING.zBack + 0.2, LANDING.zBack - 0.2, z) *
     smooth(TERRACE_FRONT_Z + 0.6, TERRACE_FRONT_Z + 1.0, z)
-  return Math.max(beds, forecourtWeight(x, z)) * (1 - pathWeight(x, z))
+  const stairs = Math.abs(x) < STEPS.halfWidth + 0.5 && z < STEPS.zFront + 0.3 && z > STEPS.zBack - 0.3 ? 0 : 1
+  return Math.max(beds, forecourtWeight(x, z)) * (1 - pathWeight(x, z)) * stairs
 }
 
 // 0..1: where grass grows. Everything that is not path, gravel, water, a
