@@ -15,7 +15,7 @@ import { Rocks } from './rocks'
 import { Roots } from './roots'
 import { Pond } from './pond'
 import { Plants } from './plants'
-import { CherryTree, MapleTree, Petals } from './trees'
+import { CedarGrove, CherryTree, MapleTree, Petals } from './trees'
 
 // What the island is made of, in the order it is built. Each step yields to
 // the browser so the waking view keeps its frame rate while the rest loads.
@@ -134,6 +134,7 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Plants.create(tier),
     () => new CherryTree({ tier, x: CHERRY.x, z: CHERRY.z, height: CHERRY.height, spread: CHERRY.spread, lean: CHERRY.lean, seed: 11 }),
     ...MAPLES.map((m, i) => () => new MapleTree({ tier, x: m.x, z: m.z, height: m.height, spread: m.spread, seed: 21 + i })),
+    () => new CedarGrove({ tier }),
     () => new Petals({ tier }),
     () => {
       const grass = new Grass({ tier })
