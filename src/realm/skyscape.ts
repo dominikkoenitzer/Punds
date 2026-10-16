@@ -39,6 +39,9 @@ const NOISE_SIZE = 64
 // depth test, so the copy compiles one program instead of one per material.
 const DEPTH_LAYER = 29
 const DEPTH_MIN_RADIUS = 4
+// how much wider than the screen the cloud trace sees, so the frame after a
+// trace can still be drawn from it while the head turns
+const GUARD = 1.08
 
 // Towering banks: x, z, radius, height above the sea, all in metres. They
 // stand behind the shrine, under the sun, over the right rim at the end of
@@ -333,6 +336,7 @@ uniform int uSteps;
 uniform int uTowerSteps;
 uniform int uLightSteps;
 uniform float uPixelAngle;
+uniform float uGuard;
 ${SKY_GLSL}
 
 const float SEA_BASE = -55.0;
@@ -515,7 +519,11 @@ void main() {
 
   // the scene surface under this texel's centre, from the full resolution
   // depth; the composite matches it against each screen pixel's own depth
-  float dmax = texture(uDepth, vUv).r;
+  // the trace sees a little past the screen's edges; there the depth copy
+  // has nothing, so the clouds are traced open
+  vec2 suv = (vUv - 0.5) * uGuard + 0.5;
+  bool onScreen = all(greaterThanEqual(suv, vec2(0.0))) && all(lessThanEqual(suv, vec2(1.0)));
+  float dmax = onScreen ? texture(uDepth, suv).r : 1.0;
   float sceneT = 1e7;
   if (dmax < 0.99999) {
     vec4 sp = uInvProj * vec4(ndc, dmax * 2.0 - 1.0, 1.0);
@@ -694,11 +702,17 @@ uniform sampler2D uSceneDepth;
 uniform vec2 uTexel;
 uniform mat4 uInvProj;
 uniform mat4 uProj;
+uniform mat4 uCamWorld;
+uniform mat4 uTraceViewProj;
 uniform float uMaxFront;
 uniform float uMaxScene;
 void main() {
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(v.xyz / v.w);
+  // where this pixel's direction sat in the last trace, which may be a frame
+  // older than this view
+  vec4 tc = uTraceViewProj * vec4((uCamWorld * vec4(dir, 0.0)).xyz, 0.0);
+  vec2 cuv = tc.xy / tc.w * 0.5 + 0.5;
   // this pixel's own scene distance at full resolution
   float d = texture2D(uSceneDepth, vUv).r;
   float dist = 60000.0;
@@ -710,7 +724,7 @@ void main() {
   // depth aware upsample: the four nearest texels, weighted by how well the
   // surface each was traced against matches this pixel
   vec2 size = 1.0 / uTexel;
-  vec2 p = vUv * size - 0.5;
+  vec2 p = cuv * size - 0.5;
   vec2 b = floor(p);
   vec2 f = p - b;
   vec4 sum = vec4(0.0);
@@ -742,7 +756,7 @@ void main() {
     for (int j = -1; j <= 1; j++) {
       for (int i = -1; i <= 1; i++) {
         float w = (2.0 - abs(float(i))) * (2.0 - abs(float(j)));
-        wide += texture2D(uCloud, vUv + vec2(float(i), float(j)) * uTexel * 0.75) * w;
+        wide += texture2D(uCloud, cuv + vec2(float(i), float(j)) * uTexel * 0.75) * w;
         ws += w;
       }
     }
@@ -1247,6 +1261,10 @@ export class Skyscape implements RealmPart {
   private readonly resolveMaterial: THREE.RawShaderMaterial
   private readonly resolveScene = new THREE.Scene()
   private readonly prevViewProj = new THREE.Matrix4()
+  private readonly traceProj = new THREE.Matrix4()
+  private readonly traceViewProj = new THREE.Matrix4()
+  private readonly guardScale = new THREE.Matrix4().makeScale(1 / GUARD, 1 / GUARD, 1)
+  private readonly corner = new THREE.Vector4()
   private frameIndex = 0
   private tick = 0
   private historyValid = false
@@ -1361,6 +1379,7 @@ export class Skyscape implements RealmPart {
         uTowerSteps: { value: s.towerSteps },
         uLightSteps: { value: s.lightSteps },
         uPixelAngle: { value: 0.002 },
+        uGuard: { value: GUARD },
       },
       depthTest: false,
       depthWrite: false,
@@ -1410,6 +1429,8 @@ export class Skyscape implements RealmPart {
         uTexel: this.marchMaterial.uniforms.uTexel as THREE.IUniform,
         uInvProj: { value: new THREE.Matrix4() },
         uProj: { value: new THREE.Matrix4() },
+        uCamWorld: { value: new THREE.Matrix4() },
+        uTraceViewProj: { value: this.traceViewProj },
         uMaxFront: { value: 1e6 },
         uMaxScene: { value: 1e6 },
         uSceneDepth: { value: this.depthTarget.depthTexture },
@@ -1771,6 +1792,7 @@ export class Skyscape implements RealmPart {
     }
 
     renderer.getDrawingBufferSize(this.size)
+    // the same texels as the screen alone would get, spread a little wider
     const w = Math.max(16, Math.round(this.size.x * this.settings.scale))
     const h = Math.max(16, Math.round(this.size.y * this.settings.scale))
     if (this.cloudTarget.width !== w || this.cloudTarget.height !== h) {
@@ -1780,7 +1802,7 @@ export class Skyscape implements RealmPart {
       this.historyValid = false
     }
     ;(this.marchMaterial.uniforms.uTexel!.value as THREE.Vector2).set(1 / w, 1 / h)
-    this.marchMaterial.uniforms.uPixelAngle!.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / (h * camera.zoom)
+    this.marchMaterial.uniforms.uPixelAngle!.value = (2 * GUARD * Math.tan((camera.fov * Math.PI) / 360)) / (h * camera.zoom)
     // the depth pass runs at full resolution so the upsample can match
     // every screen pixel against its own surface; phones use half, read with
     // nearest filtering, since a full extra scene draw costs too much there
@@ -1792,7 +1814,9 @@ export class Skyscape implements RealmPart {
 
     camera.updateMatrixWorld()
     const u = this.marchMaterial.uniforms
-    ;(u.uInvProj!.value as THREE.Matrix4).copy(camera.projectionMatrixInverse)
+    // the trace's lens: the camera's, a little wider
+    this.traceProj.multiplyMatrices(this.guardScale, camera.projectionMatrix)
+    ;(this.compositeMaterial.uniforms.uCamWorld!.value as THREE.Matrix4).copy(camera.matrixWorld)
     ;(u.uCamWorld!.value as THREE.Matrix4).copy(camera.matrixWorld)
     ;(u.uCamPos!.value as THREE.Vector3).setFromMatrixPosition(camera.matrixWorld)
     ;(this.compositeMaterial.uniforms.uInvProj!.value as THREE.Matrix4).copy(camera.projectionMatrixInverse)
@@ -1838,15 +1862,17 @@ export class Skyscape implements RealmPart {
     sm.autoUpdate = prevAuto
     sm.needsUpdate = prevNeeds
 
-    // The clouds move slowly and the camera turns slowly, so the trace runs
-    // every second frame; the frames between show the last resolved result.
+    // The clouds move slowly, so the trace runs every second frame; the
+    // frames between look the last one up through their own view, which
+    // its margin covers unless the view turned further than that.
     this.tick++
-    if (this.historyValid && (this.tick & 1) === 1) {
+    if (this.historyValid && (this.tick & 1) === 1 && this.traceCovers(camera)) {
       renderer.setClearColor(this.clearColor, prevAlpha)
       renderer.autoClear = prevAutoClear
       renderer.setRenderTarget(prevTarget)
       return
     }
+    ;(u.uInvProj!.value as THREE.Matrix4).copy(this.traceProj).invert()
     renderer.setRenderTarget(this.cloudTarget)
     renderer.setClearColor(0x000000, 0)
     u.uFrame!.value = this.frameIndex++
@@ -1864,11 +1890,23 @@ export class Skyscape implements RealmPart {
     this.historyRead = this.historyWrite
     this.historyWrite = swap
     this.historyValid = true
-    this.prevViewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    this.prevViewProj.multiplyMatrices(this.traceProj, camera.matrixWorldInverse)
+    this.traceViewProj.copy(this.prevViewProj)
 
     renderer.setClearColor(this.clearColor, prevAlpha)
     renderer.autoClear = prevAutoClear
     renderer.setRenderTarget(prevTarget)
+  }
+
+  // whether every corner of this view still lies inside the last trace
+  private traceCovers(camera: THREE.PerspectiveCamera): boolean {
+    const c = this.corner
+    for (let i = 0; i < 4; i++) {
+      c.set(i & 1 ? 1 : -1, i & 2 ? 1 : -1, 1, 1).applyMatrix4(camera.projectionMatrixInverse)
+      c.set(c.x / c.w, c.y / c.w, c.z / c.w, 0).applyMatrix4(camera.matrixWorld).applyMatrix4(this.traceViewProj)
+      if (c.w <= 0 || Math.abs(c.x) > c.w || Math.abs(c.y) > c.w) return false
+    }
+    return true
   }
 
   dispose(): void {

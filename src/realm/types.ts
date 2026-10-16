@@ -31,6 +31,9 @@ export interface Interactive {
 
 export interface RealmPart {
   readonly object: THREE.Object3D
+  // the name the host looks a part up by; class names do not survive the
+  // production build
+  readonly kind?: string
   update(frame: Frame): void
   dispose(): void
 }

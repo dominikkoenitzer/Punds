@@ -471,6 +471,7 @@ float nNoise(vec3 x) {
 }`
 
 export class Shrine implements RealmPart {
+  readonly kind = 'Shrine'
   readonly object = new THREE.Group()
   private disposables: { dispose(): void }[] = []
 

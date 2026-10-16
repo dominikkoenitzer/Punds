@@ -656,6 +656,7 @@ void main() { gl_FragColor = vec4(clamp(1.0 - vDepth, 0.0, 1.0), 0.0, 0.0, 1.0);
 `
 
 export class Pond implements RealmPart {
+  readonly kind = 'Pond'
   readonly object = new THREE.Group()
 
   private readonly tier: Tier

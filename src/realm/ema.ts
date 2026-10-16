@@ -187,6 +187,7 @@ interface Plaque {
 }
 
 export class EmaRack implements RealmPart {
+  readonly kind = 'EmaRack'
   readonly object = new THREE.Group()
   private plaques: Plaque[] = []
   private hits: THREE.Object3D[] = []

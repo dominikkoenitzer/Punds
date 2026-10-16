@@ -348,7 +348,7 @@ export class Realm {
   private findPart<T>(name: string): (RealmPart & T) | null {
     for (const part of this.parts) {
       const inner = (part as { inner?: RealmPart }).inner ?? part
-      if (inner.constructor.name === name) return inner as RealmPart & T
+      if (inner.kind === name) return inner as RealmPart & T
     }
     return null
   }
