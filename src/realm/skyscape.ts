@@ -56,29 +56,34 @@ const TOWERS: readonly [number, number, number, number][] = [
 const TOWER_COUNT = TOWERS.length
 
 // Distant massifs rising out of the sea: x, z, radius, peak height above the
-// base, base height. Kept inside the host's far plane.
+// base, base height. Centre distance plus radius stays under 2600 m, inside
+// the host's 3000 m far plane, so no edge is ever clipped into a straight line.
 const MASSIFS: readonly [number, number, number, number, number][] = [
-  [-520, -2050, 820, 300, -95], // the far range behind the shrine
-  [700, -2250, 900, 250, -95],
-  [1650, -1500, 760, 270, -95], // the end view, right of the rack
-  [1900, 1100, 820, 280, -95], // the opening view
-  [-1900, -900, 700, 240, -95], // under the sun, a backlit silhouette
+  [-438, -1726, 820, 300, -95], // the far range behind the shrine
+  [505, -1623, 900, 250, -95],
+  [1361, -1238, 760, 270, -95], // the end view, right of the rack
+  [1744, 356, 820, 230, -95], // left of the opening view, mostly out of frame
+  [-1717, -813, 700, 240, -95], // under the sun, a backlit silhouette
 ]
 
 // Distant islands: position of the top centre, top radius.
-const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii' }[] = [
+const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii'; air?: number }[] = [
   // the prominent one behind the shrine, slightly left of the path, and a
   // smaller one to the right
-  { x: -88, y: 92, z: -330, r: 30, seed: 61, crown: 'grove' },
+  { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'grove', air: 650 },
   { x: 122, y: 100, z: -320, r: 14, seed: 67, crown: 'pine' },
   { x: -160, y: -20, z: -210, r: 9, seed: 11, crown: 'pine' },
   { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'grove' },
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
   { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'pine' },
-  { x: 320, y: -4, z: 200, r: 16, seed: 71, crown: 'grove' },
+  { x: 330, y: -4, z: 110, r: 16, seed: 71, crown: 'grove' },
   // the focal point of the opening view out over the rim, a little right of
   // centre, lit from the left by the low sun
   { x: 112, y: 10, z: 280, r: 17, seed: 83, crown: 'torii' },
+  // a loose cluster further out to the left of the opening view
+  { x: 306, y: 45, z: 333, r: 8, seed: 89, crown: 'pine', air: 1000 },
+  { x: 452, y: 28, z: 417, r: 20, seed: 97, crown: 'grove', air: 1000 },
+  { x: 656, y: -6, z: 464, r: 27, seed: 101, crown: 'shrine', air: 1000 },
   { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
 ]
 
@@ -326,7 +331,7 @@ const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
 const float SLAB_BOTTOM = -105.0;
 const float SIGMA = 0.21;
-const float HAZE_DIST = 2600.0;
+const float HAZE_DIST = 1900.0;
 
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -353,6 +358,11 @@ float tops(vec2 xz, vec2 q, out float tower) {
   float mass = textureLod(uNoise, vec3(q.x, 0.0, q.y) * (1.0 / 1700.0) + vec3(0.0, 0.43, 0.0), 0.0).r;
   h += (smoothstep(0.15, 0.75, mass) - 0.5) * 36.0;
   // the sea heaps up around the foot of the island and wraps the lower rock
+  // far out the sea lines up in long streets across the wind
+  float farW = smoothstep(900.0, 2200.0, length(xz));
+  vec2 across = vec2(-0.4, 0.92);
+  float street = sin(dot(q, across) * (6.2832 / 640.0) + vnoise(q * 0.0021) * 4.0);
+  h += street * 6.0 * farW;
   float r = length(xz * vec2(1.0, 0.75)) * (0.6 + 0.8 * vnoise(xz * 0.035 + q * 0.004));
   h = max(h, -4.0 - r * r * 0.005);
   tower = 0.0;
@@ -383,21 +393,26 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
   if (dTop < 0.0) return 0.0;
   // the billow size wanders across the sea so no two stretches match
   float wander = vnoise(q.xz * 0.0011 - 4.3);
-  float big = mix(0.75 + wander * 0.7, 2.6, tower);
+  // smaller broken cumulus near the island, big billows stretched along the
+  // wind far out
+  float far = smoothstep(500.0, 1800.0, length(p.xz));
+  float big = mix(0.75 + wander * 0.7, 2.6, tower) * mix(0.62, 1.3, far);
+  vec2 along = vec2(0.92, 0.4);
+  q.xz -= along * dot(q.xz, along) * 0.25 * far;
   vec3 warp = vec3(vnoise(q.xz * 0.004), 0.0, vnoise(q.zx * 0.004 + 9.1)) * 90.0;
   q += warp;
   float l = max(0.0, lod - log2(big));
   vec3 s1 = q * (1.0 / (210.0 * big));
-  vec3 s2 = vec3(q.x * 0.8 + q.z * 0.6, q.y, q.z * 0.8 - q.x * 0.6) * (1.0 / (530.0 * big)) + vec3(0.31, uTime * 0.0004, 0.77);
+  vec3 s2 = vec3(q.x * 0.8 + q.z * 0.6, q.y, q.z * 0.8 - q.x * 0.6) * (1.0 / (530.0 * big)) + vec3(0.31, uTime * 0.0011, 0.77);
   // a third, smaller octave gives the tops their cauliflower turrets
   vec3 sm = vec3(q.z * 0.6 - q.x * 0.8, q.y * 1.3, q.x * 0.6 + q.z * 0.8) * (1.0 / (88.0 * big)) + vec3(0.53, 0.0, 0.19);
   float shape = textureLod(uNoise, s1, l).r * 0.5 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.3
               + textureLod(uNoise, sm, l + 1.25).r * 0.2;
   float fade = clamp(dTop / mix(26.0 + wander * 34.0, 120.0, tower), 0.0, 1.0);
-  float d = shape * 1.0 + fade * 0.95 - 0.87;
+  float d = shape * 1.0 + fade * 0.95 - 0.87 - (1.0 - far) * 0.025;
   if (d <= 0.0) return 0.0;
   if (detail > 0.0) {
-    vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.0035, 0.0);
+    vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.008, 0.0);
     float det = textureLod(uNoise, s3, l + 2.13).g;
     d -= (1.0 - det) * 0.22 * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.75);
   }
@@ -410,7 +425,7 @@ float phaseHG(float c, float g) {
 }
 
 // One step of the march: the light towards the sun, scattering, haze.
-void marchStep(vec3 p, float t, float dt, float phase, vec3 haze, vec3 skyUp, vec3 sunC, vec3 shadowC,
+void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, vec3 skyUp, vec3 sunC, vec3 shadowC,
                inout vec3 col, inout float trans, inout float front) {
   // mip level of the base shape for this pixel's footprint at distance t
   float lod = log2(max(1.0, t * uPixelAngle * (64.0 / 210.0)));
@@ -432,18 +447,22 @@ void marchStep(vec3 p, float t, float dt, float phase, vec3 haze, vec3 skyUp, ve
     lt += ls * 0.5;
     ls *= 2.3;
   }
-  float tl = exp(-od * SIGMA);
+  // light is shadowed harder than the eye sees through: deep valleys
+  float tl = exp(-od * SIGMA * 1.7);
   // a cheap stand in for multiple scattering: a softer second lobe
-  float ms = exp(-od * SIGMA * 0.12) * 0.07;
+  float ms = exp(-od * SIGMA * 0.12) * 0.05;
   float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
   // the hollows between billows sink into a deeper blue shade
-  vec3 amb = mix(shadowC * 0.42, skyUp * 0.08 + shadowC * 0.75, lift * lift);
+  vec3 amb = mix(shadowC * 0.3, skyUp * 0.08 + shadowC * 0.75, lift * lift);
   float powder = 1.0 - exp(-dens * 2.5);
   // thin sunlit edges glow gold: the rims of the billows on the sun side
   float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * 0.55;
   vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms + rim * vec3(1.0, 0.78, 0.45)) + amb;
   float fog = 1.0 - exp(-t / HAZE_DIST);
-  lit = mix(lit, haze, fog * fog * 0.92 + fog * 0.08);
+  // warm light scattered into the long air on the sun side, strongest in the
+  // middle distance so the far edge still meets the sky's own horizon
+  vec3 air = haze + sunC * warm * fog * (1.0 - fog) * 1.2;
+  lit = mix(lit, air, fog * fog * 0.92 + fog * 0.08);
   float stepT = exp(-dens * SIGMA * dt);
   col += trans * lit * (1.0 - stepT);
   trans *= stepT;
@@ -489,6 +508,8 @@ void main() {
   float cosT = dot(rd, uSunDir);
   float phase = mix(phaseHG(cosT, 0.7), phaseHG(cosT, -0.2), 0.3) * 0.6 + 0.25;
   vec3 haze = hazeColor(rd);
+  vec2 hd = normalize(rd.xz + vec2(1e-5));
+  float warm = pow(max(dot(hd, normalize(uSunDir.xz)), 0.0), 5.0);
   vec3 skyUp = skyLookup(vec3(0.0, 1.0, 0.0)) * 0.6 + skyLookup(normalize(vec3(-uSunDir.x, 0.4, -uSunDir.z))) * 0.4;
   // light is set relative to the sky itself, so the clouds sit right in
   // whatever exposure the host gives its panorama
@@ -553,7 +574,7 @@ void main() {
     float t = seg.x + dt * jitter;
     for (int i = 0; i < 96; i++) {
       if (i >= steps || trans < 0.01) break;
-      marchStep(ro + rd * t, t, dt, phase, haze, skyUp, sunC, shadowC, col, trans, front);
+      marchStep(ro + rd * t, t, dt, phase, warm, haze, skyUp, sunC, shadowC, col, trans, front);
       t += dt * (0.85 + 0.3 * fract(jitter + float(i) * 0.618));
     }
   }
@@ -566,7 +587,8 @@ void main() {
     vec3 sp = ro + rd * s1 + vec3(uDrift.x, 0.0, uDrift.y) * 0.6;
     float dl = log2(max(1.0, s1 * uPixelAngle * (64.0 / 900.0)));
     float deck = textureLod(uNoise, sp * (1.0 / 900.0), dl).r * 0.6 + textureLod(uNoise, sp * (1.0 / 260.0), dl + 1.8).r * 0.4;
-    vec3 deep = mix(mix(shadowC * 0.85, shadowC * 1.35 + sunC * 0.1, smoothstep(0.2, 0.8, deck)), haze, fog * fog * 0.92 + fog * 0.08);
+    // the gaps look down into deep shade between the billows, not onto a floor
+    vec3 deep = mix(mix(shadowC * 0.5, shadowC * 0.95 + sunC * 0.05, smoothstep(0.2, 0.8, deck)), haze, fog * fog * 0.92 + fog * 0.08);
     col += trans * deep;
     if (front > 1e4) front = s1;
     trans = 0.0;
@@ -705,12 +727,15 @@ varying vec2 vUv;
 varying vec3 vWorld;
 varying float vAlpha;
 varying float vPhase;
+varying float vSize;
 uniform float uTime;
 uniform vec2 uWind;
 void main() {
   vUv = uv;
   vec3 centre = (modelMatrix * vec4(position, 1.0)).xyz;
-  float drift = mod(uTime * 0.3 + wisp.x * 30.0, 32.0) - 16.0;
+  // big veils drift further and a little faster than the small rim wisps
+  float span = max(32.0, wisp.y * 1.4);
+  float drift = mod(uTime * (0.3 + wisp.y * 0.006) + wisp.x * span, span) - span * 0.5;
   vec2 wd = normalize(uWind + vec2(1e-4));
   centre.xz += wd * drift;
   vec3 toCam = cameraPosition - centre;
@@ -719,10 +744,11 @@ void main() {
   vec3 p = centre + right * (uv.x - 0.5) * wisp.y + vec3(0.0, 1.0, 0.0) * (uv.y - 0.5) * wisp.z;
   vWorld = p;
   // a wisp fades in and out over its drift and never sits in front of the eye
-  float life = 1.0 - smoothstep(9.0, 16.0, abs(drift));
+  float life = 1.0 - smoothstep(span * 0.3, span * 0.5, abs(drift));
   float near = smoothstep(6.0, 22.0, length(toCam));
   vAlpha = wisp.w * life * near;
   vPhase = wisp.x;
+  vSize = wisp.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }
 `
@@ -733,22 +759,30 @@ varying vec2 vUv;
 varying vec3 vWorld;
 varying float vAlpha;
 varying float vPhase;
+varying float vSize;
 uniform sampler3D uNoise;
 uniform float uTime;
 uniform vec3 uSunColor;
 uniform vec3 uShadowColor;
 ${SKY_GLSL}
 void main() {
-  vec3 q = vWorld * 0.045 + vec3(vPhase * 3.7, uTime * 0.006, vPhase);
-  float n = texture(uNoise, q).r * 0.65 + texture(uNoise, q * 2.3 + 0.4).g * 0.35;
+  // streaky along the wind, features sized to the sheet
+  float k = 1.35 / vSize;
+  vec3 w = vWorld;
+  vec3 q = vec3(w.x * 0.92 + w.z * 0.4, w.y * 2.2, w.z * 0.92 - w.x * 0.4) * vec3(k * 0.45, k, k) + vec3(vPhase * 3.7, uTime * 0.004, vPhase);
+  float n = texture(uNoise, q).r * 0.6 + texture(uNoise, q * 2.7 + 0.4).g * 0.4;
   vec2 c = (vUv - 0.5) * 2.0;
-  float mask = (1.0 - smoothstep(0.25, 1.0, length(c * vec2(1.0, 1.15))));
-  float a = smoothstep(0.3, 0.8, n * (0.55 + mask * 0.6)) * mask * vAlpha;
+  float mask = 1.0 - smoothstep(0.2, 1.0, length(c * vec2(1.0, 1.25)));
+  float a = smoothstep(0.32, 0.8, n * (0.5 + mask * 0.65)) * mask * vAlpha;
   if (a < 0.003) discard;
-  vec3 view = normalize(vWorld - cameraPosition);
+  vec3 ray = vWorld - cameraPosition;
+  float dist = length(ray);
+  vec3 view = ray / dist;
   float fwd = pow(max(dot(view, uSunDir), 0.0), 4.0);
   float ref = dot(skyLookup(normalize(vec3(-uSunDir.x, 0.15, -uSunDir.z))), vec3(0.2126, 0.7152, 0.0722));
-  vec3 col = (uSunColor * (0.5 + fwd * 1.4) * mix(0.6, 1.0, n) + uShadowColor * 1.1) * ref;
+  vec3 col = (uSunColor * (0.5 + fwd * 1.4) * mix(0.55, 1.0, n) + uShadowColor * 1.1) * ref;
+  // far veils fade into the air like everything else out there
+  col = mix(col, hazeColor(view), 1.0 - exp(-dist / 1600.0));
   gl_FragColor = vec4(col * a, a);
 }
 `
@@ -925,19 +959,44 @@ function buildMassif(r: number, h: number, seed: number, seg: number): THREE.Buf
     let ridge = 0
     let amp = 0.6
     let f = 1.15
-    for (let o = 0; o < 5; o++) {
-      const n = fbm2(x * f + seed * 1.3, z * f - seed * 0.7, 1)
+    for (let o = 0; o < 6; o++) {
+      // each octave is warped by the last, so ridges branch into spurs
+      const n = fbm2(x * f + seed * 1.3 + ridge * 0.6, z * f - seed * 0.7, 1)
       ridge += (1 - Math.abs(n * 2 - 1)) ** 2 * amp
-      amp *= 0.48
+      amp *= 0.5
       f *= 2.2
     }
-    // separate peaks rise where the ridged noise and the spine meet
+    // gullies cut down the faces
+    const gully = 1 - (1 - Math.abs(fbm2(x * 9 + seed, z * 3, 2) * 2 - 1)) ** 4 * 0.18
     // past the foot the skirt plunges well below the cloud deck, so no flat
     // edge of the grid can show through a thin patch of cloud as a line
     const plunge = Math.max(0, d - 0.85) / 0.15
-    pos.setY(i, h * Math.pow(fall, 0.8) * (0.15 + ridge * 1.45) - plunge * plunge * 320)
+    pos.setY(i, h * Math.pow(fall, 0.8) * (0.12 + ridge * 1.55) * gully - plunge * plunge * 320)
   }
   geo.computeVertexNormals()
+  // rock with darker strata, snow on the gentler upper slopes, dark forest
+  // low down where the cloud tops break against the range
+  const nor = geo.attributes.normal as THREE.BufferAttribute
+  const col = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / h
+    const ny = nor.getY(i)
+    const n = fbm2(pos.getX(i) * 0.01 + seed, pos.getZ(i) * 0.01, 2)
+    const strata = 0.82 + 0.2 * Math.sin(y * 26 + n * 5)
+    let cr = 0.3 * strata
+    let cg = 0.3 * strata
+    let cb = 0.33 * strata
+    const forest = 1 - Math.min(1, Math.max(0, (y - 0.12) / 0.18))
+    cr += (0.09 - cr) * forest
+    cg += (0.12 - cg) * forest
+    cb += (0.11 - cb) * forest
+    const snow = Math.min(1, Math.max(0, (y - 0.78 - n * 0.18) / 0.08)) * Math.min(1, Math.max(0, (ny - 0.45) / 0.2))
+    cr += (0.62 - cr) * snow
+    cg += (0.64 - cg) * snow
+    cb += (0.7 - cb) * snow
+    col.set([cr, cg, cb], i * 3)
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
   return geo
 }
 
@@ -1063,6 +1122,10 @@ export class Skyscape implements RealmPart {
     if (o.layers.isEnabled(DEPTH_LAYER)) return
     const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
     if (!mat || mat.transparent || !mat.depthWrite) return
+    // meshes whose shaders move their vertices would land in the copy at the
+    // wrong place, a hard edge in the clouds; the main pass's depth test
+    // covers them instead
+    if ((mat as THREE.ShaderMaterial).isShaderMaterial || mat.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return
     const geo = mesh.geometry
     if (!geo.boundingSphere) geo.computeBoundingSphere()
     const r = (geo.boundingSphere?.radius ?? 0) * mesh.matrixWorld.getMaxScaleOnAxis()
@@ -1126,7 +1189,7 @@ export class Skyscape implements RealmPart {
     }
 
     const sunColor = new THREE.Color(1.0, 0.64, 0.23).multiplyScalar(3.2)
-    const shadowColor = new THREE.Color(0.27, 0.33, 0.64).multiplyScalar(0.78)
+    const shadowColor = new THREE.Color(0.29, 0.3, 0.66).multiplyScalar(0.78)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.4, z, r * 1.45))
 
@@ -1238,6 +1301,20 @@ export class Skyscape implements RealmPart {
       [-22, -6, -24, 24, 0.36],
       [30, -4, -26, 28, 0.34],
       [-30, -17, -10, 38, 0.42],
+      // veils further out at different heights; some cross in front of the
+      // far islands
+      [-75, 62, -300, 170, 0.42],
+      [90, 22, -240, 120, 0.38],
+      [70, -2, 200, 140, 0.45],
+      [150, 26, 430, 210, 0.38],
+      [-30, -14, 160, 110, 0.42],
+      [180, 14, -150, 130, 0.4],
+      [330, 42, -310, 190, 0.34],
+      [-90, -12, -120, 120, 0.42],
+      [60, -22, -70, 90, 0.42],
+      [-210, 30, 80, 160, 0.38],
+      [250, -6, 40, 140, 0.4],
+      [-320, 55, -180, 220, 0.32],
     ]
     const quads: THREE.BufferGeometry[] = []
     spots.forEach(([x, y, z, w, a], i) => {
@@ -1245,7 +1322,7 @@ export class Skyscape implements RealmPart {
       const pos = g.attributes.position as THREE.BufferAttribute
       for (let j = 0; j < pos.count; j++) pos.setXYZ(j, x, y, z)
       const attr = new Float32Array(pos.count * 4)
-      for (let j = 0; j < pos.count; j++) attr.set([i * 0.173 + 0.05, w, w * 0.32, a], j * 4)
+      for (let j = 0; j < pos.count; j++) attr.set([i * 0.173 + 0.05, w, w * (w > 60 ? 0.22 : 0.32), a], j * 4)
       g.setAttribute('wisp', new THREE.BufferAttribute(attr, 4))
       g.deleteAttribute('normal')
       quads.push(g)
@@ -1299,7 +1376,7 @@ export class Skyscape implements RealmPart {
       aoMap: arm,
       roughnessMap: arm,
     })
-    patchAerial(this.cliffMaterial, 'skyscape-far-cliff', this.skyUniforms, 1300)
+    patchAerial(this.cliffMaterial, 'skyscape-far-cliff', this.skyUniforms)
     const plainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 })
     patchAerial(plainMaterial, 'skyscape-far-plain', this.skyUniforms)
     this.islandMaterials.push(this.cliffMaterial, plainMaterial)
@@ -1310,7 +1387,7 @@ export class Skyscape implements RealmPart {
       [0x1f3320, 1300], // foliage
       [0x5a2c1e, 1300], // wood
       [0x2a2a2e, 1300], // roofs
-      [0x5b5e66, 2300], // the far ranges: much longer air to the eye
+      [null, 2300], // the far ranges, coloured per vertex: much longer air to the eye
     ]
     const tint = new THREE.Color()
 
@@ -1318,6 +1395,7 @@ export class Skyscape implements RealmPart {
     const lowPoly = opts.tier === 'phone'
     const parts: THREE.BufferGeometry[][] = [[], [], [], [], []]
     for (const isl of FAR_ISLANDS) {
+      const marks = parts.map((l) => l.length)
       const rand = rng(isl.seed)
       const depth = isl.r * (1.5 + rand() * 0.8)
       const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 32 : 48, lowPoly ? 14 : 24, true)
@@ -1397,6 +1475,10 @@ export class Skyscape implements RealmPart {
         plant(buildCedar(rand, isl.r * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
         plant(buildCedar(rand, isl.r * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
       }
+      // the air between the eye and this island, read per vertex
+      parts.forEach((l, k) => {
+        for (let m = marks[k] ?? 0; m < l.length; m++) l[m]!.userData.air = isl.air ?? 1300
+      })
     }
     // the far ranges
     const ranges: THREE.BufferGeometry[] = []
@@ -1412,6 +1494,7 @@ export class Skyscape implements RealmPart {
       const [hex, fadeLength] = looks[i] ?? [null, 1300]
       if (hex !== null) tint.set(hex)
       const cleaned = list.map((g) => {
+        const air = (g.userData.air as number | undefined) ?? fadeLength
         const ng = g.index ? g.toNonIndexed() : g
         if (ng !== g) g.dispose()
         for (const name of Object.keys(ng.attributes)) {
@@ -1424,20 +1507,28 @@ export class Skyscape implements RealmPart {
           ng.setAttribute('color', new THREE.BufferAttribute(c, 3))
         }
         if (!ng.attributes.uv) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2))
-        if (i > 0) ng.setAttribute('aerial', new THREE.BufferAttribute(new Float32Array(n).fill(fadeLength), 1))
+        ng.setAttribute('aerial', new THREE.BufferAttribute(new Float32Array(n).fill(air), 1))
         return ng
       })
       if (i === 0) {
         const merged = mergeGeometries(cleaned)
         cleaned.forEach((g) => g.dispose())
-        this.addFar(merged, this.cliffMaterial)
+        this.addFar(merged, this.cliffMaterial, true)
+      } else if (i === 5) {
+        // the ranges stay out of the depth copy: the cloud deck is traced
+        // through them and the main pass's depth test settles the overlap, so
+        // their long low silhouettes never cut the clouds at the trace's
+        // coarse resolution
+        const merged = mergeGeometries(cleaned)
+        cleaned.forEach((g) => g.dispose())
+        this.addFar(merged, plainMaterial, false)
       } else {
         plainParts.push(...cleaned)
       }
     })
     const plain = mergeGeometries(plainParts)
     plainParts.forEach((g) => g.dispose())
-    this.addFar(plain, plainMaterial)
+    this.addFar(plain, plainMaterial, true)
 
     loadPbr('cliff', opts.tier)
       .then((set) => {
@@ -1455,15 +1546,14 @@ export class Skyscape implements RealmPart {
       })
   }
 
-  private addFar(geo: THREE.BufferGeometry, mat: THREE.Material): void {
+  private addFar(geo: THREE.BufferGeometry, mat: THREE.Material, depth: boolean): void {
     this.islandGeometries.push(geo)
     const mesh = new THREE.Mesh(geo, mat)
     mesh.castShadow = false
     mesh.receiveShadow = false
     mesh.frustumCulled = false
-    // the clouds stop at the far islands and ranges, so they go into the
-    // depth copy
-    mesh.layers.enable(DEPTH_LAYER)
+    // the clouds stop at the far islands, so they go into the depth copy
+    if (depth) mesh.layers.enable(DEPTH_LAYER)
     this.object.add(mesh)
   }
 
@@ -1494,8 +1584,8 @@ export class Skyscape implements RealmPart {
     }
     // the sea drifts slowly with the wind
     const w = realmUniforms.uWind.value
-    this.drift.x += w.x * frame.dt * 1.6 * frame.motion
-    this.drift.y += w.y * frame.dt * 1.6 * frame.motion
+    this.drift.x += w.x * frame.dt * 2.6 * frame.motion
+    this.drift.y += w.y * frame.dt * 2.6 * frame.motion
   }
 
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
@@ -1532,9 +1622,9 @@ export class Skyscape implements RealmPart {
     ;(this.compositeMaterial.uniforms.uInvProj!.value as THREE.Matrix4).copy(camera.projectionMatrixInverse)
     ;(this.compositeMaterial.uniforms.uProj!.value as THREE.Matrix4).copy(camera.projectionMatrix)
     // clouds stay in front of a sky mesh drawn near the far plane
-    u.uMaxScene!.value = camera.far * 0.85
+    u.uMaxScene!.value = camera.far * 0.95
     this.compositeMaterial.uniforms.uMaxFront!.value = camera.far * 0.8
-    this.compositeMaterial.uniforms.uMaxScene!.value = camera.far * 0.85
+    this.compositeMaterial.uniforms.uMaxScene!.value = camera.far * 0.95
 
     const prevTarget = renderer.getRenderTarget()
     const prevAutoClear = renderer.autoClear
