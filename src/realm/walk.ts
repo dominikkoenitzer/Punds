@@ -22,8 +22,8 @@ interface Key {
 const KEYS: Key[] = [
   { x: 1.6, y: 1.55, z: 21.0, yaw: Math.PI + 0.5, pitch: -0.3, focus: 9 },
   { x: 1.5, y: 1.6, z: 21.2, yaw: 4.25, pitch: -0.1, focus: 40 },
-  { x: 0.9, y: 1.62, z: 20.6, yaw: 5.95, pitch: 0.02, focus: 14 },
-  { x: 0.2, y: 1.62, z: 16.4, yaw: 6.27, pitch: 0.035, focus: 18 },
+  { x: 0.55, y: 1.62, z: 20.6, yaw: 6.0, pitch: 0.02, focus: 14 },
+  { x: 0.0, y: 1.62, z: 16.4, yaw: 6.28, pitch: 0.035, focus: 18 },
   { x: -0.3, y: 1.62, z: 9.0, yaw: 6.3, pitch: 0.035, focus: 20 },
   { x: -0.35, y: 1.62, z: 0.8, yaw: 6.24, pitch: 0.06, focus: 16 },
   { x: 0.05, y: 1.66, z: -6.0, yaw: 6.2, pitch: 0.15, focus: 10 },

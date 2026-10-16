@@ -11,7 +11,7 @@ const BW = POND_BOUNDS.xMax - POND_BOUNDS.xMin
 const BH = POND_BOUNDS.zMax - POND_BOUNDS.zMin
 const FALL_HEIGHT = 40
 const GRAVITY = 9.81
-const LIP_SPEED = 1.9 // metres per second over the lip, horizontal
+const LIP_SPEED = 3.0 // metres per second over the lip, horizontal
 const SUN_RADIANCE = new THREE.Vector3(1.0, 0.82, 0.62).multiplyScalar(3.0)
 const SKY_RADIANCE = new THREE.Vector3(0.42, 0.52, 0.68).multiplyScalar(0.55)
 const MAX_DROPS = 12
@@ -147,6 +147,9 @@ uniform float uOutHalf;
 uniform vec4 uOutflow;
 uniform vec2 uLip;
 uniform float uTime;
+uniform vec2 uWind;
+uniform float uGust;
+uniform float uDebugView;
 varying vec3 vWorld;
 varying vec2 vUv;
 varying vec2 vChan;
@@ -189,18 +192,26 @@ void main() {
   vec2 texelWorld = uSimTexel * uBounds.zw;
   vec2 simGrad = vec2(hr - hl, hu - hd) / (2.0 * texelWorld);
 
-  vec2 still = detailGrad(vWorld.xz * 1.3, uTime) * 0.035;
+  // A still pond: a slow broad swell everywhere, fine ripples only inside
+  // the cat's-paws the wind pushes across the surface.
+  vec2 windDir = normalize(uWind + vec2(1e-4));
+  vec2 broad = pNoised(vWorld.xz * 0.16 + vec2(uTime * 0.02, -uTime * 0.015)).yz * 0.16 * 0.012;
+  float paw = pNoise(vWorld.xz * 0.11 - windDir * uTime * 0.06) * 0.65 + pNoise(vWorld.xz * 0.27 - windDir * uTime * 0.1 + 3.0) * 0.35;
+  paw = smoothstep(0.58, 0.82, paw) * (0.35 + 0.65 * uGust);
+  vec2 still = broad + detailGrad(vWorld.xz * 0.55 - windDir * uTime * 0.12, uTime) * mix(0.0015, 0.01, paw);
   vec2 flowP = vec2(local.x * 1.4 - uTime * speed * 1.4, local.y * 3.2);
   vec2 flowG = pNoised(flowP).yz * 0.5 + pNoised(flowP * 2.3 + 4.0).yz * 0.25;
   vec2 flowGrad = vec2(flowG.x * chanDir + flowG.y * chanSide) * (0.05 + 0.1 * flowT);
-  vec2 grad = simGrad * 3.0 + mix(still, flowGrad, inChan);
+  vec2 grad = simGrad * 2.5 + mix(still, flowGrad, inChan);
   // the detail fades with distance so the far surface does not shimmer
   grad *= mix(1.0, 0.45, smoothstep(10.0, 60.0, dist));
   vec3 N = normalize(vec3(-grad.x, 1.0, -grad.y));
 
   // Fresnel, Schlick with water's F0
   float cosV = clamp(dot(N, V), 0.0, 1.0);
-  float F = 0.02 + 0.98 * pow(1.0 - cosV, 5.0);
+  // a little below Schlick at middle angles, so the body of the water and
+  // the koi read through it and only the far surface turns to mirror
+  float F = 0.015 + 0.985 * pow(1.0 - cosV, 6.0);
 
   // planar reflection, distorted by the surface normal
   vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
@@ -228,7 +239,7 @@ void main() {
     if (kd < 4.0) column = min(column, kd);
   }
   float path = column / cosT;
-  float T = exp(-path * 1.45);
+  float T = exp(-path * 3.2);
 
   // in-scattered light: clear green in the shallows, deep jade further in
   vec3 albedo = mix(uDeep, uShallow, exp(-bed * 2.2));
@@ -253,6 +264,10 @@ void main() {
   col = mix(col, foam, lipFoam * 0.8);
   alpha = mix(alpha, 1.0, lipFoam * 0.8);
   gl_FragColor = vec4(col * edge, alpha * edge);
+  if (uDebugView > 0.5 && uDebugView < 1.5) gl_FragColor = vec4(bed, column, T, 1.0);
+  if (uDebugView > 1.5 && uDebugView < 2.5) gl_FragColor = vec4(refl, 1.0);
+  if (uDebugView > 2.5 && uDebugView < 3.5) gl_FragColor = vec4(scatter * 20.0, 1.0);
+  if (uDebugView > 3.5) gl_FragColor = vec4(0.0, 0.0, 0.0, alpha * edge);
 }
 `
 
@@ -519,7 +534,7 @@ void main() {
   float alpha = cov * sides * mix(0.5 + 0.4 * F, 0.82, aer);
   alpha *= mix(1.0, 0.6, smoothstep(0.2, 0.8, v));
   // into the clouds
-  alpha *= 1.0 - smoothstep(0.55, 1.0, v);
+  alpha *= 1.0 - smoothstep(0.65, 1.0, v);
   alpha = clamp(alpha * uOpacity, 0.0, 1.0);
   gl_FragColor = vec4(col * alpha, alpha);
 }
@@ -555,7 +570,7 @@ void main() {
   float size = uMist > 0.5 ? aSeed.w * (2.2 + tt * 1.4) : aSeed.w * (0.04 + tt * 0.1);
   gl_PointSize = clamp(size * uScale / -mv.z, 1.5, 384.0);
   float v = tt / uFallTime;
-  vAlpha = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.62, 1.0, v));
+  vAlpha = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.7, 1.0, v));
   if (uMist > 0.5) vAlpha = sin(life * 3.14159) * (1.0 - smoothstep(0.85, 1.02, v));
 }
 `
@@ -732,9 +747,12 @@ export class Pond implements RealmPart {
         uSunDir: { value: SUN_DIRECTION },
         uSunColor: { value: SUN_RADIANCE },
         uSkyColor: { value: SKY_RADIANCE },
-        uShallow: { value: new THREE.Vector3(0.11, 0.16, 0.075) },
-        uDeep: { value: new THREE.Vector3(0.012, 0.05, 0.036) },
+        uShallow: { value: new THREE.Vector3(0.05, 0.08, 0.032) },
+        uDeep: { value: new THREE.Vector3(0.009, 0.036, 0.022) },
         uTime: realmUniforms.uTime,
+        uWind: realmUniforms.uWind,
+        uGust: realmUniforms.uGust,
+        uDebugView: { value: typeof location !== 'undefined' ? Number(new URLSearchParams(location.search).get('pondDebug') ?? 0) : 0 },
       },
       transparent: true,
       depthWrite: true,
@@ -798,7 +816,7 @@ export class Pond implements RealmPart {
         phase: r() * 10,
         size: 0.58 + r() * 0.3,
         seed: r() * 100,
-        depthGoal: 0.2 + r() * 0.35,
+        depthGoal: 0.12 + r() * 0.3,
         rise: 0,
       })
     }
@@ -968,11 +986,8 @@ export class Pond implements RealmPart {
       color: 0xffffff,
       roughness: 0.32,
       metalness: 0,
-      clearcoat: 0.55,
-      clearcoatRoughness: 0.18,
-      sheen: 0.25,
-      sheenRoughness: 0.5,
-      sheenColor: new THREE.Color(0.9, 0.85, 0.7),
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.25,
       side: THREE.DoubleSide,
       alphaHash: true,
     })
@@ -1024,8 +1039,8 @@ vec3 kp = vKoiPos;
 float fin = vKoiInfo.y;
 float root = vKoiInfo.z;
 float top = smoothstep(-0.03, 0.06, kp.y);
-vec3 white = vec3(0.86, 0.84, 0.78);
-vec3 red = vec3(0.62, 0.05, 0.015);
+vec3 white = vec3(0.8, 0.78, 0.72);
+vec3 red = vec3(0.5, 0.022, 0.006);
 vec3 black = vec3(0.012, 0.012, 0.014);
 float big = kNoise3(kp * vec3(3.4, 4.6, 4.6) + seed);
 float spots = kNoise3(kp * vec3(14.0, 16.0, 16.0) + seed * 1.7);

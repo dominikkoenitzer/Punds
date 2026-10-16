@@ -21,7 +21,7 @@ import type { RealmPart, Tier } from './types'
 // pond's pebbles) per pixel, weighted by the layout and sharpened by height so
 // the borders read as material meeting material, not as a cross-fade.
 
-const RIM_DROP = 0.55 // how far the lip rounds down before the cliff starts
+const RIM_DROP = 0.4 // how far the lip rounds down before the cliff starts
 const UNDERSIDE_DEPTH = 34
 
 function smooth(a: number, b: number, v: number): number {
@@ -159,7 +159,7 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
       const x = Math.cos(a) * ISLAND_RX * k * r
       const z = Math.sin(a) * ISLAND_RZ * k * r
       let y = groundHeight(x, z)
-      const lip = smooth(0.93, 1, r)
+      const lip = smooth(0.965, 1, r)
       y -= lip * lip * RIM_DROP
       pos.push(x, y, z)
       uv.push(x, z)

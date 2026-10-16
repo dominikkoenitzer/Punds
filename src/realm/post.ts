@@ -184,6 +184,7 @@ uniform float uNear;
 uniform float uFar;
 uniform float uVignette;
 uniform float uSaturation;
+uniform vec3 uTint;
 uniform float uWake;
 uniform float uTime;
 uniform vec2 uResolution;
@@ -222,6 +223,8 @@ void main() {
 
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(luma), col, uSaturation), 0.0);
+  // white balance: a little warmer than the panorama, like late sun
+  col *= uTint;
 
   // a lens vignette, wider than it is tall
   vec2 q = (vUv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
@@ -367,6 +370,7 @@ export class Pipeline {
         uFar: { value: 1000 },
         uVignette: { value: 0.25 },
         uSaturation: { value: 1 },
+        uTint: { value: new THREE.Vector3(1.06, 1.0, 0.9) },
         uWake: { value: 1 },
         uTime: { value: 0 },
         uResolution: { value: new THREE.Vector2(1, 1) },
