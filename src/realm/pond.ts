@@ -496,8 +496,9 @@ varying vec3 vNormal;
 ${NOISE_GLSL}
 // one rope of water: a lane across the sheet that wanders as it falls
 float rope(float s, float v, float k) {
-  float centre = (k - 1.0) * 0.66 * smoothstep(0.03, 0.26, v) + 0.1 * sin(v * 9.0 + k * 2.1 + uSeed);
-  float width = mix(1.3, 0.26 + 0.08 * k, smoothstep(0.02, 0.3, v));
+  float swing = 0.09 * sin(uTime * 0.6 + k * 2.3 + v * 5.0) * smoothstep(0.05, 0.4, v);
+  float centre = (k - 1.0) * 0.95 * smoothstep(0.03, 0.35, v) + 0.1 * sin(v * 9.0 + k * 2.1 + uSeed) + swing;
+  float width = mix(1.3, 0.22 + 0.06 * k, smoothstep(0.02, 0.3, v));
   float d = (s - centre) / width;
   return exp(-d * d);
 }
@@ -522,11 +523,11 @@ void main() {
   float sides = 1.0 - smoothstep(0.55 + 0.3 * warp, 1.0, abs(s));
   // white water: the channel breaking over the lip, the ledges it strikes,
   // and the air it gathers as it falls
-  float lip = 1.0 - smoothstep(0.0, 0.07, v);
+  float lip = 1.0 - smoothstep(0.0, 0.11, v);
   float churn = smoothstep(0.25, 0.75, pNoise(vec2(s * 9.0, flow * 3.5)) + lip * 0.4 + contact * 0.5);
   float aer = mix(0.15, 0.9, smoothstep(0.02, 0.3, v)) * (0.55 + 0.45 * body);
   aer = max(aer, max(lip, contact) * (0.7 + 0.3 * churn));
-  cov = max(cov, max(lip, contact * 0.8) * churn * sides);
+  cov = max(cov, max(lip * (0.75 + 0.25 * churn), contact * 0.8 * churn) * sides);
 
   vec3 V = normalize(cameraPosition - vWorld);
   vec3 N = normalize(vNormal);
@@ -536,7 +537,7 @@ void main() {
   float wrap = clamp(dot(N, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
   float through = pow(clamp(dot(-V, uSunDir), 0.0, 1.0), 6.0);
   vec3 glass = vec3(0.05, 0.1, 0.085) * (uSkyColor + uSunColor * 0.3) + uSkyColor * 2.4 * F;
-  vec3 white = vec3(0.9, 0.93, 0.95) * (uSkyColor * 1.3 + uSunColor * (0.16 + 0.4 * wrap));
+  vec3 white = vec3(0.9, 0.93, 0.95) * (uSkyColor * 1.3 + uSunColor * (0.16 + 0.4 * wrap)) * (1.0 + 0.5 * lip);
   vec3 col = mix(glass, white, aer) * (0.75 + 0.35 * fine + 0.2 * packets);
   col += uSunColor * through * 0.35 * (1.0 - 0.5 * aer);
   col += uSunColor * pow(max(dot(N, normalize(uSunDir + V)), 0.0), 80.0) * (1.0 - aer) * 2.0;
@@ -556,37 +557,41 @@ const SPRAY_VERT = /* glsl */ `
 attribute vec4 aSeed; // across, phase, spread, size
 uniform sampler2D uPath;
 uniform float uTime;
-uniform float uFallTime;
 uniform float uLife;
 uniform vec3 uSide;
 uniform vec2 uWind;
 uniform float uScale;
-uniform float uMist;
+uniform float uKind; // 0 spray, 1 mist plume, 2 veil
 uniform vec3 uSunDir;
 varying float vAlpha;
 varying float vSeed;
 varying float vBow;
+varying float vKind;
 void main() {
   float life = fract(uTime / uLife + aSeed.y);
   vSeed = aSeed.y;
-  bool mist = uMist > 0.5;
-  // spray leaves the lip and the ledges; mist gathers where the fall thins
-  float v = mist ? mix(0.35, 1.0, life) : mix(0.02, 0.9, pow(life, 0.8));
-  vec4 path = texture2D(uPath, vec2(v, 0.5));
+  vKind = uKind;
+  bool plume = uKind > 0.5 && uKind < 1.5;
+  bool veil = uKind > 1.5;
+  // spray leaves the lip and the ledges; the veil hangs around the ropes;
+  // the plume billows where the fall meets the cloud deck
+  float v = plume ? mix(0.72, 1.0, aSeed.z * 0.6 + life * 0.4) : veil ? mix(0.04, 0.85, life) : mix(0.02, 0.9, pow(life, 0.8));
+  vec4 path = texture2D(uPath, vec2(min(v, 1.0), 0.5));
   vec3 out3 = normalize(vec3(path.x, 0.0, path.z));
-  float spread = aSeed.z * (0.3 + v * v * 6.0) * (mist ? 2.5 : 1.0);
-  vec3 p = path.xyz + uSide * (aSeed.x * path.w + spread * sign(aSeed.x) * 0.6) + out3 * spread * 0.8;
-  // mist drifts off with the wind and billows up a little
-  if (mist) p += vec3(uWind.x, 0.0, uWind.y) * life * 6.0 + vec3(0.0, life * 2.5, 0.0);
+  float spread = aSeed.z * (veil ? 0.4 + v * 2.5 : plume ? 2.0 + life * 6.0 : 0.3 + v * v * 6.0);
+  vec3 p = path.xyz + uSide * (aSeed.x * path.w * (veil ? 1.35 : 1.0) + spread * sign(aSeed.x) * 0.6) + out3 * spread * 0.8;
+  if (plume) p += vec3(uWind.x, 0.0, uWind.y) * life * 9.0 + vec3(0.0, life * 4.0, 0.0);
+  if (veil) p += vec3(uWind.x, 0.0, uWind.y) * v * 1.5;
   vec4 mv = viewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  float size = mist ? aSeed.w * (3.0 + v * 7.0) : aSeed.w * (0.14 + v * 0.55);
-  gl_PointSize = clamp(size * uScale / -mv.z, 1.5, 420.0);
+  float size = plume ? aSeed.w * (5.0 + life * 9.0) : veil ? aSeed.w * (0.5 + v * 2.2) : aSeed.w * (0.14 + v * 0.55);
+  gl_PointSize = clamp(size * uScale / -mv.z, 1.5, 480.0);
   vAlpha = smoothstep(0.0, 0.08, life) * (1.0 - smoothstep(0.75, 0.95, v));
-  if (mist) vAlpha = sin(life * 3.14159) * smoothstep(0.35, 0.55, v) * (1.0 - smoothstep(0.85, 1.0, v));
-  // a rainbow stands about 41 degrees from the point opposite the sun
-  float cosA = dot(normalize(p - cameraPosition), -uSunDir);
-  vBow = cosA;
+  if (veil) vAlpha = sin(life * 3.14159) * (1.0 - smoothstep(0.7, 0.9, v));
+  if (plume) vAlpha = sin(life * 3.14159);
+  // the angle to the point opposite the sun, for the faint bow, and to the
+  // sun itself, for the glow of light scattered forward through the droplets
+  vBow = dot(normalize(p - cameraPosition), -uSunDir);
 }
 `
 
@@ -594,18 +599,19 @@ const SPRAY_FRAG = /* glsl */ `
 uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform float uOpacity;
-uniform float uMist;
 varying float vAlpha;
 varying float vSeed;
 varying float vBow;
+varying float vKind;
 ${NOISE_GLSL}
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float r = length(c) * 2.0;
   float n = pNoise(gl_PointCoord * 4.0 + vSeed * 37.0);
   float a = exp(-r * r * 3.5) * (0.7 + 0.6 * n) * (1.0 - smoothstep(0.9, 1.0, r)) * vAlpha * uOpacity;
-  vec3 col = vec3(0.92, 0.94, 0.96) * (uSkyColor * 1.5 + uSunColor * 0.45);
-  if (uMist > 0.5) {
+  float forward = pow(max(-vBow, 0.0), 6.0);
+  vec3 col = vec3(0.92, 0.94, 0.96) * (uSkyColor * 1.5 + uSunColor * (0.45 + 1.6 * forward));
+  if (vKind > 0.5) {
     // red outside at 42 degrees, violet inside at 40, faint
     float deg = degrees(acos(clamp(vBow, -1.0, 1.0)));
     float band = clamp((deg - 39.5) / 3.0, 0.0, 1.0);
@@ -1128,7 +1134,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
     const fallTime = Math.sqrt((2 * FALL_HEIGHT) / GRAVITY)
     const dir = new THREE.Vector3(OUT_DIR.x, 0, OUT_DIR.y)
     const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize()
-    const width = OUTFLOW.halfWidth * 1.15
+    const width = OUTFLOW.halfWidth * 1.5
     const rows = phone ? 80 : 140
     const cols = phone ? 10 : 18
     const rock = new THREE.Vector3()
@@ -1168,7 +1174,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       const r0 = Math.hypot(bx, bz)
       for (let i = 0; i < tts.length; i++) {
         const tt = tts[i]!
-        const spread = s * width * 0.004 * GRAVITY * tt * tt
+        const spread = s * width * 0.014 * GRAVITY * tt * tt
         const ro = r0 + LIP_SPEED * tt + push[i]! + offset * Math.min(1, tt * 3)
         out.push(ux * ro + side.x * spread, lip.y - 0.5 * GRAVITY * tt * tt, uz * ro + side.z * spread)
       }
@@ -1255,16 +1261,18 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       pathData[i * 4] = THREE.DataUtils.toHalfFloat(centre[i * 3]!)
       pathData[i * 4 + 1] = THREE.DataUtils.toHalfFloat(centre[i * 3 + 1]!)
       pathData[i * 4 + 2] = THREE.DataUtils.toHalfFloat(centre[i * 3 + 2]!)
-      pathData[i * 4 + 3] = THREE.DataUtils.toHalfFloat(width * (1 + 0.004 * GRAVITY * tt * tt))
+      pathData[i * 4 + 3] = THREE.DataUtils.toHalfFloat(width * (1 + 0.014 * GRAVITY * tt * tt))
     }
     this.pathTex = new THREE.DataTexture(pathData, PATH, 1, THREE.RGBAFormat, THREE.HalfFloatType)
     this.pathTex.minFilter = THREE.LinearFilter
     this.pathTex.magFilter = THREE.LinearFilter
     this.pathTex.needsUpdate = true
 
+    // kind 0 spray, 1 the mist plume at the cloud deck, 2 the veil of fine
+    // falling spray around the ropes
     const sprays = phone
-      ? [{ n: 500, mist: 0, life: 2.4, op: 0.2, size: 1.3 }, { n: 48, mist: 1, life: 8, op: 0.22, size: 1.0 }]
-      : [{ n: 3000, mist: 0, life: 2.4, op: 0.13, size: 1.0 }, { n: 160, mist: 1, life: 8, op: 0.2, size: 1.0 }]
+      ? [{ n: 500, kind: 0, life: 2.4, op: 0.2, size: 1.3 }, { n: 40, kind: 1, life: 10, op: 0.2, size: 1.0 }, { n: 160, kind: 2, life: 2.8, op: 0.14, size: 1.2 }]
+      : [{ n: 3000, kind: 0, life: 2.4, op: 0.13, size: 1.0 }, { n: 120, kind: 1, life: 10, op: 0.16, size: 1.0 }, { n: 900, kind: 2, life: 2.8, op: 0.11, size: 1.0 }]
     const r = rng(9090)
     for (const s of sprays) {
       const seeds = new Float32Array(s.n * 4)
@@ -1272,7 +1280,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       for (let i = 0; i < s.n; i++) {
         seeds[i * 4] = r() * 2 - 1
         seeds[i * 4 + 1] = r()
-        seeds[i * 4 + 2] = r() ** 2 * (s.mist ? 1.2 : 0.6)
+        seeds[i * 4 + 2] = s.kind === 1 ? r() : r() ** 2 * (s.kind === 2 ? 1 : 0.6)
         seeds[i * 4 + 3] = (0.5 + r()) * s.size
       }
       const g = new THREE.BufferGeometry()
@@ -1285,11 +1293,10 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
           uPath: { value: this.pathTex },
           uTime: realmUniforms.uTime,
           uWind: realmUniforms.uWind,
-          uFallTime: { value: fallTime },
           uLife: { value: s.life },
           uSide: { value: side.clone() },
           uScale: { value: 800 },
-          uMist: { value: s.mist },
+          uKind: { value: s.kind },
           uOpacity: { value: s.op },
           uSunDir: { value: SUN_DIRECTION },
           uSunColor: { value: SUN_RADIANCE },
@@ -1304,7 +1311,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       const pts = new THREE.Points(g, mat)
       pts.frustumCulled = false
       pts.renderOrder = 3
-      pts.name = s.mist ? 'waterfall-mist' : 'waterfall-spray'
+      pts.name = ['waterfall-spray', 'waterfall-mist', 'waterfall-veil'][s.kind] ?? 'waterfall-spray'
       this.spray.push(pts)
       this.sprayMaterials.push(mat)
       this.object.add(pts)
