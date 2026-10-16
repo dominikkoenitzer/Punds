@@ -14,8 +14,8 @@ import type { Frame, RealmPart, Tier } from './types'
 const RACK_W = 2.1
 const POST_H = 2.0
 const RAILS = [1.62, 1.3, 0.98] // above the terrace
-const LINK_W = 0.3
-const LINK_H = 0.21
+const LINK_W = 0.34
+const LINK_H = 0.24
 const OLD_W = 0.18
 const OLD_H = 0.12
 // how far each link plaque hangs turned away on its cord, in radians
@@ -60,7 +60,7 @@ function nameTexture(name: string, w: number, h: number): THREE.CanvasTexture {
   g.fillStyle = 'rgba(18, 14, 11, 0.94)'
   g.textAlign = 'center'
   g.textBaseline = 'middle'
-  const size = Math.round(c.height * 0.24)
+  const size = Math.round(c.height * 0.3)
   g.font = `600 ${size}px 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif`
   // ink pools a little: draw twice, the second slightly offset and fainter
   g.shadowColor = 'rgba(18, 14, 11, 0.35)'
@@ -173,7 +173,7 @@ export class EmaRack implements RealmPart {
     this.disposables.push(linkGeo, faceGeo, hitGeo, hitMat)
     LINKS.forEach((link, i) => {
       const pivot = new THREE.Group()
-      const x = (i - (LINKS.length - 1) / 2) * 0.4
+      const x = (i - (LINKS.length - 1) / 2) * 0.44
       pivot.position.set(x, RAILS[0] - 0.012, 0.05)
       const mat = pbrMaterial(cedar, { color: new THREE.Color(1.0, 0.86, 0.68), metalness: 0, emissive: new THREE.Color(1, 0.7, 0.4), emissiveIntensity: 0 })
       mat.metalnessMap = null
