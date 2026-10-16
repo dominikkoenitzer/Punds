@@ -18,15 +18,17 @@ interface TierSettings {
   // seen from the walk stays the same
   widen: number
   focus: number
+  // how far from the walk the full density reaches, and where it bottoms out
+  near: [number, number]
   // blades drawn per instance (a small tuft), so the short lawn stays dense
   // without more per-instance work; `blades` counts instances
   strips: number
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 46, fadeEnd: 70, widen: 1, focus: 0.45 },
-  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 40, fadeEnd: 62, widen: 1.15, focus: 0.6 },
-  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 30, fadeEnd: 48, widen: 1.2, focus: 0.75 },
+  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 46, fadeEnd: 70, widen: 1, focus: 0.35, near: [4, 13] },
+  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 40, fadeEnd: 62, widen: 1.15, focus: 0.45, near: [4, 12] },
+  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 30, fadeEnd: 48, widen: 1.2, focus: 0.12, near: [4.5, 9] },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,
@@ -421,7 +423,14 @@ export class Grass implements RealmPart {
 
     // The visitor stays on the path, so the lawn near it gets more of the
     // budget than the far margins.
-    const bias = (x: number) => 1.3 - s.focus * smooth(4, 13, Math.abs(x))
+    // density by distance from the walk (the path from the landing up to the
+    // shrine), which is where the camera always is; phones spend nearly all
+    // of their blades in the first metres beside it and thin the rest out
+    const bias = (x: number, z: number) => {
+      const wz = Math.max(-16, Math.min(23, z))
+      const d = Math.hypot(x, z - wz)
+      return 1 - (1 - s.focus) * smooth(s.near[0], s.near[1], d)
+    }
 
     // lawnWeight on a 10 cm grid, and beside it the distance to the nearest
     // ground without grass, so every border (path, gravel, the terrace wall,
@@ -477,7 +486,7 @@ export class Grass implements RealmPart {
           for (let sx = step / 2; sx < size; sx += step) {
             const x = x0 + ix * size + sx
             const z = z0 + iz * size + sz
-            w += sample(lawn, x, z) * bias(x)
+            w += sample(lawn, x, z) * bias(x, z) * (1 + longness(x, z))
           }
         }
         weights[iz * nx + ix] = w
@@ -511,10 +520,12 @@ export class Grass implements RealmPart {
           const px = tx + rand() * size
           const pz = tz + rand() * size
           const lw = sample(lawn, px, pz)
-          if (lw <= 0.02 || rand() > lw * bias(px) / 1.3) continue
+          const long = longness(px, pz)
+          // the long margins are let grow full, even where the lawn thins
+          if (lw <= 0.02 || rand() > Math.min(1, lw * (1 + 1.5 * long)) * bias(px, pz)) continue
           // the rare loose clump left standing in the mown lawn
           const clump = rand() < 0.006
-          const loose = Math.max(longness(px, pz), clump ? 0.65 + rand() * 0.35 : 0)
+          const loose = Math.max(long, clump ? 0.65 + rand() * 0.35 : 0)
           // mown height drifts a little across the lawn, as real mowing does
           const mown = 0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025
           const tuftHeight = mown + (0.25 + rand() * 0.22 - mown) * loose
@@ -523,6 +534,7 @@ export class Grass implements RealmPart {
           const tufted = s.strips > 1 ? 0.15 : 0.7
           let tuft = rand() < tufted ? 2 + Math.floor(rand() * (s.strips > 1 ? 2 : 5)) : 1
           if (clump) tuft = Math.ceil((5 + rand() * 6) / s.strips)
+          else if (loose > 0.4) tuft = Math.max(tuft, Math.ceil((4 + rand() * 4) / s.strips))
           const spread = (0.025 + rand() * 0.05) * (1 + loose)
           for (let b = 0; b < tuft && n < target; b++) {
             const a = rand() * Math.PI * 2
@@ -533,11 +545,11 @@ export class Grass implements RealmPart {
             // towards every border the lawn thins and shortens instead of
             // stopping at full height
             const fade = inset(bx, bz)
-            if (bw <= 0.02 || rand() > bw * (0.2 + 0.8 * fade)) continue
+            if (bw <= 0.02 || rand() > Math.min(1, bw * (1 + 1.5 * long)) * (0.2 + 0.8 * fade)) continue
             const by = groundHeight(bx, bz) - 0.012
             const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
             const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
-            const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * s.widen
+            const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen
             const bendAmt = 0.1 + rand() * 0.3 + loose * 0.35
             const i = n * 4
             roots[i] = bx - cx
