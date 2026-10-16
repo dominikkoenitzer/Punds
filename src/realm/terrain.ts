@@ -7,7 +7,6 @@ import {
   gravelWeight,
   pondSdf,
   fbm2,
-  noise2,
   lawnWeight,
   pathWeight,
   TERRACE_FRONT_Z,
@@ -15,9 +14,11 @@ import {
   GRAVEL_HALF_WIDTH,
   LANTERNS,
   SHRINE,
+  OUTFLOW,
 } from './layout'
-import { loadPbr, pbrMaterial, type PbrSet } from './assets'
+import { loadPbr, type PbrSet } from './assets'
 import { LAWN_FLOOR_TINT } from './grass'
+import { realmUniforms } from './atmosphere'
 import type { RealmPart, Tier } from './types'
 
 // The island itself: a ground surface that follows layout.groundHeight out to
@@ -270,42 +271,180 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
   return geo
 }
 
-// The rock under the island: rings that start at the lip and narrow towards
-// a ragged point far below, pushed in and out by noise in strata so it reads
-// as layered stone that broke away from a mountain.
-// A point on the rock under the island at bearing `a` (radians, as in
-// layout.rimScale) and depth fraction `f` (0 at the lip, 1 at the bottom).
-// Shared with the rocks that are set into the cliff.
-export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.Vector3 {
-  const k = rimScale(a)
-  const rx = Math.cos(a) * ISLAND_RX * k
-  const rz = Math.sin(a) * ISLAND_RZ * k
-  const yRim = groundHeight(rx, rz) - RIM_DROP
-  // a short, almost vertical cliff band below the lip, then the long taper
-  const taper = Math.pow(1 - smooth(0.04, 1, f), 1.15) * (1 - f * 0.08)
-  const strata = Math.sin(f * 41 + noise2(a * 3, f * 6) * 2.4) * 0.5 + 0.5
-  const n = fbm2(a * 4.2 + 11, f * 9.5, 4)
-  const bulge = 1 + (n - 0.5) * 0.32 * smooth(0.02, 0.2, f) + strata * 0.035 * smooth(0.02, 0.1, f)
-  const sc = Math.max(taper * bulge, 0.004)
-  const depth = UNDERSIDE_DEPTH * (0.8 + fbm2(Math.cos(a) * 1.3, Math.sin(a) * 1.3, 2) * 0.45)
-  return out.set(rx * sc, yRim - f * depth - (f > 0 ? 0.15 : 0), rz * sc)
+// The rock under the island. Below the lip the edge breaks into blocks that
+// hold out over an undercut, then the rock narrows in strata towards a ragged
+// point far below: hard layers stand out as ledges that catch the low sun,
+// the soft layers between them are recessed, darker and damp.
+
+const TAU = Math.PI * 2
+const FALL_ANGLE = Math.atan2(OUTFLOW.z1, OUTFLOW.x1)
+const RIM_CELLS = 64 // blocks around the lip, about two metres each
+const STRATA = 15 // bands from the lip to the point
+const JOINTS = 90 // vertical joints around the island
+
+function hash3(x: number, y: number, z: number): number {
+  const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453
+  return s - Math.floor(s)
 }
 
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function noise3(x: number, y: number, z: number): number {
+  const ix = Math.floor(x)
+  const iy = Math.floor(y)
+  const iz = Math.floor(z)
+  const fx = x - ix
+  const fy = y - iy
+  const fz = z - iz
+  const ux = fx * fx * (3 - 2 * fx)
+  const uy = fy * fy * (3 - 2 * fy)
+  const uz = fz * fz * (3 - 2 * fz)
+  const z0 = lerp(
+    lerp(hash3(ix, iy, iz), hash3(ix + 1, iy, iz), ux),
+    lerp(hash3(ix, iy + 1, iz), hash3(ix + 1, iy + 1, iz), ux),
+    uy,
+  )
+  const z1 = lerp(
+    lerp(hash3(ix, iy, iz + 1), hash3(ix + 1, iy, iz + 1), ux),
+    lerp(hash3(ix, iy + 1, iz + 1), hash3(ix + 1, iy + 1, iz + 1), ux),
+    uy,
+  )
+  return lerp(z0, z1, uz)
+}
+
+function fbm3(x: number, y: number, z: number, octaves: number): number {
+  let sum = 0
+  let amp = 0.5
+  let norm = 0
+  let f = 1
+  for (let i = 0; i < octaves; i++) {
+    sum += noise3(x * f, y * f, z * f) * amp
+    norm += amp
+    amp *= 0.5
+    f *= 2.07
+  }
+  return sum / norm
+}
+
+function angleDist(a: number, b: number): number {
+  const d = (((a - b) % TAU) + TAU) % TAU
+  return Math.min(d, TAU - d)
+}
+
+// what undersidePoint found at the last point it returned: how recessed
+// (soft and damp) the layer is there, and how hard the band is
+export const undersideSample = { soft: 0, hard: 0 }
+
+// A point on the top surface at bearing `a` and fraction `r` of the way to
+// the rim, lip rounding included, as buildTop lays it out.
+export function rimTopPoint(a: number, r: number, out: THREE.Vector3): THREE.Vector3 {
+  const k = rimScale(a)
+  const x = Math.cos(a) * ISLAND_RX * k * r
+  const z = Math.sin(a) * ISLAND_RZ * k * r
+  const lip = smooth(0.965, 1, r)
+  return out.set(x, groundHeight(x, z) - lip * lip * RIM_DROP, z)
+}
+
+function undersideDepth(a: number): number {
+  return UNDERSIDE_DEPTH * (0.8 + fbm2(Math.cos(a) * 1.3, Math.sin(a) * 1.3, 2) * 0.45)
+}
+
+// A point on the rock under the island at bearing `a` (radians, as in
+// layout.rimScale) and depth fraction `f` (0 at the lip, 1 at the bottom).
+// Every noise reads the bearing through its cosine and sine, so the rock
+// closes on itself without a seam.
+export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.Vector3 {
+  const c = Math.cos(a)
+  const s = Math.sin(a)
+  const k = rimScale(a)
+  const rx = c * ISLAND_RX * k
+  const rz = s * ISLAND_RZ * k
+  const yRim = groundHeight(rx, rz) - RIM_DROP
+  // the water has worn the rock smooth and back under the fall
+  const fall = 1 - smooth(0.05, 0.2, angleDist(a, FALL_ANGLE))
+
+  // an undercut just below the lip, then the long bowl-shaped taper
+  const body = Math.pow(1 - smooth(0, 1, f), 1.15) * (1 - f * 0.08) * (1 - 0.075 * smooth(0, 0.09, f))
+
+  // strata, tilted and warped so no band runs level all the way round
+  const warp = (fbm3(c * 1.4 + 3.1, s * 1.4, f * 1.6, 3) - 0.5) * 1.8 + c * 0.4 - s * 0.25
+  const d = Math.pow(f, 0.85) * STRATA + warp
+  const band = Math.floor(d)
+  const t = d - band
+  const hn = noise3(c * 3.4 + band * 3.1, s * 3.4 - band * 1.3, band * 1.37) * 0.7 + noise3(c * 9 + band, s * 9, band * 2.1) * 0.3
+  // vertical joints break each hard layer into blocks, offset band to band
+  // like courses of masonry, each block standing out by its own amount
+  // joints wander and lean a little, so blocks never read as cut masonry
+  const ju = (a / TAU) * JOINTS + hash3(band, 8.1, 3.3) * JOINTS + (noise3(c * 6, s * 6, f * 24) - 0.5) * 0.7
+  const jc = Math.floor(ju)
+  const jl = ju - jc
+  const jid = ((jc % JOINTS) + JOINTS) % JOINTS
+  const jw = 0.1 + 0.12 * hash3(jid, band, 5.1)
+  const joint = (1 - smooth(0, jw, Math.min(jl, 1 - jl))) * (hash3(jid, band, 2.7) < 0.45 ? 1 : 0)
+  const hard =
+    smooth(0.42, 0.72, 1 - Math.abs(hn * 2 - 1)) * (0.45 + 0.55 * hash3(band, 2.2, 7.7)) * (0.55 + 0.45 * hash3(jid, band, 9.9)) * (1 - joint * 0.6)
+  // a hard layer: a sharp top that catches the light, a flat underside; each
+  // band splits at its own height so the layers are not evenly spaced
+  const split = 0.35 + hash3(band, 4.4, 1.9) * 0.45
+  const slab = smooth(0, 0.06, t) * (1 - smooth(split, split + 0.16, t))
+  const reach = smooth(0.006, 0.05, f) * (1 - 0.92 * smooth(0.45, 0.85, f)) * (1 - fall * 0.85)
+  const strata = (slab * hard - 0.2) * 0.08 * reach
+
+  const n = fbm3(c * 2.2 + 11, s * 2.2, f * 6, 4)
+  const bulge = 1 + (n - 0.5) * 0.3 * smooth(0.02, 0.2, f)
+  const grain = (fbm3(c * 11 + 5, s * 11, f * 34, 3) - 0.5) * 0.022 * smooth(0, 0.03, f) * (1 - 0.7 * smooth(0.5, 0.9, f))
+  let sc = body * (bulge + strata + grain)
+
+  // the lip breaks into blocks of different depth with cracks between them
+  const cu = (a / TAU) * RIM_CELLS + (noise3(c * 3, s * 3, 5.5) - 0.5) * 1.4
+  const ci = Math.floor(cu)
+  const cl = cu - ci
+  const id = ((ci % RIM_CELLS) + RIM_CELLS) % RIM_CELLS
+  const h1 = hash3(id, 1.7, 3.1)
+  const h2 = hash3(id, 9.2, 0.4)
+  const crack = 1 - smooth(0, 0.14, Math.min(cl, 1 - cl))
+  const fb = (0.01 + h1 * h1 * 0.085) * (1 - 0.65 * crack) * (0.8 + noise3(c * 24, s * 24, 1.3) * 0.4) * (1 - fall * 0.6)
+  const lean = 0.004 + h2 * h2 * 0.045
+  const cap = (1 - lean * smooth(0, fb, f) - crack * 0.028 * smooth(0, 0.008, f)) * (1 - smooth(fb, fb + 0.012, f))
+  sc = Math.max(sc, cap, 0.004)
+
+  // water seeps out along the bedding under each hard layer
+  undersideSample.soft = (1 - slab) * hard * reach * 14
+  undersideSample.hard = hard * slab
+  const y = yRim - f * undersideDepth(a) - (f > 0 ? 0.15 : 0)
+  return out.set(rx * sc, y, rz * sc)
+}
+
+// The depth fraction at bearing `a` that lies at height `y`, for parts that
+// hang down the rock.
+export function undersideFraction(a: number, y: number): number {
+  const k = rimScale(a)
+  const yRim = groundHeight(Math.cos(a) * ISLAND_RX * k, Math.sin(a) * ISLAND_RZ * k) - RIM_DROP
+  return Math.max(0, Math.min(1, (yRim - 0.15 - y) / undersideDepth(a)))
+}
+
+// cliff tiles around the island; a whole number so the texture closes on itself
+const CLIFF_TILES = 24
+
 function buildUnderside(tier: Tier): THREE.BufferGeometry {
-  const rings = tier === 'phone' ? 48 : 90
-  const segs = tier === 'phone' ? 180 : 300
+  const rings = tier === 'phone' ? 96 : 210
+  const segs = tier === 'phone' ? 256 : 512
   const pos: number[] = []
   const uv: number[] = []
+  const rock: number[] = []
   const index: number[] = []
   const p = new THREE.Vector3()
   for (let i = 0; i <= rings; i++) {
-    const f = i / rings
+    // denser near the lip, where the blocks and ledges are
+    const f = Math.pow(i / rings, 1.3)
     for (let j = 0; j <= segs; j++) {
-      const a = (j / segs) * Math.PI * 2
+      const a = (j / segs) * TAU
       undersidePoint(a, f, p)
       pos.push(p.x, p.y, p.z)
-      const circ = a * (ISLAND_RX + ISLAND_RZ) * 0.5
-      uv.push(circ / 6, p.y / 6)
+      uv.push((j / segs) * CLIFF_TILES, p.y / 6)
+      rock.push(Math.min(undersideSample.soft, 1), undersideSample.hard, f)
     }
   }
   for (let i = 0; i < rings; i++) {
@@ -317,10 +456,210 @@ function buildUnderside(tier: Tier): THREE.BufferGeometry {
   }
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  geo.setAttribute('aCliff', new THREE.Float32BufferAttribute(uv, 2))
+  geo.setAttribute('aRock', new THREE.Float32BufferAttribute(rock, 3))
   geo.setIndex(index)
   geo.computeVertexNormals()
   return geo
+}
+
+// two thin springs seep out under the lip and run down the rock, besides
+// the waterfall; bearings in cliff tiles
+const TRICKLES = [(1.32 / TAU) * CLIFF_TILES, (2.72 / TAU) * CLIFF_TILES]
+const TILE_M = (((ISLAND_RX + ISLAND_RZ) / 2) * TAU) / CLIFF_TILES
+
+const CLIFF_VERT_PARS = /* glsl */ `
+attribute vec2 aCliff;
+attribute vec3 aRock;
+varying vec2 vCUv;
+varying vec3 vRock;
+varying vec3 vCWorld;
+varying vec3 vCNormal;
+`
+
+const CLIFF_FRAG_PARS = /* glsl */ `
+uniform sampler2D tCliffD, tCliffN, tCliffA;
+uniform sampler2D tRockD, tRockN, tRockA;
+uniform sampler2D tMossD, tMossN, tMossA;
+uniform sampler2D tSoilD;
+uniform float uTime;
+varying vec2 vCUv;
+varying vec3 vRock;
+varying vec3 vCWorld;
+varying vec3 vCNormal;
+vec3 cliffNormal;
+vec3 cliffArm;
+const float C_TRICKLE[${TRICKLES.length}] = float[](${TRICKLES.map((v) => v.toFixed(4)).join(', ')});
+float cHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+float cNoise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(cHash(i), cHash(i + vec2(1, 0)), u.x), mix(cHash(i + vec2(0, 1)), cHash(i + vec2(1, 1)), u.x), u.y);
+}
+// tangent frames: faces are mapped around the island and down, ledge tops from above
+vec3 sideToWorld(vec3 n, vec3 N) {
+  vec3 T = normalize(vec3(-N.z, 0.0, N.x) + vec3(1e-4, 0.0, 0.0));
+  vec3 B = cross(T, N);
+  return T * n.x + B * n.y + N * n.z;
+}
+vec3 topToWorld(vec3 n, vec3 N) {
+  vec3 T = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
+  vec3 B = cross(T, N);
+  return T * n.x - B * n.y + N * n.z;
+}
+`
+
+const CLIFF_MAP = /* glsl */ `
+{
+  vec3 N = normalize(vCNormal);
+  vec2 uv = vCUv;
+  float y = vCWorld.y;
+  // faces: the cliff scan at two scales, the rock scan along the hard layers
+  vec3 dA = texture2D(tCliffD, uv).rgb;
+  vec3 nA = texture2D(tCliffN, uv).rgb * 2.0 - 1.0;
+  vec3 aA = texture2D(tCliffA, uv).rgb;
+  vec3 sd = dA;
+  vec3 sn = nA;
+  vec3 sa = aA;
+#ifndef CLIFF_LITE
+  vec2 uv2 = uv * 0.5 + vec2(0.37, 0.21);
+  vec3 dB = texture2D(tCliffD, uv2).rgb;
+  vec3 nB = texture2D(tCliffN, uv2).rgb * 2.0 - 1.0;
+  vec3 aB = texture2D(tCliffA, uv2).rgb;
+  vec2 ruv = uv * 2.0 + vec2(0.0, 0.5);
+  vec3 dR = texture2D(tRockD, ruv).rgb;
+  vec3 nR = texture2D(tRockN, ruv).rgb * 2.0 - 1.0;
+  vec3 aR = texture2D(tRockA, ruv).rgb;
+  float big = smoothstep(0.3, 0.7, cNoise(vec2(uv.x * 1.3, y * 0.11)));
+  sd = mix(dA, dB, big * 0.4);
+  sn = normalize(mix(nA, nB, big * 0.3));
+  sa = mix(aA, aB, big * 0.4);
+  float hardW = smoothstep(0.25, 0.7, vRock.y) * smoothstep(0.35, 0.65, cNoise(uv * 3.0)) * 0.6;
+  sd = mix(sd, dR * vec3(0.95, 0.97, 1.0), hardW);
+  sn = normalize(mix(sn, nR, hardW));
+  sa = mix(sa, vec3(aR.r, max(aR.g, 0.8), 0.0), hardW);
+#endif
+
+  // ledge tops: the cliff scan seen from above, moss where water and soil collect
+  float top = smoothstep(0.55, 0.85, N.y);
+  vec2 puv = vCWorld.xz / 2.4;
+  vec3 dT = texture2D(tCliffD, puv).rgb;
+  vec3 nT = texture2D(tCliffN, puv).rgb * 2.0 - 1.0;
+  vec3 aT = texture2D(tCliffA, puv).rgb;
+  vec2 muv = vCWorld.xz / 1.8;
+  vec3 dM = texture2D(tMossD, muv).rgb;
+  vec3 nM = texture2D(tMossN, muv).rgb * 2.0 - 1.0;
+  vec3 aM = texture2D(tMossA, muv).rgb;
+  float lipNear = 1.0 - smoothstep(0.05, 0.4, vRock.z);
+  float moss = smoothstep(0.56, 0.7, cNoise(vCWorld.xz * 0.7) * 0.6 + cNoise(vCWorld.xz * 2.3) * 0.4 + lipNear * 0.25);
+  moss *= smoothstep(0.6, 0.85, N.y + 0.1 * lipNear);
+  dT = mix(dT, dM * vec3(0.4, 0.5, 0.3), moss);
+  nT = normalize(mix(nT, nM, moss));
+  aT = mix(aT, aM, moss);
+
+  // towards the point the wrap-around mapping crowds; map it from the sides
+  float tip = smoothstep(0.55, 0.8, vRock.z);
+  {
+    vec2 w2 = abs(N.xz) + 1e-3;
+    w2 /= w2.x + w2.y;
+    vec2 ux = vec2(vCWorld.z, y) / 5.0;
+    vec2 uz = vec2(vCWorld.x, y) / 5.0 + 0.5;
+    vec3 tD = texture2D(tCliffD, ux).rgb * w2.x + texture2D(tCliffD, uz).rgb * w2.y;
+    vec3 tN = (texture2D(tCliffN, ux).rgb * w2.x + texture2D(tCliffN, uz).rgb * w2.y) * 2.0 - 1.0;
+    vec3 tA = texture2D(tCliffA, ux).rgb * w2.x + texture2D(tCliffA, uz).rgb * w2.y;
+    sd = mix(sd, tD, tip);
+    sn = normalize(mix(sn, tN, tip));
+    sa = mix(sa, tA, tip);
+  }
+  vec3 dif = mix(sd, dT, top);
+  // a thin, ragged horizon of soil and roots right under the turf
+  float soilW = 1.0 - smoothstep(0.003, 0.01 + 0.014 * cNoise(vec2(uv.x * 26.0, 3.0)) + 0.006 * cNoise(vec2(uv.x * 90.0, 1.0)), vRock.z);
+  dif = mix(dif, texture2D(tSoilD, uv * vec2(2.0, 2.0)).rgb * vec3(0.7, 0.62, 0.55), soilW);
+  vec3 wn = normalize(mix(sideToWorld(sn, N), topToWorld(nT, N), top));
+  vec3 arm = mix(sa, aT, top);
+
+  // overhang undersides stay in their own shade
+  float under = smoothstep(-0.15, -0.65, N.y);
+  arm.r *= mix(1.0, 0.55, under);
+  dif *= mix(1.0, 0.8, under);
+
+  // soft layers seep: dark, a little glossy, streaking down from each ledge
+  float streak = cNoise(vec2(uv.x * 34.0, y * 0.35)) * 0.6 + cNoise(vec2(uv.x * 90.0, y * 0.9)) * 0.4;
+  float damp = clamp(vRock.x * (0.55 + 0.6 * streak), 0.0, 1.0) * (1.0 - top);
+  dif *= mix(1.0, 0.58, damp);
+  arm.g *= mix(1.0, 0.85, damp);
+  // greyer and cooler deeper down, warmer stained bands near the top
+  float bandTone = cNoise(vec2(uv.x * 0.6, y * 0.45));
+  dif *= mix(vec3(1.04, 0.98, 0.92), vec3(0.9, 0.93, 0.97), smoothstep(0.1, 0.8, vRock.z));
+  dif *= mix(0.86, 1.08, bandTone);
+
+  // the springs: a dark wet run, a thin glossy core where the water moves
+  float wetAll = 0.0;
+  float coreAll = 0.0;
+  for (int i = 0; i < ${TRICKLES.length}; i++) {
+    float fi = float(i);
+    float xc = C_TRICKLE[i] + (cNoise(vec2(y * 0.22, fi * 7.0)) - 0.5) * 0.14 + (cNoise(vec2(y * 0.9, fi * 3.0)) - 0.5) * 0.03;
+    float dx = abs(uv.x - xc) * ${TILE_M.toFixed(3)};
+    float run = smoothstep(0.004, 0.03, vRock.z) * (1.0 - smoothstep(0.3, 0.55 + 0.1 * fi, vRock.z));
+    float wet = (1.0 - smoothstep(0.12, 0.55 + 0.25 * cNoise(vec2(y * 0.6, fi)), dx)) * run;
+    float core = (1.0 - smoothstep(0.03, 0.11, dx)) * run * (1.0 - smoothstep(0.25, 0.5, abs(N.y)));
+    wetAll = max(wetAll, wet);
+    coreAll = max(coreAll, core);
+  }
+  dif *= mix(1.0, 0.45, wetAll);
+  dif *= mix(1.0, 0.7, coreAll);
+  arm.g = mix(arm.g, 0.22, wetAll * 0.8);
+  arm.g = mix(arm.g, 0.05, coreAll);
+  float ripple = sin((y + uTime * 2.6) * 9.0 + cNoise(vec2(uv.x * 200.0, y * 3.0)) * 6.0);
+  wn = normalize(wn + vec3(-N.z, 0.0, N.x) * ripple * 0.35 * coreAll + vec3(0.0, 1.0, 0.0) * ripple * 0.2 * coreAll);
+
+  // rough stone everywhere but on the water itself
+  arm.g = max(arm.g, mix(0.86, 0.22, max(coreAll, wetAll * 0.6)));
+  cliffNormal = wn;
+  cliffArm = arm;
+  diffuseColor.rgb *= dif;
+}
+`
+
+function patchCliff(mat: THREE.MeshStandardMaterial, cliff: PbrSet, rock: PbrSet, moss: PbrSet, soil: PbrSet, tier: Tier): void {
+  // phones skip the second cliff scale and the rock scan on the faces
+  if (tier === 'phone') mat.defines = { CLIFF_LITE: '' }
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = realmUniforms.uTime
+    shader.uniforms.tSoilD = { value: soil.map }
+    const sets: [string, PbrSet][] = [
+      ['Cliff', cliff],
+      ['Rock', rock],
+      ['Moss', moss],
+    ]
+    for (const [name, s] of sets) {
+      shader.uniforms[`t${name}D`] = { value: s.map }
+      shader.uniforms[`t${name}N`] = { value: s.normalMap }
+      shader.uniforms[`t${name}A`] = { value: s.arm }
+    }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${CLIFF_VERT_PARS}`)
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vCUv = aCliff;
+        vRock = aRock;
+        vCWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vCNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+      )
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${CLIFF_FRAG_PARS}`)
+      .replace('#include <map_fragment>', CLIFF_MAP)
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * cliffArm.g;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = 0.0;')
+      .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(cliffNormal, 0.0)).xyz);')
+      .replace(
+        '#include <aomap_fragment>',
+        `float ambientOcclusion = mix(1.0, cliffArm.r, 0.9);
+        reflectedLight.indirectDiffuse *= ambientOcclusion;
+        reflectedLight.indirectSpecular *= ambientOcclusion * ambientOcclusion;`,
+      )
+  }
+  mat.customProgramCacheKey = () => `realm-terrain-cliff-${tier === 'phone' ? 'lite' : 'full'}`
 }
 
 export class Terrain implements RealmPart {
@@ -329,17 +668,18 @@ export class Terrain implements RealmPart {
   private geometries: THREE.BufferGeometry[] = []
 
   static async create(tier: Tier): Promise<Terrain> {
-    const [soil, gravel, moss, pebbles, cliff] = await Promise.all([
+    const [soil, gravel, moss, pebbles, cliff, rock] = await Promise.all([
       loadPbr('soil', tier),
       loadPbr('gravel', tier),
       loadPbr('moss', tier),
       loadPbr('pebbles', tier),
       loadPbr('cliff', tier),
+      loadPbr('rock', tier),
     ])
-    return new Terrain(tier, [soil, gravel, moss, pebbles], cliff)
+    return new Terrain(tier, [soil, gravel, moss, pebbles], cliff, rock)
   }
 
-  private constructor(tier: Tier, ground: PbrSet[], cliff: PbrSet) {
+  private constructor(tier: Tier, ground: PbrSet[], cliff: PbrSet, rock: PbrSet) {
     const topGeo = buildTop(tier)
     const topMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
     patchSplat(topMat, ground)
@@ -348,11 +688,14 @@ export class Terrain implements RealmPart {
     top.castShadow = true
     top.name = 'ground'
 
+    const [soil, , moss] = ground
     const underGeo = buildUnderside(tier)
-    const underMat = pbrMaterial(cliff, { color: new THREE.Color(0.92, 0.88, 0.84) })
+    const underMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.92, 0.88, 0.84), roughness: 1, metalness: 0 })
+    if (soil && moss) patchCliff(underMat, cliff, rock, moss, soil, tier)
     const under = new THREE.Mesh(underGeo, underMat)
     under.receiveShadow = true
     under.castShadow = true
+    under.name = 'underside'
 
     this.object.add(top, under)
     this.geometries.push(topGeo, underGeo)
