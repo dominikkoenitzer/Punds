@@ -841,7 +841,10 @@ function buildMassif(r: number, h: number, seed: number): THREE.BufferGeometry {
       f *= 2.2
     }
     // separate peaks rise where the ridged noise and the spine meet
-    pos.setY(i, h * Math.pow(fall, 0.8) * (0.15 + ridge * 1.45))
+    // past the foot the skirt plunges well below the cloud deck, so no flat
+    // edge of the grid can show through a thin patch of cloud as a line
+    const plunge = Math.max(0, d - 0.85) / 0.15
+    pos.setY(i, h * Math.pow(fall, 0.8) * (0.15 + ridge * 1.45) - plunge * plunge * 320)
   }
   geo.computeVertexNormals()
   return geo
