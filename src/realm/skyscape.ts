@@ -19,33 +19,56 @@ import type { Frame, RealmPart, Tier } from './types'
 
 interface TierSettings {
   scale: number // cloud target size relative to the drawing buffer
+  depthScale: number // depth pass size relative to the drawing buffer
   steps: number
   towerSteps: number
   lightSteps: number
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { scale: 0.5, steps: 72, towerSteps: 40, lightSteps: 4 },
-  high: { scale: 0.4, steps: 56, towerSteps: 32, lightSteps: 3 },
-  phone: { scale: 0.22, steps: 30, towerSteps: 18, lightSteps: 2 },
+  ultra: { scale: 0.5, depthScale: 1, steps: 72, towerSteps: 40, lightSteps: 4 },
+  high: { scale: 0.4, depthScale: 1, steps: 56, towerSteps: 32, lightSteps: 3 },
+  phone: { scale: 0.22, depthScale: 0.5, steps: 30, towerSteps: 18, lightSteps: 2 },
 }
 
 const NOISE_SIZE = 64
 
-// Towering banks: x, z, radius, height above the sea, all in metres.
+// Towering banks: x, z, radius, height above the sea, all in metres. They
+// stand behind the shrine, under the sun, over the right rim at the end of
+// the walk and out past the landing, so every view has a far layer.
 const TOWERS: readonly [number, number, number, number][] = [
-  [-1500, -2300, 520, 330], // under the sun, backlit
-  [2600, -1500, 620, 420], // over the right rim
-  [-2900, 700, 560, 300],
-  [900, -3400, 480, 260],
+  [260, -2350, 560, 500], // behind the shrine, right of the path axis
+  [-700, -2850, 640, 430], // behind the shrine, left
+  [-2500, -1550, 600, 380], // under the sun, backlit
+  [2500, -2200, 650, 460], // right of the ema rack at the end
+  [2600, 1800, 600, 420], // out past the landing
+  [900, 2900, 520, 320],
+  [-2900, 900, 560, 300],
+  [1700, -600, 480, 280],
+]
+const TOWER_COUNT = TOWERS.length
+
+// Distant massifs rising out of the sea: x, z, radius, peak height above the
+// base, base height. Kept inside the host's far plane.
+const MASSIFS: readonly [number, number, number, number, number][] = [
+  [-520, -2050, 820, 300, -95], // the far range behind the shrine
+  [700, -2250, 900, 250, -95],
+  [1650, -1500, 760, 270, -95], // the end view, right of the rack
+  [1900, 1100, 820, 280, -95], // the opening view
+  [-1900, -900, 700, 240, -95], // under the sun, a backlit silhouette
 ]
 
 // Distant islands: position of the top centre, top radius.
-const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'pine' | 'shrine' | 'none' }[] = [
+const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' }[] = [
+  // the prominent one behind the shrine, slightly left of the path, and a
+  // smaller one to the right
+  { x: -88, y: 92, z: -330, r: 30, seed: 61, crown: 'grove' },
+  { x: 122, y: 100, z: -320, r: 14, seed: 67, crown: 'pine' },
   { x: -170, y: -6, z: -250, r: 9, seed: 11, crown: 'pine' },
-  { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'pine' },
+  { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'grove' },
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
-  { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'none' },
+  { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'pine' },
+  { x: 320, y: -4, z: 200, r: 16, seed: 71, crown: 'grove' },
   { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
 ]
 
@@ -232,8 +255,8 @@ uniform float uTime;
 uniform vec2 uDrift;
 uniform vec3 uSunColor;
 uniform vec3 uShadowColor;
-uniform vec4 uTowers[4];
-uniform vec4 uTowerBounds[4];
+uniform vec4 uTowers[${TOWER_COUNT}];
+uniform vec4 uTowerBounds[${TOWER_COUNT}];
 uniform float uMaxScene;
 uniform float uFrame;
 ${SKY_GLSL}
@@ -276,7 +299,7 @@ float tops(vec2 xz, vec2 q, out float tower) {
   float r = length(xz * vec2(1.0, 0.75)) * (0.6 + 0.8 * vnoise(xz * 0.035 + q * 0.004));
   h = max(h, -4.0 - r * r * 0.005);
   tower = 0.0;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < ${TOWER_COUNT}; i++) {
     vec4 t = uTowers[i];
     vec2 o = xz - t.xy;
     float wob = vnoise(o * 0.006 + float(i) * 13.0) - 0.5;
@@ -349,7 +372,7 @@ void marchSegment(vec3 ro, vec3 rd, float t0, float t1, int steps, float jitter,
       vec3 q = p + vec3(uDrift.x, 0.0, uDrift.y);
       float top = tops(p.xz, q.xz, tower);
       float lift = clamp(1.0 - (top - p.y) / mix(55.0, 220.0, tower), 0.0, 1.0);
-      vec3 amb = mix(shadowC * 0.55, skyUp * 0.16 + shadowC * 0.6, lift * lift);
+      vec3 amb = mix(shadowC * 0.6, skyUp * 0.08 + shadowC * 0.75, lift * lift);
       float powder = 1.0 - exp(-dens * 2.5);
       vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms) + amb;
       float fog = 1.0 - exp(-t / HAZE_DIST);
@@ -385,13 +408,9 @@ void main() {
   vec3 rd = normalize((uCamWorld * vec4(viewDir, 0.0)).xyz);
   vec3 ro = uCamPos;
 
-  // the farthest scene surface around this texel, so silhouettes keep cloud
-  // behind them and the full resolution depth test cuts the edge
+  // the scene surface under this texel's centre, from the full resolution
+  // depth; the composite matches it against each screen pixel's own depth
   float dmax = texture(uDepth, vUv).r;
-  dmax = max(dmax, texture(uDepth, vUv + vec2(uTexel.x, 0.0)).r);
-  dmax = max(dmax, texture(uDepth, vUv - vec2(uTexel.x, 0.0)).r);
-  dmax = max(dmax, texture(uDepth, vUv + vec2(0.0, uTexel.y)).r);
-  dmax = max(dmax, texture(uDepth, vUv - vec2(0.0, uTexel.y)).r);
   float sceneT = 1e7;
   if (dmax < 0.99999) {
     vec4 sp = uInvProj * vec4(ndc, dmax * 2.0 - 1.0, 1.0);
@@ -429,7 +448,7 @@ void main() {
   // the nearest tower the ray passes through
   float w0 = 1e9;
   float w1 = -1.0;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < ${TOWER_COUNT}; i++) {
     float ta, tb;
     vec4 b = uTowerBounds[i];
     if (hitEllipsoid(ro, rd, b, uTowers[i].w * 0.62 + 20.0, ta, tb)) {
@@ -461,7 +480,7 @@ void main() {
     trans = 0.0;
   }
   outColor = vec4(col, 1.0 - trans);
-  outFront = vec4(front, 0.0, 0.0, 1.0);
+  outFront = vec4(front, min(sceneT, 60000.0), 0.0, 1.0);
 }
 `
 
@@ -488,18 +507,26 @@ void main() {
   vec4 mx = vec4(-1e9);
   vec4 sum = vec4(0.0);
   float wsum = 0.0;
+  vec2 here = texture(uRawFront, vUv).rg;
+  float front = here.r;
   for (int y = -1; y <= 1; y++) {
     for (int x = -1; x <= 1; x++) {
-      vec4 c = texture(uRaw, vUv + vec2(float(x), float(y)) * uTexel);
-      mn = min(mn, c);
-      mx = max(mx, c);
-      float w = (x == 0 && y == 0) ? 4.0 : ((x == 0 || y == 0) ? 2.0 : 1.0);
+      vec2 o = vec2(float(x), float(y)) * uTexel;
+      vec4 c = texture(uRaw, vUv + o);
+      // only texels that ended on the same surface take part, so the cloud
+      // never bleeds across a silhouette
+      float sd = texture(uRawFront, vUv + o).g;
+      float same = exp(-abs(log(sd / here.g)) * 14.0);
+      float w = ((x == 0 && y == 0) ? 4.0 : ((x == 0 || y == 0) ? 2.0 : 1.0)) * same;
+      if (same > 0.5) {
+        mn = min(mn, c);
+        mx = max(mx, c);
+      }
       sum += c * w;
       wsum += w;
     }
   }
   vec4 cur = sum / wsum;
-  float front = texture(uRawFront, vUv).r;
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 rd = normalize((uCamWorld * vec4(normalize(v.xyz / v.w), 0.0)).xyz);
   vec3 wp = uCamPos + rd * min(front, 20000.0);
@@ -525,24 +552,54 @@ const COMPOSITE_FRAG = /* glsl */ `
 varying vec2 vUv;
 uniform sampler2D uCloud;
 uniform sampler2D uFront;
+uniform sampler2D uSceneDepth;
 uniform vec2 uTexel;
 uniform mat4 uInvProj;
 uniform mat4 uProj;
 uniform float uMaxFront;
+uniform float uMaxScene;
 void main() {
-  // a small tent filter hides the dither of the low resolution trace
-  vec2 o = uTexel * 0.6;
-  vec4 c = texture2D(uCloud, vUv + vec2(o.x, o.y)) + texture2D(uCloud, vUv + vec2(-o.x, o.y))
-         + texture2D(uCloud, vUv + vec2(o.x, -o.y)) + texture2D(uCloud, vUv + vec2(-o.x, -o.y));
-  c *= 0.25;
-  if (c.a < 0.002) discard;
-  // nearest cloud front of the four texels
-  vec2 h = uTexel * 0.5;
-  float f = min(min(texture2D(uFront, vUv + vec2(h.x, h.y)).r, texture2D(uFront, vUv + vec2(-h.x, h.y)).r),
-                min(texture2D(uFront, vUv + vec2(h.x, -h.y)).r, texture2D(uFront, vUv + vec2(-h.x, -h.y)).r));
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(v.xyz / v.w);
-  vec4 clip = uProj * vec4(dir * min(f, uMaxFront), 1.0);
+  // this pixel's own scene distance at full resolution
+  float d = texture2D(uSceneDepth, vUv).r;
+  float dist = 60000.0;
+  if (d < 0.99999) {
+    vec4 sp = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    dist = min(length(sp.xyz / sp.w), 60000.0);
+    if (dist > uMaxScene) dist = 60000.0;
+  }
+  // depth aware upsample: the four nearest texels, weighted by how well the
+  // surface each was traced against matches this pixel
+  vec2 size = 1.0 / uTexel;
+  vec2 p = vUv * size - 0.5;
+  vec2 b = floor(p);
+  vec2 f = p - b;
+  vec4 sum = vec4(0.0);
+  float wsum = 0.0;
+  float bestR = 1e9;
+  vec4 bestC = vec4(0.0);
+  float bestF = 60000.0;
+  float front = 60000.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 o = vec2(float(i - (i / 2) * 2), float(i / 2));
+    vec2 uv = (b + o + 0.5) * uTexel;
+    vec4 c = texture2D(uCloud, uv);
+    vec2 fs = texture2D(uFront, uv).rg;
+    float r = abs(log(max(fs.g, 0.01) / max(dist, 0.01)));
+    float bil = (o.x > 0.5 ? f.x : 1.0 - f.x) * (o.y > 0.5 ? f.y : 1.0 - f.y);
+    float w = bil * exp(-r * 14.0);
+    sum += c * w;
+    wsum += w;
+    if (w > 1e-4) front = min(front, fs.r);
+    if (r < bestR) { bestR = r; bestC = c; bestF = fs.r; }
+  }
+  vec4 c = wsum > 1e-3 ? sum / wsum : bestC;
+  if (wsum <= 1e-3) front = bestF;
+  if (c.a < 0.002) discard;
+  // the cloud front still takes part in the depth test, for things the depth
+  // pass leaves out (grass)
+  vec4 clip = uProj * vec4(dir * min(front, uMaxFront), 1.0);
   gl_FragDepth = clamp(clip.z / clip.w * 0.5 + 0.5, 0.0, 0.999999);
   gl_FragColor = c;
 }
@@ -711,6 +768,85 @@ function buildPine(rand: () => number, h: number): { trunk: THREE.BufferGeometry
   return { trunk: mergeGeometries(trunks), leaves: mergeGeometries(pads) }
 }
 
+// A Japanese cedar read at a distance: a straight trunk and a narrow spire of
+// lumpy foliage clumps.
+function buildCedar(rand: () => number, h: number): { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry } {
+  const trunk = new THREE.CylinderGeometry(h * 0.015, h * 0.03, h * 0.9, 5, 1)
+  trunk.translate(0, h * 0.45, 0)
+  const clumps: THREE.BufferGeometry[] = []
+  const n = 6
+  for (let i = 0; i < n; i++) {
+    const k = i / (n - 1)
+    const c = new THREE.IcosahedronGeometry(1, 1)
+    const cp = c.attributes.position as THREE.BufferAttribute
+    const o = rand() * 10
+    for (let j = 0; j < cp.count; j++) {
+      const lump = 0.8 + fbm2(cp.getX(j) * 2 + o, cp.getZ(j) * 2 + cp.getY(j) - o, 2) * 0.45
+      cp.setXYZ(j, cp.getX(j) * lump, cp.getY(j) * lump, cp.getZ(j) * lump)
+    }
+    const w = h * (0.17 - k * 0.12) * (0.85 + rand() * 0.3)
+    c.scale(w, h * 0.13, w)
+    c.translate((rand() - 0.5) * w * 0.4, h * (0.3 + k * 0.66), (rand() - 0.5) * w * 0.4)
+    clumps.push(c)
+  }
+  const leaves = mergeGeometries(clumps)
+  clumps.forEach((g) => g.dispose())
+  return { trunk, leaves }
+}
+
+// Low shrubs along a rim so the grass edge breaks into a living outline.
+function buildRimShrubs(rand: () => number, r: number, count: number, seed: number): THREE.BufferGeometry {
+  const list: THREE.BufferGeometry[] = []
+  for (let i = 0; i < count; i++) {
+    const a = rand() * Math.PI * 2
+    const rim = 1 + (fbm2(Math.cos(a) * 1.7 + seed, Math.sin(a) * 1.7 - seed, 3) - 0.5) * 0.35
+    const d = r * rim * (0.82 + rand() * 0.14)
+    const g = new THREE.IcosahedronGeometry(1, 1)
+    const w = r * (0.06 + rand() * 0.07)
+    g.scale(w * (1 + rand() * 0.6), w * 0.6, w)
+    g.translate(Math.cos(a) * d, w * 0.15 + r * 0.02, Math.sin(a) * d)
+    list.push(g)
+  }
+  const merged = mergeGeometries(list)
+  list.forEach((g) => g.dispose())
+  return merged
+}
+
+// A distant range: ridged peaks over a broad base whose skirt sinks below the
+// cloud tops, so only the crests stand out of the sea.
+function buildMassif(r: number, h: number, seed: number): THREE.BufferGeometry {
+  const seg = 96
+  const geo = new THREE.PlaneGeometry(r * 2, r * 2, seg, seg)
+  geo.rotateX(-Math.PI / 2)
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  const turn = seed * 0.37
+  const ct = Math.cos(turn)
+  const st = Math.sin(turn)
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i) / r
+    const pz = pos.getZ(i) / r
+    // a long range rather than a cone: the spine runs along a turned axis
+    const x = px * ct - pz * st
+    const z = px * st + pz * ct
+    const spine = Math.abs(z + (fbm2(x * 1.3 + seed, seed, 2) - 0.5) * 0.5) / 0.42
+    const d = Math.min(1, Math.hypot(x, spine))
+    const fall = Math.pow(Math.max(0, 1 - d), 1.3)
+    let ridge = 0
+    let amp = 0.6
+    let f = 1.15
+    for (let o = 0; o < 5; o++) {
+      const n = fbm2(x * f + seed * 1.3, z * f - seed * 0.7, 1)
+      ridge += (1 - Math.abs(n * 2 - 1)) ** 2 * amp
+      amp *= 0.48
+      f *= 2.2
+    }
+    // separate peaks rise where the ridged noise and the spine meet
+    pos.setY(i, h * Math.pow(fall, 0.8) * (0.15 + ridge * 1.45))
+  }
+  geo.computeVertexNormals()
+  return geo
+}
+
 // A small hall with a curved hip roof, only ever seen as a silhouette.
 function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.BufferGeometry } {
   const body = new THREE.BoxGeometry(s, s * 0.55, s * 0.8)
@@ -736,7 +872,7 @@ function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.Buffe
   return { body, roof }
 }
 
-function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>): void {
+function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>, distance = 1300): void {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, skyUniforms)
     shader.vertexShader = shader.vertexShader
@@ -749,7 +885,7 @@ function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: 
         `#include <dithering_fragment>
         vec3 aerialRay = vAerialWorld - cameraPosition;
         float aerialDist = length(aerialRay);
-        float aerial = 1.0 - exp(-aerialDist / 820.0);
+        float aerial = 1.0 - exp(-aerialDist / ${distance.toFixed(1)});
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor(aerialRay / aerialDist), aerial);`,
       )
   }
@@ -813,11 +949,13 @@ export class Skyscape implements RealmPart {
       uSkyMode: { value: 0 },
       uSkyK: { value: 1 },
       uSkyYaw: { value: 0 },
-      uSunDir: { value: SUN_DIRECTION.clone() },
+      uSunDir: { value: SUN_DIRECTION },
     }
 
     this.depthTarget = new THREE.WebGLRenderTarget(4, 4, { depthBuffer: true })
     this.depthTarget.depthTexture = new THREE.DepthTexture(4, 4, THREE.UnsignedIntType)
+    this.depthTarget.depthTexture.minFilter = THREE.NearestFilter
+    this.depthTarget.depthTexture.magFilter = THREE.NearestFilter
     this.cloudTarget = new THREE.WebGLRenderTarget(4, 4, {
       count: 2,
       type: THREE.HalfFloatType,
@@ -834,8 +972,8 @@ export class Skyscape implements RealmPart {
       front.magFilter = THREE.NearestFilter
     }
 
-    const sunColor = new THREE.Color(1.0, 0.62, 0.32).multiplyScalar(2.9)
-    const shadowColor = new THREE.Color(0.34, 0.37, 0.56).multiplyScalar(0.7)
+    const sunColor = new THREE.Color(1.0, 0.64, 0.23).multiplyScalar(3.2)
+    const shadowColor = new THREE.Color(0.27, 0.33, 0.64).multiplyScalar(0.78)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.4, z, r * 1.45))
 
@@ -904,6 +1042,8 @@ export class Skyscape implements RealmPart {
         uInvProj: { value: new THREE.Matrix4() },
         uProj: { value: new THREE.Matrix4() },
         uMaxFront: { value: 1e6 },
+        uMaxScene: { value: 1e6 },
+        uSceneDepth: { value: this.depthTarget.depthTexture },
       },
       transparent: true,
       premultipliedAlpha: true,
@@ -1017,18 +1157,30 @@ export class Skyscape implements RealmPart {
       const top = buildTop(isl.r * 1.02, isl.seed)
       top.translate(isl.x, isl.y, isl.z)
       parts[1]?.push(top)
-      if (isl.crown === 'pine') {
-        const n = isl.r > 12 ? 2 : 1
-        for (let k = 0; k < n; k++) {
-          const tree = buildPine(rand, isl.r * (0.7 + rand() * 0.3))
-          const ox = isl.x + (rand() - 0.5) * isl.r * 0.8
-          const oz = isl.z + (rand() - 0.5) * isl.r * 0.8
-          tree.trunk.translate(ox, isl.y + isl.r * 0.08, oz)
-          tree.leaves.translate(ox, isl.y + isl.r * 0.08, oz)
-          parts[3]?.push(tree.trunk)
-          parts[2]?.push(tree.leaves)
+      const ground = isl.y + isl.r * 0.06
+      const plant = (tree: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, x: number, z: number): void => {
+        tree.trunk.translate(x, ground, z)
+        tree.leaves.translate(x, ground, z)
+        parts[3]?.push(tree.trunk)
+        parts[2]?.push(tree.leaves)
+      }
+      const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed)
+      shrubs.translate(isl.x, isl.y, isl.z)
+      parts[2]?.push(shrubs)
+      if (isl.crown === 'grove') {
+        // a leaning pine near the edge and a stand of cedars behind it
+        plant(buildPine(rand, isl.r * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
+        const cedars = isl.r > 20 ? 7 : 4
+        for (let k = 0; k < cedars; k++) {
+          const a = rand() * Math.PI * 2
+          const d = isl.r * (0.1 + rand() * 0.45)
+          plant(buildCedar(rand, isl.r * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
         }
-      } else if (isl.crown === 'shrine') {
+        if (isl.r > 20) plant(buildPine(rand, isl.r * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
+      } else if (isl.crown === 'pine') {
+        plant(buildPine(rand, isl.r * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
+        plant(buildCedar(rand, isl.r * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
+      } else {
         const sh = buildShrine(isl.r * 0.28)
         sh.body.rotateY(0.6)
         sh.roof.rotateY(0.6)
@@ -1036,13 +1188,23 @@ export class Skyscape implements RealmPart {
         sh.roof.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
         parts[3]?.push(sh.body)
         parts[4]?.push(sh.roof)
-        const tree = buildPine(rand, isl.r * 0.5)
-        tree.trunk.translate(isl.x - isl.r * 0.4, isl.y + isl.r * 0.06, isl.z + isl.r * 0.2)
-        tree.leaves.translate(isl.x - isl.r * 0.4, isl.y + isl.r * 0.06, isl.z + isl.r * 0.2)
-        parts[3]?.push(tree.trunk)
-        parts[2]?.push(tree.leaves)
+        plant(buildPine(rand, isl.r * 0.55), isl.x - isl.r * 0.4, isl.z + isl.r * 0.2)
+        plant(buildCedar(rand, isl.r * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
+        plant(buildCedar(rand, isl.r * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
       }
     }
+    // the far ranges, in their own material: much longer air between them
+    // and the eye
+    const rangeMaterial = new THREE.MeshStandardMaterial({ color: 0x5b5e66, roughness: 1 })
+    patchAerial(rangeMaterial, 'skyscape-far-range', this.skyUniforms, 2300)
+    this.islandMaterials.push(rangeMaterial)
+    const ranges: THREE.BufferGeometry[] = []
+    MASSIFS.forEach(([x, z, r, h, y], k) => {
+      const g = buildMassif(r, h, 101 + k * 17)
+      g.translate(x, y, z)
+      ranges.push(g)
+    })
+    parts.push(ranges)
     parts.forEach((list, i) => {
       if (list.length === 0) return
       const cleaned = list.map((g) => {
@@ -1115,12 +1277,19 @@ export class Skyscape implements RealmPart {
     const h = Math.max(16, Math.round(this.size.y * this.settings.scale))
     if (this.cloudTarget.width !== w || this.cloudTarget.height !== h) {
       this.cloudTarget.setSize(w, h)
-      this.depthTarget.setSize(w, h)
       this.historyRead.setSize(w, h)
       this.historyWrite.setSize(w, h)
       this.historyValid = false
     }
     ;(this.marchMaterial.uniforms.uTexel!.value as THREE.Vector2).set(1 / w, 1 / h)
+    // the depth pass runs at full resolution so the upsample can match
+    // every screen pixel against its own surface; phones use half, read with
+    // nearest filtering, since a full extra scene draw costs too much there
+    const dw = Math.max(16, Math.round(this.size.x * this.settings.depthScale))
+    const dh = Math.max(16, Math.round(this.size.y * this.settings.depthScale))
+    if (this.depthTarget.width !== dw || this.depthTarget.height !== dh) {
+      this.depthTarget.setSize(dw, dh)
+    }
 
     camera.updateMatrixWorld()
     const u = this.marchMaterial.uniforms
@@ -1132,6 +1301,7 @@ export class Skyscape implements RealmPart {
     // clouds stay in front of a sky mesh drawn near the far plane
     u.uMaxScene!.value = camera.far * 0.85
     this.compositeMaterial.uniforms.uMaxFront!.value = camera.far * 0.8
+    this.compositeMaterial.uniforms.uMaxScene!.value = camera.far * 0.85
 
     const prevTarget = renderer.getRenderTarget()
     const prevAutoClear = renderer.autoClear
