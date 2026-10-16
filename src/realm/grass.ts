@@ -22,21 +22,27 @@ interface TierSettings {
   near: [number, number]
   // extra width and height for the mown blades, where few blades must cover
   cover: number
+  // extra density around the opening view on the landing, the first frame
+  // every visitor sees
+  landing: number
   // blades drawn per instance (a small tuft), so the short lawn stays dense
   // without more per-instance work; `blades` counts instances
   strips: number
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13], cover: 1 },
-  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12], cover: 1.1 },
-  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.08, near: [4.5, 9], cover: 1.4 },
+  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13], cover: 1, landing: 1.3 },
+  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12], cover: 1.1, landing: 1.6 },
+  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.08, near: [4.5, 9], cover: 1.4, landing: 3.2 },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,
 // so the floor between blades reads as a dark thatch of old grass rather than
 // bare soil, which matters most from above and on phones with fewer blades.
 export const LAWN_FLOOR_TINT = new THREE.Color(0.3, 0.52, 0.16)
+
+// where the visitor's eyes first open (the wake-up camera on the landing)
+const OPENING = { x: 1.6, z: 21 }
 
 interface Tile {
   mesh: THREE.Mesh
@@ -479,7 +485,8 @@ export class Grass implements RealmPart {
       const far = smooth(s.near[0], s.near[1], d) * (1 - Math.max(pond, cherry))
       // the far sides and back corners are only ever seen from a distance
       const remote = Math.max(smooth(9, 12, x), smooth(-11, -14, z) * smooth(7, 10, Math.abs(x)))
-      return (1 - (1 - s.focus) * far) * (1 - remote * (1 - s.focus) * 0.65)
+      const open = 1 - smooth(4.5, 7.5, Math.hypot(x - OPENING.x, z - OPENING.z))
+      return (1 - (1 - s.focus) * far) * (1 - remote * (1 - s.focus) * 0.65) * (1 + (s.landing - 1) * open)
     }
 
     // lawnWeight on a 10 cm grid, and beside it the distance to the nearest
