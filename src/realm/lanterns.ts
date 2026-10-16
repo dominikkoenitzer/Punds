@@ -62,68 +62,57 @@ function parts(): { geo: THREE.BufferGeometry; y: number }[] {
   return out
 }
 
-// the fire box: four solid panels and two with openings (front and back),
-// built as frames around their windows
+// The fire box: one hexagonal stone, its six faces carved. The front and
+// back faces open onto paper, the two side faces nearest the path carry the
+// sun (a round window) and the moon (a crescent). The openings are thin
+// inset faces that stay dark until the lantern burns.
 function hibukuro(): { stone: THREE.BufferGeometry; paper: THREE.BufferGeometry } {
   const s = H
   const r = 0.165 * s // corner radius of the hexagon
   const h = 0.22 * s
+  const stone = lathe(
+    [
+      [0, 0],
+      [r * 0.98, 0],
+      [r, 0.012 * s],
+      [r, h - 0.012 * s],
+      [r * 0.98, h],
+      [0, h],
+    ],
+    6,
+  )
   const apothem = r * Math.cos(Math.PI / 6)
   const side = r
-  const stone: THREE.BufferGeometry[] = []
   const paper: THREE.BufferGeometry[] = []
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + Math.PI / 6
-    const cx = Math.sin(a) * apothem
-    const cz = Math.cos(a) * apothem
-    const open = i === 0 || i === 3
-    const t = 0.03 * s
-    if (open) {
-      // frame: top and bottom rails and two stiles
-      const rail = 0.045 * s
-      const stile = 0.04 * s
-      for (const [w, hh, oy, ox] of [
-        [side, rail, h - rail / 2, 0],
-        [side, rail, rail / 2, 0],
-        [stile, h, h / 2, -side / 2 + stile / 2],
-        [stile, h, h / 2, side / 2 - stile / 2],
-      ] as [number, number, number, number][]) {
-        const g = new THREE.BoxGeometry(w, hh, t)
-        g.translate(ox, oy, 0)
-        g.rotateY(a)
-        g.translate(cx, 0, cz)
-        stone.push(g)
-      }
-      // paper behind the opening
-      const p = new THREE.PlaneGeometry(side - stile * 2, h - rail * 2)
-      p.translate(0, h / 2, -t * 0.6)
-      p.rotateY(a)
-      p.translate(cx, 0, cz)
-      paper.push(p)
-    } else {
-      const g = new THREE.BoxGeometry(side * 1.02, h, t)
-      g.translate(0, h / 2, 0)
-      g.rotateY(a)
-      g.translate(cx, 0, cz)
-      stone.push(g)
-      // the sun and moon windows on the two side panels nearest the path
-      if (i === 1 || i === 4) {
-        const disc = new THREE.CircleGeometry(0.045 * s, 24)
-        disc.translate(0, h * 0.55, t * 0.52)
-        disc.rotateY(a)
-        disc.translate(cx, 0, cz)
-        paper.push(disc)
-      }
+    let g: THREE.BufferGeometry | null = null
+    if (i === 0 || i === 3) {
+      // the fire opening: a tall window with a slight arch
+      const w = side * 0.58
+      const hh = h * 0.66
+      const shape = new THREE.Shape()
+      shape.moveTo(-w / 2, -hh / 2)
+      shape.lineTo(w / 2, -hh / 2)
+      shape.lineTo(w / 2, hh / 2 - w * 0.18)
+      shape.quadraticCurveTo(0, hh / 2 + w * 0.12, -w / 2, hh / 2 - w * 0.18)
+      shape.closePath()
+      g = new THREE.ShapeGeometry(shape, 8)
+    } else if (i === 1) {
+      g = new THREE.CircleGeometry(0.046 * s, 28)
+    } else if (i === 4) {
+      const R = 0.05 * s
+      const shape = new THREE.Shape()
+      shape.absarc(0, 0, R, Math.PI * 0.5, Math.PI * 1.5, false)
+      shape.absarc(R * 0.45, 0, R * 0.82, Math.PI * 1.38, Math.PI * 0.62, true)
+      g = new THREE.ShapeGeometry(shape, 16)
     }
+    if (!g) continue
+    g.translate(0, h * 0.52, apothem + 0.0015)
+    g.rotateY(a)
+    paper.push(g)
   }
-  // the inner glow surface, slightly inset
-  const core = new THREE.CylinderGeometry(r * 0.72, r * 0.72, h * 0.8, 6, 1, true)
-  core.translate(0, h / 2, 0)
-  paper.push(core)
-  return {
-    stone: merge(stone.map((g) => g.toNonIndexed())),
-    paper: merge(paper),
-  }
+  return { stone: stone.toNonIndexed(), paper: merge(paper) }
 }
 
 export interface LanternLight {
@@ -163,9 +152,12 @@ export class Lanterns implements RealmPart {
     // the warabite: small curled knobs at the six roof corners
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2
-      const knob = new THREE.TorusGeometry(0.022 * H, 0.012 * H, 6, 12, Math.PI * 1.4)
-      knob.rotateY(-a + Math.PI / 2)
-      knob.translate(Math.sin(a) * 0.335 * H, 1.24 * H + 0.075 * H, Math.cos(a) * 0.335 * H)
+      // a rolled stone knob lifting off the corner, not a ring
+      const knob = new THREE.SphereGeometry(0.024 * H, 10, 8)
+      knob.scale(0.8, 0.75, 1.35)
+      knob.rotateX(-0.5)
+      knob.rotateY(a)
+      knob.translate(Math.sin(a) * 0.335 * H, 1.24 * H + 0.08 * H, Math.cos(a) * 0.335 * H)
       stoneParts.push(knob.toNonIndexed())
       knob.dispose()
     }
