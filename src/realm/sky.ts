@@ -89,7 +89,8 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   SUN_DIRECTION.set(Math.cos(elevation) * Math.cos(SUN_AZIMUTH), Math.sin(elevation), Math.cos(elevation) * Math.sin(SUN_AZIMUTH)).normalize()
 
   const bgUrl = `${base}/bg_${tier === 'phone' ? '4k' : '8k'}.webp`
-  const hdrUrl = `${base}/env_${tier === 'phone' ? '1k' : '2k'}.hdr`
+  // image lighting needs little resolution; phones take the smallest
+  const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '2k'}.hdr`
   const [bg, hdr] = await Promise.all([
     new THREE.TextureLoader().loadAsync(bgUrl),
     new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl),
