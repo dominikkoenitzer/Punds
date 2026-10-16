@@ -15,6 +15,7 @@ import {
   LANTERNS,
   SHRINE,
   OUTFLOW,
+  rng,
 } from './layout'
 import { loadPbr, type PbrSet } from './assets'
 import { LAWN_FLOOR_TINT } from './grass'
@@ -413,8 +414,17 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   // water seeps out along the bedding under each hard layer
   undersideSample.soft = (1 - slab) * hard * reach * 14
   undersideSample.hard = hard * slab
-  const y = yRim - f * undersideDepth(a) - (f > 0 ? 0.15 : 0)
+  // the lower part closes in a short, broken base instead of running out
+  // into a point; the rock fingers hang below it
+  const base = smooth(BASE_F, 1, f)
+  const rag = base * (fbm3(c * 2.4 + 1.7, s * 2.4, 7.3, 3) - 0.3) * 6
+  const y = yRim - fallFraction(f) * undersideDepth(a) - (f > 0 ? 0.15 : 0) - rag
   return out.set(rx * sc, y, rz * sc)
+}
+
+const BASE_F = 0.46
+function fallFraction(f: number): number {
+  return f < BASE_F ? f : BASE_F + (f - BASE_F) * 0.4
 }
 
 // The depth fraction at bearing `a` that lies at height `y`, for parts that
@@ -422,15 +432,16 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
 export function undersideFraction(a: number, y: number): number {
   const k = rimScale(a)
   const yRim = groundHeight(Math.cos(a) * ISLAND_RX * k, Math.sin(a) * ISLAND_RZ * k) - RIM_DROP
-  return Math.max(0, Math.min(1, (yRim - 0.15 - y) / undersideDepth(a)))
+  const g = (yRim - 0.15 - y) / undersideDepth(a)
+  return Math.max(0, Math.min(1, g < BASE_F ? g : BASE_F + (g - BASE_F) / 0.4))
 }
 
 // cliff tiles around the island; a whole number so the texture closes on itself
 const CLIFF_TILES = 24
 
 function buildUnderside(tier: Tier): THREE.BufferGeometry {
-  const rings = tier === 'phone' ? 96 : 210
-  const segs = tier === 'phone' ? 256 : 512
+  const rings = tier === 'phone' ? 90 : 176
+  const segs = tier === 'phone' ? 240 : 420
   const pos: number[] = []
   const uv: number[] = []
   const rock: number[] = []
@@ -455,12 +466,83 @@ function buildUnderside(tier: Tier): THREE.BufferGeometry {
     }
   }
   const geo = new THREE.BufferGeometry()
+  buildFingers(tier, pos, uv, rock, index)
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
   geo.setAttribute('aCliff', new THREE.Float32BufferAttribute(uv, 2))
   geo.setAttribute('aRock', new THREE.Float32BufferAttribute(rock, 3))
   geo.setIndex(index)
   geo.computeVertexNormals()
   return geo
+}
+
+// Rock fingers under the broken base: a few pinnacles of the same layered
+// stone, clustered to one side, each its own length and lean, set deep into
+// the body so the join never shows. Same mesh and material as the rest.
+function buildFingers(tier: Tier, pos: number[], uv: number[], rock: number[], index: number[]): void {
+  const phone = tier === 'phone'
+  const rings = phone ? 16 : 36
+  const segs = phone ? 18 : 40
+  const rand = rng(2203)
+  const p = new THREE.Vector3()
+  const count = phone ? 6 : 8
+  for (let n = 0; n < count; n++) {
+    // the longest hang near the middle, shorter ones further out, most of
+    // them to one side and one straying to the other
+    const rank = n / (count - 1)
+    const b = n === count - 1 ? 4.6 + rand() * 0.6 : 1.2 + n * 0.62 + (rand() - 0.5) * 0.4
+    const r0 = (2.6 - rank * 1.3) * (0.8 + rand() * 0.4)
+    // each one starts a little way up inside the broken base, wherever it hangs
+    undersidePoint(b, BASE_F, p)
+    const rb = Math.hypot(p.x, p.z)
+    const d = Math.min(2 + rank * 5.5 + rand() * 1.5, rb - r0 - 0.5)
+    const cx = Math.cos(b) * d
+    const cz = Math.sin(b) * d
+    const q = d / rb
+    // from the height where the base starts to close, so the top is always
+    // buried, down past the base by its own visible length
+    const y0 = p.y + 1.5
+    const hidden = 1.5 + (1 - q * q) * (1 - BASE_F) * 0.4 * undersideDepth(b) + 3
+    const length = (16 - rank * 11) * (0.75 + rand() * 0.5) + hidden
+    const lx = (rand() - 0.5) * 0.12
+    const lz = (rand() - 0.5) * 0.12
+    const seed = n * 13.7
+    const start = pos.length / 3
+    for (let i = 0; i <= rings; i++) {
+      const t = i / rings
+      const yy = y0 - t * length
+      // strata in the finger too, at world heights so they line up with the body
+      const dd = -yy / 2.3 + (noise3(seed, t * 2, 1.1) - 0.5) * 1.2
+      const band = Math.floor(dd)
+      const bt = dd - band
+      const hard = smooth(0.35, 0.7, hash3(band, seed, 4.2))
+      const slab = smooth(0, 0.08, bt) * (1 - smooth(0.5, 0.7, bt))
+      // they narrow, then end broken off rather than in a point
+      const tv = Math.max(0, (t * length - hidden) / Math.max(length - hidden, 1))
+      const flare = 1 + 0.6 * (1 - smooth(0, 0.3, tv))
+      const taper = (1 - 0.72 * Math.pow(tv, 1.15)) * flare * (i === rings ? 0 : 1)
+      const ax = cx + lx * t * length
+      const az = cz + lz * t * length
+      for (let j = 0; j <= segs; j++) {
+        const th = (j / segs) * TAU
+        const c = Math.cos(th)
+        const s = Math.sin(th)
+        const lump = (fbm3(c * 1.3 + seed, s * 1.3, t * length * 0.18, 3) - 0.5) * 0.9
+        const r = Math.max(r0 * taper * (1 + lump + (slab * hard - 0.3) * 0.18), 0.02)
+        // the break is a ragged, slightly domed face
+        const brk = i >= rings - 1 ? (noise3(c * 2 + seed, s * 2, 3.3) - 0.5) * r0 * 0.7 : 0
+        pos.push(ax + c * r, yy + brk - (i === rings ? r0 * 0.25 : 0), az + s * r)
+        uv.push((j / segs) * 4, yy / 6)
+        rock.push(Math.min((1 - slab) * hard, 1), hard * slab, 0.6 + 0.35 * t)
+      }
+    }
+    for (let i = 0; i < rings; i++) {
+      for (let j = 0; j < segs; j++) {
+        const a = start + i * (segs + 1) + j
+        const b2 = a + segs + 1
+        index.push(a, a + 1, b2, a + 1, b2 + 1, b2)
+      }
+    }
+  }
 }
 
 // two thin springs seep out under the lip and run down the rock, besides
@@ -541,18 +623,22 @@ const CLIFF_MAP = /* glsl */ `
 
   // ledge tops: the cliff scan seen from above, moss where water and soil collect
   float top = smoothstep(0.55, 0.85, N.y);
+  // any face that is near level, up or down, is mapped from above so nothing stretches
+  float plan = max(smoothstep(0.5, 0.8, N.y), smoothstep(0.82, 0.96, -N.y));
   vec2 puv = vCWorld.xz / 2.4;
   vec3 dT = texture2D(tCliffD, puv).rgb;
   vec3 nT = texture2D(tCliffN, puv).rgb * 2.0 - 1.0;
   vec3 aT = texture2D(tCliffA, puv).rgb;
+  // seen from above the scan's lichen reads as grass; keep the stone's own colour
+  dT = mix(vec3(dot(dT, vec3(0.3, 0.55, 0.15))) * vec3(1.08, 0.97, 0.88), dT, 0.4);
   vec2 muv = vCWorld.xz / 1.8;
   vec3 dM = texture2D(tMossD, muv).rgb;
   vec3 nM = texture2D(tMossN, muv).rgb * 2.0 - 1.0;
   vec3 aM = texture2D(tMossA, muv).rgb;
   float lipNear = 1.0 - smoothstep(0.05, 0.4, vRock.z);
-  float moss = smoothstep(0.56, 0.7, cNoise(vCWorld.xz * 0.7) * 0.6 + cNoise(vCWorld.xz * 2.3) * 0.4 + lipNear * 0.25);
+  float moss = smoothstep(0.74, 0.86, cNoise(vCWorld.xz * 0.7) * 0.6 + cNoise(vCWorld.xz * 2.3) * 0.4 + lipNear * 0.06);
   moss *= smoothstep(0.6, 0.85, N.y + 0.1 * lipNear);
-  dT = mix(dT, dM * vec3(0.4, 0.5, 0.3), moss);
+  dT = mix(dT, dM * vec3(0.15, 0.28, 0.11), moss);
   nT = normalize(mix(nT, nM, moss));
   aT = mix(aT, aM, moss);
 
@@ -570,22 +656,26 @@ const CLIFF_MAP = /* glsl */ `
     sn = normalize(mix(sn, tN, tip));
     sa = mix(sa, tA, tip);
   }
-  vec3 dif = mix(sd, dT, top);
+  // undersides are seen edge on and in shade: there the scan's sharp cracks
+  // only alias into stripes, so they take a softened, flatter version
+  float under = smoothstep(-0.15, -0.65, N.y);
+  sd = mix(sd, texture2D(tCliffD, uv, 2.5).rgb, under);
+  sn = normalize(mix(sn, vec3(0.0, 0.0, 1.0), under * 0.7));
+  vec3 dif = mix(sd, dT, plan);
   // a thin, ragged horizon of soil and roots right under the turf
   float soilW = 1.0 - smoothstep(0.003, 0.01 + 0.014 * cNoise(vec2(uv.x * 26.0, 3.0)) + 0.006 * cNoise(vec2(uv.x * 90.0, 1.0)), vRock.z);
   dif = mix(dif, texture2D(tSoilD, uv * vec2(2.0, 2.0)).rgb * vec3(0.7, 0.62, 0.55), soilW);
-  vec3 wn = normalize(mix(sideToWorld(sn, N), topToWorld(nT, N), top));
-  vec3 arm = mix(sa, aT, top);
+  vec3 wn = normalize(mix(sideToWorld(sn, N), topToWorld(nT, N), plan));
+  vec3 arm = mix(sa, aT, plan);
 
   // overhang undersides stay in their own shade
-  float under = smoothstep(-0.15, -0.65, N.y);
   arm.r *= mix(1.0, 0.55, under);
   dif *= mix(1.0, 0.8, under);
 
   // soft layers seep: dark, a little glossy, streaking down from each ledge
-  float streak = cNoise(vec2(uv.x * 34.0, y * 0.35)) * 0.6 + cNoise(vec2(uv.x * 90.0, y * 0.9)) * 0.4;
-  float damp = clamp(vRock.x * (0.55 + 0.6 * streak), 0.0, 1.0) * (1.0 - top);
-  dif *= mix(1.0, 0.58, damp);
+  float streak = cNoise(vec2(uv.x * 10.0, y * 0.25)) * 0.7 + cNoise(vec2(uv.x * 26.0, y * 0.5)) * 0.3;
+  float damp = clamp(vRock.x * (0.6 + 0.4 * streak), 0.0, 1.0) * (1.0 - top);
+  dif *= mix(1.0, 0.68, damp);
   arm.g *= mix(1.0, 0.85, damp);
   // greyer and cooler deeper down, warmer stained bands near the top
   float bandTone = cNoise(vec2(uv.x * 0.6, y * 0.45));
@@ -613,7 +703,7 @@ const CLIFF_MAP = /* glsl */ `
   wn = normalize(wn + vec3(-N.z, 0.0, N.x) * ripple * 0.35 * coreAll + vec3(0.0, 1.0, 0.0) * ripple * 0.2 * coreAll);
 
   // rough stone everywhere but on the water itself
-  arm.g = max(arm.g, mix(0.86, 0.22, max(coreAll, wetAll * 0.6)));
+  arm.g = max(arm.g, mix(0.86, 0.35, max(coreAll, wetAll * 0.5)));
   cliffNormal = wn;
   cliffArm = arm;
   diffuseColor.rgb *= dif;
@@ -696,6 +786,9 @@ export class Terrain implements RealmPart {
     under.receiveShadow = true
     under.castShadow = true
     under.name = 'underside'
+    // faces almost along the low sun would shade themselves in stripes; the
+    // far side of the rock casts instead
+    underMat.shadowSide = THREE.BackSide
 
     this.object.add(top, under)
     this.geometries.push(topGeo, underGeo)
