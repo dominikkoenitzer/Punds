@@ -42,11 +42,11 @@ export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   return 'high'
 }
 
-const DPR_CAP: Record<Tier, number> = { ultra: 2, high: 1.5, phone: 1.6 }
+const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
 
 // light through the walk: warm afternoon gold deepening as the sun sinks
-const SUN_EARLY = new THREE.Color(1.0, 0.86, 0.68)
-const SUN_LATE = new THREE.Color(1.0, 0.66, 0.38)
+const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
+const SUN_LATE = new THREE.Color(1.0, 0.6, 0.32)
 
 export class Realm {
   readonly renderer: THREE.WebGLRenderer
@@ -138,7 +138,7 @@ export class Realm {
       fogHeight: -6,
       fogFalloff: 0.09,
       haze: 0.00025,
-      bloom: 0.02,
+      bloom: 0.12,
       shafts: 0.35,
       sunColor: new THREE.Color(),
       focusDistance: 20,
@@ -232,7 +232,7 @@ export class Realm {
     if (this.disposed) return
     this.scene.add(this.sky.mesh)
     this.scene.environment = this.sky.environment
-    this.scene.environmentIntensity = 0.45
+    this.scene.environmentIntensity = 0.38
     this.placeSun()
     // the first frame can show while the island is still building
     this.raf = requestAnimationFrame(this.tick)
@@ -366,7 +366,7 @@ export class Realm {
     // the sun sinks through the walk
     this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
     this.sun.color.copy(this.sunColor)
-    this.sun.intensity = 10.5 - p * 2.5
+    this.sun.intensity = 13 - p * 2.5
 
     this.frame.t = t
     this.frame.dt = dt

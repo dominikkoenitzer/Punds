@@ -50,6 +50,11 @@ void main() {
   float v = clamp((elev - uBottom) / (uTop - uBottom), 0.002, 0.998);
   vec3 enc = texture2D(tSky, vec2(fract(u), v)).rgb;
   vec3 col = pow(enc, vec3(2.2)) / uK;
+  // a richer gradient than the photograph: warmer along the horizon, a
+  // deeper blue overhead
+  float up = smoothstep(-0.02, 0.65, dir.y);
+  col *= mix(vec3(1.12, 0.96, 0.8), vec3(0.72, 0.85, 1.08), up);
+  col *= mix(1.0, 0.82, up * up);
   // the photographed disc is clipped in 8 bits; the real one is added here
   float c = dot(dir, uSunDir);
   float disc = smoothstep(cos(uSunSize * 1.25), cos(uSunSize * 0.85), c);
