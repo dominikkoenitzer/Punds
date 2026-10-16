@@ -372,7 +372,10 @@ float tops(vec2 xz, vec2 q, out float tower) {
     float wob = vnoise(o * 0.006 + float(i) * 13.0) - 0.5;
     float d = length(o) / t.z + wob * 0.35;
     float k = clamp(1.0 - d * d, 0.0, 1.0);
-    float th = SEA_BASE + t.w * pow(k, 0.55);
+    // a bank is a crowd of turrets, not one dome: its height breaks up into
+    // lobes of different heights, so the silhouette never reads as a shell
+    float lobes = vnoise(o * 0.0042 + float(i) * 7.3) * 0.65 + vnoise(o * 0.011 - float(i) * 3.1) * 0.35;
+    float th = SEA_BASE + t.w * pow(k, 0.55) * (0.45 + lobes * 0.85);
     if (th > h) { h = mix(h, th, smoothstep(0.0, 0.25, k)); }
     tower = max(tower, smoothstep(0.0, 0.5, k));
   }
@@ -396,7 +399,7 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
   // smaller broken cumulus near the island, big billows stretched along the
   // wind far out
   float far = smoothstep(500.0, 1800.0, length(p.xz));
-  float big = mix(0.75 + wander * 0.7, 2.6, tower) * mix(0.62, 1.3, far);
+  float big = mix(0.75 + wander * 0.7, 1.7, tower) * mix(0.62, 1.3, far);
   vec2 along = vec2(0.92, 0.4);
   q.xz -= along * dot(q.xz, along) * 0.25 * far;
   vec3 warp = vec3(vnoise(q.xz * 0.004), 0.0, vnoise(q.zx * 0.004 + 9.1)) * 90.0;
@@ -408,15 +411,16 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
   vec3 sm = vec3(q.z * 0.6 - q.x * 0.8, q.y * 1.3, q.x * 0.6 + q.z * 0.8) * (1.0 / (88.0 * big)) + vec3(0.53, 0.0, 0.19);
   float shape = textureLod(uNoise, s1, l).r * 0.5 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.3
               + textureLod(uNoise, sm, l + 1.25).r * 0.2;
-  float fade = clamp(dTop / mix(26.0 + wander * 34.0, 120.0, tower), 0.0, 1.0);
+  float fade = clamp(dTop / mix(26.0 + wander * 34.0, 75.0, tower), 0.0, 1.0);
   float d = shape * 1.0 + fade * 0.95 - 0.87 - (1.0 - far) * 0.025;
   if (d <= 0.0) return 0.0;
   if (detail > 0.0) {
     vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.008, 0.0);
     float det = textureLod(uNoise, s3, l + 2.13).g;
-    d -= (1.0 - det) * 0.22 * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.75);
+    d -= (1.0 - det) * mix(0.3, 0.2, far) * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.6);
   }
-  return clamp(d * 9.0, 0.0, 1.0);
+  // a hard surface near the island, softer far out where it only blurs
+  return clamp(d * mix(15.0, 8.0, far), 0.0, 1.0);
 }
 
 float phaseHG(float c, float g) {
@@ -448,7 +452,7 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
     ls *= 2.3;
   }
   // light is shadowed harder than the eye sees through: deep valleys
-  float tl = exp(-od * SIGMA * 1.7);
+  float tl = exp(-od * SIGMA * mix(2.4, 1.6, clamp(t / 1500.0, 0.0, 1.0)));
   // a cheap stand in for multiple scattering: a softer second lobe
   float ms = exp(-od * SIGMA * 0.12) * 0.05;
   float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
@@ -529,13 +533,14 @@ void main() {
     s1 = (SLAB_BOTTOM - ro.y) / rd.y;
     s1 = min(s1, s0 + 5000.0);
   }
-  // the nearest tower the ray passes through
+  // the nearest tower the ray passes through; the bound must enclose the
+  // tallest lobe, or its surface shows as a pale dome cut into the bank
   float w0 = 1e9;
   float w1 = -1.0;
   for (int i = 0; i < ${TOWER_COUNT}; i++) {
     float ta, tb;
     vec4 b = uTowerBounds[i];
-    if (hitEllipsoid(ro, rd, b, uTowers[i].w * 0.62 + 20.0, ta, tb)) {
+    if (hitEllipsoid(ro, rd, b, uTowers[i].w * 0.85 + 30.0, ta, tb)) {
       ta = max(ta, 0.0);
       if (ta < w0) { w0 = ta; w1 = tb; }
     }
@@ -631,7 +636,7 @@ void main() {
       // never bleeds across a silhouette
       float sd = texture(uRawFront, vUv + o).g;
       float same = exp(-abs(log(sd / here.g)) * 14.0);
-      float w = ((x == 0 && y == 0) ? 4.0 : ((x == 0 || y == 0) ? 2.0 : 1.0)) * same;
+      float w = ((x == 0 && y == 0) ? 8.0 : ((x == 0 || y == 0) ? 1.5 : 0.6)) * same;
       if (same > 0.5) {
         mn = min(mn, c);
         mx = max(mx, c);
@@ -1191,7 +1196,7 @@ export class Skyscape implements RealmPart {
     const sunColor = new THREE.Color(1.0, 0.64, 0.23).multiplyScalar(3.2)
     const shadowColor = new THREE.Color(0.29, 0.3, 0.66).multiplyScalar(0.78)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
-    const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.4, z, r * 1.45))
+    const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
     this.quad = new THREE.BufferGeometry()
     this.quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3))
@@ -1670,7 +1675,7 @@ export class Skyscape implements RealmPart {
     // resolve into the write history, then swap so the composite reads it
     const ru = this.resolveMaterial.uniforms
     ru.uHistory!.value = this.historyRead.texture
-    ru.uBlend!.value = this.historyValid ? 0.88 : 0
+    ru.uBlend!.value = this.historyValid ? 0.8 : 0
     renderer.setRenderTarget(this.historyWrite)
     renderer.render(this.resolveScene, this.marchCamera)
     this.compositeMaterial.uniforms.uCloud!.value = this.historyWrite.texture
