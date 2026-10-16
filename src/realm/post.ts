@@ -312,7 +312,7 @@ void main() {
 
   col *= uExposure;
   // filmic contrast around middle grey, before the curve
-  col = 0.18 * pow(max(col, 0.0) / 0.18, vec3(1.1));
+  col = 0.18 * pow(max(col, 0.0) / 0.18, vec3(1.16));
 
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(luma), col, uSaturation), 0.0);

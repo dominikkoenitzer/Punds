@@ -150,7 +150,7 @@ export class Realm {
       focusRange: 8,
       blur: 0.4,
       vignette: 0.28,
-      saturation: 1.04,
+      saturation: 1.12,
       wake: this.reduced ? 1 : 0,
     }
 
