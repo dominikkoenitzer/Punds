@@ -11,6 +11,7 @@ import { EmaRack } from './ema'
 import { Grass } from './grass'
 import { Skyscape } from './skyscape'
 import { Rocks } from './rocks'
+import { Roots } from './roots'
 import { Pond } from './pond'
 import { Plants } from './plants'
 import { CherryTree, MapleTree, Petals } from './trees'
@@ -123,6 +124,7 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Shrine.create(tier),
     () => EmaRack.create(tier),
     () => Rocks.create(),
+    () => Roots.create(tier),
     () => Plants.create(tier),
     () => new CherryTree({ tier, x: CHERRY.x, z: CHERRY.z, height: CHERRY.height, spread: CHERRY.spread, lean: CHERRY.lean, seed: 11 }),
     ...MAPLES.map((m, i) => () => new MapleTree({ tier, x: m.x, z: m.z, height: m.height, spread: m.spread, seed: 21 + i })),
