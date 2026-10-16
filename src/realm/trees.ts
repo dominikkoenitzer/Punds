@@ -219,16 +219,19 @@ attribute float aSway;
 ${WIND_GLSL}
 `
 
-function barkMaterial(tier: Tier, name: string, fallback: number, tint: number, amp: number, swayNorm: number): THREE.MeshStandardMaterial {
+// haze: how strongly far trunks drift towards the blue of the air (0 for single trees)
+function barkMaterial(tier: Tier, name: string, fallback: number, tint: number, amp: number, swayNorm: number, haze = 0): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: fallback, roughness: 0.92, metalness: 0 })
   const branchAmp = { value: amp }
   const norm = { value: swayNorm }
+  const hazeU = { value: haze }
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = realmUniforms.uTime
     shader.uniforms.uWind = realmUniforms.uWind
     shader.uniforms.uGust = realmUniforms.uGust
     shader.uniforms.uBranchAmp = branchAmp
     shader.uniforms.uSwayNorm = norm
+    shader.uniforms.uHaze = hazeU
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${SWAY_HEAD}`)
       .replace(
@@ -248,6 +251,19 @@ function barkMaterial(tier: Tier, name: string, fallback: number, tint: number, 
       '#include <roughnessmap_fragment>',
       '#include <roughnessmap_fragment>\n  roughnessFactor = max(roughnessFactor, 0.78);',
     )
+  }
+  const onCompile2 = mat.onBeforeCompile
+  mat.onBeforeCompile = (shader, renderer) => {
+    onCompile2(shader, renderer)
+    // In a grove the trunks behind stand in a little more air than the fog gives at
+    // these short ranges: they lift and cool with distance, so the rows separate.
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uHaze;')
+      .replace(
+        '#include <opaque_fragment>',
+        `outgoingLight = mix(outgoingLight, outgoingLight * vec3(1.12, 1.2, 1.42) + vec3(0.006, 0.009, 0.016), uHaze * smoothstep(5.0, 32.0, length(vViewPosition)));
+        #include <opaque_fragment>`,
+      )
   }
   loadPbr(name, tier)
     .then((set) => {
@@ -936,7 +952,7 @@ function paintCedarCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: 
       const ang = Math.atan2(b.y - a.y, b.x - a.x)
       const tip = i / (ax.pts.length - 1)
       const w = ax.w * (1 - tip * 0.45)
-      const steps = Math.max(2, Math.round(seg / (S * 0.006)))
+      const steps = Math.max(2, Math.round(seg / (S * 0.0045)))
       for (let k = 0; k < steps; k++) {
         const f = k / steps
         const px = a.x + (b.x - a.x) * f
@@ -945,16 +961,18 @@ function paintCedarCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: 
           // needles point forward and out, all round the cord
           const side = n === 0 ? -1 : n === 1 ? 1 : (r() - 0.5) * 0.6
           const na = ang + side * (0.5 + r() * 0.35)
-          const nl = w * (0.75 + r() * 0.5)
+          // needles shorten towards each tip, so sprays end in fine points
+          const nl = w * (0.75 + r() * 0.5) * (1 - tip * 0.35)
           const lit = r()
           if (pass === 'color') {
             // dark, slightly blue green; the light needles sit at the tips
-            const g = 0.13 + 0.08 * lit + 0.06 * tip
-            ctx.strokeStyle = rgbStr((0.05 + 0.03 * lit) * shade, g * shade, (0.1 + 0.05 * lit) * shade)
+            const t2 = tip * tip
+            const g = 0.1 + 0.04 * lit + 0.1 * t2
+            ctx.strokeStyle = rgbStr((0.04 + 0.02 * lit + 0.03 * t2) * shade, g * shade, (0.09 + 0.04 * lit + 0.05 * t2) * shade)
           } else {
             ctx.strokeStyle = grey(0.45 + 0.3 * lit * shade)
           }
-          ctx.lineWidth = Math.max(0.8, S * 0.0045)
+          ctx.lineWidth = Math.max(0.7, S * 0.0033)
           ctx.lineCap = 'round'
           ctx.beginPath()
           ctx.moveTo(px, py)
@@ -1685,7 +1703,7 @@ export class CedarGrove extends Tree {
     const atlas = acquireAtlas('cedar', tier)
     const SWAY_NORM = 10
     const branchesPer = tier === 'ultra' ? 56 : tier === 'high' ? 44 : 28
-    const cardsPer = tier === 'ultra' ? 1500 : tier === 'high' ? 1100 : 520
+    const cardsPer = tier === 'ultra' ? 2100 : tier === 'high' ? 1500 : 600
     let rope: THREE.BufferGeometry | null = null
     for (const c of CEDARS) {
       const H = c.height
@@ -1730,7 +1748,9 @@ export class CedarGrove extends Tree {
         // lower branches droop, upper ones climb; a few are short, which breaks the outline
         const elev = -0.25 + u * 0.75 + (r() - 0.5) * 0.2
         const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
-        const short = r() < 0.22 ? 0.5 : 1
+        // a third are short or overlong, which breaks the outline into tufts
+        const q = r()
+        const short = q < 0.25 ? 0.45 : q > 0.88 ? 1.35 : 1
         const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short)
         const rr = Math.max(0.025, 0.03 + 0.07 * (1 - u)) * (r0 / 0.55)
         limbs.push(
@@ -1777,11 +1797,11 @@ export class CedarGrove extends Tree {
         radii: new THREE.Vector3(crownR, (H - crownBase) / 2, crownR),
         lowY: (H - crownBase) / 2,
       }
-      const sz: [number, number] = tier === 'phone' ? [1.2, 1.9] : [0.95, 1.6]
+      const sz: [number, number] = tier === 'phone' ? [1.0, 1.7] : [0.7, 1.3]
       parts.push(
         buildCards({
-          tips, count: Math.round(cardsPer * (H / 22)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.6,
-          clusterRadius: 0.7, perCluster: tier === 'phone' ? 8 : 12, flat: 0.42, reject: () => false,
+          tips, count: Math.round(cardsPer * (H / 22)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.8,
+          clusterRadius: 0.6, perCluster: tier === 'phone' ? 8 : 11, flat: 0.4, reject: () => false,
         }),
       )
       if (c.sacred) {
@@ -1790,7 +1810,7 @@ export class CedarGrove extends Tree {
         rope = strawRope(c.x, gy + 2.0, c.z, at + 0.04, 77)
       }
     }
-    const bark = barkMaterial(tier, 'cedar_bark', 0x4a3026, 0x9a8a82, 0.3, SWAY_NORM)
+    const bark = barkMaterial(tier, 'cedar_bark', 0x4a3026, 0x9a8a82, 0.3, SWAY_NORM, 0.8)
     // the long fibrous strips should catch the low light
     bark.normalScale.set(1.8, 1.8)
     this.addMesh(tubes.build(), bark, true)
@@ -1801,8 +1821,8 @@ export class CedarGrove extends Tree {
       map: atlas.map,
       normalMap: atlas.normalMap,
       trans: 0.9,
-      transTint: new THREE.Color(0.75, 1.0, 0.55),
-      roughness: 0.82,
+      transTint: new THREE.Color(0.6, 0.95, 0.7),
+      roughness: 0.95,
       branchAmp: 0.3,
       cardAmp: 0.05,
       swayNorm: SWAY_NORM,
@@ -1812,7 +1832,7 @@ export class CedarGrove extends Tree {
       softEdge: true,
     })
     // sugi foliage is dark and a little blue beside the maples' warm reds
-    mat.color.setRGB(0.78, 0.86, 0.95)
+    mat.color.setRGB(0.52, 0.64, 0.8)
     this.addFoliage(cards, mat)
     if (rope) {
       const ropeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })
