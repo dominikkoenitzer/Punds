@@ -26,8 +26,8 @@ interface TierSettings {
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { scale: 0.5, depthScale: 1, steps: 72, towerSteps: 40, lightSteps: 4 },
-  high: { scale: 0.4, depthScale: 1, steps: 56, towerSteps: 32, lightSteps: 3 },
+  ultra: { scale: 0.36, depthScale: 1, steps: 46, towerSteps: 26, lightSteps: 3 },
+  high: { scale: 0.32, depthScale: 1, steps: 40, towerSteps: 22, lightSteps: 3 },
   phone: { scale: 0.3, depthScale: 0.5, steps: 28, towerSteps: 16, lightSteps: 2 },
 }
 
@@ -339,7 +339,7 @@ ${SKY_GLSL}
 const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
 const float SLAB_BOTTOM = -105.0;
-const float SIGMA = 0.13;
+const float SIGMA = 0.15;
 const float HAZE_DIST = 1400.0;
 const float CLEAR_DIST = 550.0;
 
@@ -455,8 +455,10 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
   float lt = 0.0;
   float dl;
   float tl2;
+  // far samples take a single light step: their shading is mostly haze
+  int lightSteps = t > 1500.0 ? 1 : uLightSteps;
   for (int j = 0; j < 4; j++) {
-    if (j >= uLightSteps) break;
+    if (j >= lightSteps) break;
     lt += ls * 0.5;
     od += density(p + uSunDir * lt, 0.0, lod, dl, tl2) * ls;
     lt += ls * 0.5;
@@ -588,7 +590,7 @@ void main() {
     count = 1;
   }
   for (int k = 0; k < 3; k++) {
-    if (k >= count || trans < 0.01) break;
+    if (k >= count || trans < 0.03) break;
     vec3 seg = k == 0 ? seg0 : (k == 1 ? seg1 : seg2);
     float len = seg.y - seg.x;
     if (len <= 0.0) continue;
@@ -596,7 +598,7 @@ void main() {
     float dt = len / seg.z;
     float t = seg.x + dt * jitter;
     for (int i = 0; i < 96; i++) {
-      if (i >= steps || trans < 0.01) break;
+      if (i >= steps || trans < 0.03) break;
       marchStep(ro + rd * t, t, dt, phase, warm, haze, skyUp, sunC, shadowC, col, trans, front);
       t += dt * (0.85 + 0.3 * fract(jitter + float(i) * 0.618));
     }
@@ -1179,6 +1181,7 @@ export class Skyscape implements RealmPart {
   private readonly resolveScene = new THREE.Scene()
   private readonly prevViewProj = new THREE.Matrix4()
   private frameIndex = 0
+  private tick = 0
   private historyValid = false
   private readonly depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false })
   private readonly depthCamera = new THREE.PerspectiveCamera()
@@ -1622,12 +1625,12 @@ export class Skyscape implements RealmPart {
     loadPbr('cliff', opts.tier)
       .then((set) => {
         if (this.disposed) return
-        const scanned = pbrMaterial(set, { color: 0x8e9195 })
+        const scanned = pbrMaterial(set, { color: 0x828a93 })
         this.cliffMaterial.map = scanned.map
         this.cliffMaterial.normalMap = scanned.normalMap
         this.cliffMaterial.aoMap = scanned.aoMap
         this.cliffMaterial.roughnessMap = scanned.roughnessMap
-        this.cliffMaterial.color.set(0x8e9195)
+        this.cliffMaterial.color.set(0x828a93)
         scanned.dispose()
       })
       .catch(() => {
@@ -1751,6 +1754,15 @@ export class Skyscape implements RealmPart {
     sm.autoUpdate = prevAuto
     sm.needsUpdate = prevNeeds
 
+    // The clouds move slowly and the camera turns slowly, so the trace runs
+    // every second frame; the frames between show the last resolved result.
+    this.tick++
+    if (this.historyValid && (this.tick & 1) === 1) {
+      renderer.setClearColor(this.clearColor, prevAlpha)
+      renderer.autoClear = prevAutoClear
+      renderer.setRenderTarget(prevTarget)
+      return
+    }
     renderer.setRenderTarget(this.cloudTarget)
     renderer.setClearColor(0x000000, 0)
     u.uFrame!.value = this.frameIndex++
