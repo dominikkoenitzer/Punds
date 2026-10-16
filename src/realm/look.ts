@@ -1,10 +1,11 @@
 import * as THREE from 'three'
+import { EMA_RACK, groundHeight } from './layout'
 
 // The visitor stands still and looks around. From the centre of the garden,
 // on the path between the lanterns, the view holds still while the mouse
 // moves over the middle of the screen, so whatever it points at stays under
 // it; towards the left or right edge the head turns, further the closer to
-// the edge, all the way round. Dragging (or a finger on a phone) turns it
+// the edge, round and round without end. Dragging (or a finger on a phone) turns it
 // too. A click on one of the garden's places flies the eyes to a close view
 // of it; there the head turns only a little, and a click outside it, Esc or
 // the browser's back flies home again.
@@ -28,14 +29,15 @@ const view = (x: number, y: number, z: number, yaw: number, pitch: number, focus
   panPitch,
 })
 
-export const CENTRE = view(-0.3, 1.62, 9.6, Math.PI * 2, 0.03, 20, Math.PI, 0.24)
+// at the centre the head turns without end, round and round
+export const CENTRE = view(-0.3, 1.62, 9.6, Math.PI * 2, 0.03, 20, Infinity, 0.24)
 
 export type Place = 'rack' | 'pond' | 'shrine'
 
 // the close views: the plaque rack as it is framed at the end of the old
 // walk, the pond from its bank, the hall from the foot of the steps
 export const PLACES: Record<Place, View> = {
-  rack: view(3.73, 2.75, -12.1, 5.385, -0.083, 2.4, 0.3, 0.1),
+  rack: view(EMA_RACK.x - 1.87, groundHeight(EMA_RACK.x, EMA_RACK.z) + 1.5, EMA_RACK.z + 1.5, 5.385, -0.083, 2.4, 0.3, 0.1),
   pond: view(-3.2, 1.6, 6.6, 0.94, -0.27, 7, 0.45, 0.14),
   shrine: view(0, 2.3, -6.0, Math.PI * 2, 0.1, 10, 0.4, 0.14),
 }
@@ -113,13 +115,12 @@ export class Look {
     this.from.focus = this.pose.focus
     this.place = place
     this.flight = immediate || this.reduced ? 1 : 0
-    // a turn belongs to the view it was made in
+    // a turn belongs to the view it was made in; the flight starts from
+    // wherever the head is and takes the short way round
     this.drag = 0
     this.tilt = 0
-    if (immediate || this.reduced) {
-      this.dragged = 0
-      this.tilted = 0
-    }
+    this.dragged = 0
+    this.tilted = 0
   }
 
   update(dt: number): Pose {
@@ -127,9 +128,11 @@ export class Look {
     this.flight = Math.min(1, this.flight + dt / FLIGHT)
     const k = this.reduced ? 1 : 1 - Math.exp(-dt * 3)
     this.aimed.lerp(this.aim, k)
-    // the edges of the screen turn the head, faster towards the very edge
-    if (this.flight >= 1) {
-      this.drag = THREE.MathUtils.clamp(this.drag + edge(this.aim.x) * 1.2 * dt, -v.panYaw, v.panYaw)
+    // at the centre the edges of the screen turn the head, faster towards the
+    // very edge; in a close view the head holds still, so whatever is near the
+    // side stays where the pointer is
+    if (this.flight >= 1 && !this.place) {
+      this.drag += edge(this.aim.x) * 1.4 * dt
       this.tilt = THREE.MathUtils.clamp(this.tilt + edge(this.aim.y) * 0.5 * dt, -v.panPitch, v.panPitch)
     }
     const ease = this.reduced ? 1 : 1 - Math.exp(-dt * 5)

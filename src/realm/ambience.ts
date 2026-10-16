@@ -135,6 +135,24 @@ export class Ambience {
     this.drops = drops
   }
 
+  // the shrine bell: a few inharmonic partials that ring out slowly
+  bell(): void {
+    const ctx = this.ctx
+    if (!ctx || !this.master || !this.enabled) return
+    const now = ctx.currentTime
+    for (const [ratio, level, decay] of [[1, 0.12, 2.6], [2.76, 0.05, 1.6], [5.4, 0.025, 0.9], [8.9, 0.012, 0.5]] as const) {
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.frequency.value = 330 * ratio
+      g.gain.setValueAtTime(0, now)
+      g.gain.linearRampToValueAtTime(level, now + 0.01)
+      g.gain.exponentialRampToValueAtTime(0.0001, now + decay)
+      o.connect(g).connect(this.master)
+      o.start(now)
+      o.stop(now + decay + 0.05)
+    }
+  }
+
   // a single drop: a short sine that falls in pitch, like water on water
   private drop(level: number): void {
     const ctx = this.ctx

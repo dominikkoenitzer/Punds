@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Realm } from '../realm/realm'
+import type { CursorState, Realm } from '../realm/realm'
 import { LINKS } from '../links'
 import './Sando.css'
 
@@ -30,7 +30,32 @@ export default function Sando() {
   const [sound, setSound] = useState(false)
   // the one hint: shown once the garden is there, gone at the first look
   const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
+  const [load, setLoad] = useState(0)
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  // the page's own cursor over the scene: a small soft dot that opens to a
+  // ring over anything that can be clicked, with the name where one fits
+  const dotRef = useRef<HTMLDivElement>(null)
+  const [cursor, setCursor] = useState<{ state: CursorState; label: string | null }>({ state: 'idle', label: null })
+
+  useEffect(() => {
+    const el = containerRef.current
+    const dot = dotRef.current
+    if (!el || !dot) return
+    const move = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      dot.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`
+      dot.dataset.on = 'true'
+    }
+    const leave = () => {
+      dot.dataset.on = 'false'
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerleave', leave)
+    return () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerleave', leave)
+    }
+  }, [])
 
   const toggleSound = () => {
     const next = !(realmRef.current?.sound ?? sound)
@@ -69,6 +94,8 @@ export default function Sando() {
             window.setTimeout(() => setCue((c) => (c === 'waiting' ? 'shown' : c)), 1200)
           },
           onMove: () => setCue('gone'),
+          onLoad: (f) => setLoad(f),
+          onCursor: (state, label) => setCursor({ state, label }),
         })
         realmRef.current = realm
         if (new URLSearchParams(location.search).has('debug')) window.__realm = realm
@@ -90,8 +117,13 @@ export default function Sando() {
     <div className="sando-root">
       <div aria-hidden="true" className="sando-canvas" ref={containerRef} />
       {!noScene && (
+        <div aria-hidden="true" className="sando-load" data-done={load >= 1}>
+          <i style={{ transform: `scaleX(${Math.max(0.04, load)})` }} />
+        </div>
+      )}
+      {!noScene && (
         <p aria-hidden="true" className="sando-cue" data-state={cue}>
-          {touch ? 'drag to look, tap to explore' : 'move to look, click to explore'}
+          {touch ? 'look around · tap to explore' : 'look around · click to explore'}
         </p>
       )}
       {!noScene && (
@@ -99,8 +131,14 @@ export default function Sando() {
           sound
         </button>
       )}
-      <main className={noScene ? 'sando-fallback' : 'sando-sr'}>
+      {!noScene && (
+        <div aria-hidden="true" className="sando-dot" ref={dotRef} data-state={cursor.state} data-on="false">
+          {cursor.label && <span>{cursor.label}</span>}
+        </div>
+      )}
+      <main className={noScene ? 'sando-fallback' : 'sando-menu'}>
         <h1>Punds</h1>
+        <p className="sando-about">A quiet shrine garden on an island above the clouds.</p>
         <nav>
           {LINKS.map((l, i) => (
             <a

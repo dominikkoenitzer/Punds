@@ -5,6 +5,7 @@ import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { setMaxAnisotropy } from './assets'
 import { Look, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
+import { LINKS } from '../links'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
@@ -19,10 +20,17 @@ export interface RealmOptions {
   onReady?: () => void
   onProgress?: (p: number) => void
   onMove?: () => void
+  // how far the build has come, 0..1, for the page's loading line
+  onLoad?: (f: number) => void
+  // what the pointer is over: the page draws its own small cursor, which
+  // grows over anything that can be clicked and carries a name where one fits
+  onCursor?: (state: CursorState, label: string | null) => void
   // the device cannot carry the scene even at the lowest step: the page
   // should drop it for the still picture and the written links
   onTooSlow?: () => void
 }
+
+export type CursorState = 'idle' | 'point' | 'grab'
 
 interface Prerenderer {
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void
@@ -93,6 +101,9 @@ export class Realm {
   private drag: { x: number; y: number; moved: boolean } | null = null
   private hoveredPlace: Place | null = null
   private lastX = 0
+  private baseFov = 50
+  private rackLens = 0
+  private cursorKey = ''
   private lastY = 0
   private placeBoxes: Partial<Record<Place, THREE.Box3>> = {}
   private container: HTMLElement
@@ -183,12 +194,12 @@ export class Realm {
       exposure: 1,
       fogColor: new THREE.Color(),
       sunFogColor: new THREE.Color(),
-      fogDensity: 0.0016,
+      fogDensity: 0.0022,
       fogHeight: -6,
       fogFalloff: 0.09,
-      haze: 0.00025,
-      bloom: 0.12,
-      shafts: 0.35,
+      haze: 0.00042,
+      bloom: 0.16,
+      shafts: 0.5,
       sunColor: new THREE.Color(),
       focusDistance: 20,
       focusRange: 8,
@@ -297,6 +308,12 @@ export class Realm {
         return
       }
     }
+    // at the shrine a click by the bell rope, in the middle of the hall's
+    // front, rings the bell (with sound on); anywhere else goes home
+    if (at === 'shrine' && Math.abs(this.pointerNdc.x) < 0.22 && this.pointerNdc.y > -0.45) {
+      this.ambience.bell()
+      return
+    }
     // any other click in a close view goes home
     this.leave()
   }
@@ -321,6 +338,11 @@ export class Realm {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.look.place) this.leave()
+  }
+
+  // the rack, seen from afar, is where the links are: its label names them
+  private get linkNames(): string {
+    return LINKS.map((l) => l.name).join('  ·  ')
   }
 
   private findPart<T>(name: string): (RealmPart & T) | null {
@@ -393,7 +415,8 @@ export class Realm {
     const vMin = 40
     const hMin = 38
     const v = Math.max(vMin, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(hMin / 2)) / this.camera.aspect)))
-    this.camera.fov = Math.min(v, 72)
+    this.baseFov = Math.min(v, 72)
+    this.camera.fov = this.baseFov
     this.camera.updateProjectionMatrix()
   }
 
@@ -404,6 +427,7 @@ export class Realm {
       return
     }
     this.parts.push(part)
+    this.opts.onLoad?.(Math.min(0.92, this.parts.length / 22))
     this.scene.add(part.object)
     this.renderer.shadowMap.needsUpdate = true
     // compile its programs now, in parallel where the browser allows, so the
@@ -453,6 +477,7 @@ export class Realm {
     this.buildTimes.push(['ready at', Math.round(performance.now())])
     this.ready = true
     this.readyAt = performance.now()
+    this.opts.onLoad?.(1)
     this.opts.onReady?.()
   }
 
@@ -606,10 +631,17 @@ export class Realm {
     const pitch = pose.pitch + this.parallax.y * 0.015 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
     // a tall screen sees less across: at the rack, where the plaques must
-    // all be in frame, step back along the view to make room
-    if (this.camera.aspect < 1 && this.look.place === 'rack') {
-      const back = (1 - this.camera.aspect) * 2.2 * this.look.closeness
-      this.camera.position.addScaledVector(this.dir, -back)
+    // all be in frame, the lens widens instead (stepping back would walk
+    // into the lantern behind)
+    if (this.camera.aspect < 1) {
+      const wide = Math.min(90, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(26)) / this.camera.aspect)))
+      // eased both ways, so flying home narrows the lens as smoothly
+      this.rackLens += ((this.look.place === 'rack' ? 1 : 0) - this.rackLens) * (1 - Math.exp(-dt * 2.5))
+      const fov = THREE.MathUtils.lerp(this.baseFov, Math.max(this.baseFov, wide), this.rackLens)
+      if (Math.abs(fov - this.camera.fov) > 0.01) {
+        this.camera.fov = fov
+        this.camera.updateProjectionMatrix()
+      }
     }
     this.aimPoint.copy(this.camera.position).add(this.dir)
     this.camera.up.set(0, 1, 0)
@@ -640,7 +672,17 @@ export class Realm {
       pointing ||= part.pointing && this.mouse && this.look.place === 'rack'
     }
     pointing ||= this.hoveredPlace !== null
-    this.renderer.domElement.style.cursor = this.drag?.moved ? 'grabbing' : pointing ? 'pointer' : 'default'
+    // the page draws the cursor over the scene; the system one stays hidden
+    this.renderer.domElement.style.cursor = this.mouse ? 'none' : 'default'
+    const state: CursorState = this.drag?.moved ? 'grab' : pointing ? 'point' : 'idle'
+    let label: string | null = null
+    if (this.look.place === 'rack') label = this.findPart<{ hoveredName: string | null }>('EmaRack')?.hoveredName ?? null
+    else if (this.hoveredPlace === 'rack') label = this.linkNames
+    const key = state + (label ?? '')
+    if (key !== this.cursorKey) {
+      this.cursorKey = key
+      this.opts.onCursor?.(state, label)
+    }
 
     realmUniforms.uTime.value = t
     realmUniforms.uGust.value = 0.5 + 0.5 * Math.sin(t * 0.13) * Math.sin(t * 0.07 + 2.0)
