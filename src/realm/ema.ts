@@ -51,22 +51,52 @@ function plaqueGeometry(w: number, h: number, t: number): THREE.BufferGeometry {
 }
 
 // the name, brushed in ink on the plaque face, as a transparent texture
-function nameTexture(name: string, w: number, h: number): THREE.CanvasTexture {
+// The name, written on the plaque by hand in ink: each letter set a little
+// off the line and turned by a hair, the word placed slightly high and to
+// one side as people write on ema, and the ink broken by the grain where the
+// brush ran dry. The letterforms come from the system serif, so the word
+// stays crisp and legible at any size.
+function nameTexture(name: string, w: number, h: number, seed: number): THREE.CanvasTexture {
   const px = 1024
   const c = document.createElement('canvas')
   c.width = px
   c.height = Math.round((px * h) / w)
   const g = c.getContext('2d')!
+  const rand = rng(seed)
   g.clearRect(0, 0, c.width, c.height)
-  g.fillStyle = 'rgba(18, 14, 11, 0.94)'
-  g.textAlign = 'center'
-  g.textBaseline = 'middle'
   const size = Math.round(c.height * 0.3)
   g.font = `600 ${size}px 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif`
-  // ink pools a little: draw twice, the second slightly offset and fainter
-  g.shadowColor = 'rgba(18, 14, 11, 0.35)'
-  g.shadowBlur = size * 0.04
-  g.fillText(name, c.width / 2, c.height * 0.56)
+  g.textBaseline = 'alphabetic'
+  const widths = [...name].map((ch) => g.measureText(ch).width)
+  const total = widths.reduce((a, b) => a + b, 0) * 1.03
+  let x = c.width * (0.48 + (rand() - 0.5) * 0.04) - total / 2
+  const baseline = c.height * (0.6 + (rand() - 0.5) * 0.03)
+  const slope = (rand() - 0.5) * 0.05
+  g.fillStyle = 'rgb(16, 12, 9)'
+  g.shadowColor = 'rgba(16, 12, 9, 0.45)'
+  g.shadowBlur = size * 0.035
+  ;[...name].forEach((ch, i) => {
+    g.save()
+    const cx = x + widths[i] / 2
+    g.translate(cx, baseline + (cx - c.width / 2) * slope + (rand() - 0.5) * size * 0.05)
+    g.rotate((rand() - 0.5) * 0.07)
+    const k = 1 + (rand() - 0.5) * 0.06
+    g.scale(k, k)
+    g.fillText(ch, -widths[i] / 2, 0)
+    g.restore()
+    x += widths[i] * 1.03
+  })
+  // dry brush: fine streaks along the stroke direction lift ink off the grain
+  g.shadowBlur = 0
+  g.globalCompositeOperation = 'destination-out'
+  for (let i = 0; i < 260; i++) {
+    const sx = rand() * c.width
+    const sy = baseline - size * (0.9 * rand())
+    g.globalAlpha = 0.15 + rand() * 0.35
+    g.fillRect(sx, sy, 6 + rand() * 40, 1 + rand() * 2)
+  }
+  g.globalAlpha = 1
+  g.globalCompositeOperation = 'source-over'
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 8
@@ -231,7 +261,8 @@ export class EmaRack implements RealmPart {
     // for all of them and one for their cords, so the rack stays a handful of
     // draw calls.
     const decoyGeo = plaqueGeometry(OLD_W, OLD_H, 0.007)
-    worldUv(decoyGeo, 0.5)
+    // each plaque is one board: the scan's planks are spread so no seam crosses it
+    worldUv(decoyGeo, 2.4)
     {
       // plaque-local coordinates for the written face
       const p = decoyGeo.getAttribute('position')
@@ -338,7 +369,7 @@ export class EmaRack implements RealmPart {
 
     // the three link plaques
     const linkGeo = plaqueGeometry(LINK_W, LINK_H, 0.009)
-    worldUv(linkGeo, 0.6)
+    worldUv(linkGeo, 2.4)
     const faceGeo = new THREE.ShapeGeometry(plaqueShape(LINK_W * 0.97, LINK_H * 0.97))
     faceGeo.translate(0, -LINK_H * 0.97 + 0.012, 0.0062)
     // map the face's texture coordinates to the plaque's bounds
@@ -363,7 +394,7 @@ export class EmaRack implements RealmPart {
       body.castShadow = true
       body.receiveShadow = true
       pivot.add(body)
-      const tex = nameTexture(link.name, LINK_W, LINK_H)
+      const tex = nameTexture(link.name, LINK_W, LINK_H, 101 + i * 17)
       const faceMat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.6, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 })
       const face = new THREE.Mesh(faceGeo, faceMat)
       pivot.add(face)
