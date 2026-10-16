@@ -3,7 +3,8 @@ import type { Tier } from './types'
 
 // Scanned materials live in public/realm/tex/<name>/ as diff, nor (OpenGL
 // convention) and arm (ambient occlusion, roughness, metalness in r, g, b),
-// at 1k, and at 2k for the sets seen close up. Sources are in CREDITS.md.
+// at 1k, at 2k for the sets seen close up, and relief and roughness at 512
+// for phones. Sources are in CREDITS.md.
 
 export interface PbrSet {
   map: THREE.Texture
@@ -48,10 +49,13 @@ export function texSize(tier: Tier, name: string): '1k' | '2k' {
 export async function loadPbr(name: string, tier: Tier): Promise<PbrSet> {
   const base = `/realm/tex/${name}`
   const size = texSize(tier, name)
+  // a phone screen cannot show the fine relief of a 1k normal map, and the
+  // download matters more there: relief and roughness come at 512
+  const detail = tier === 'phone' ? '512' : size
   const [map, normalMap, arm] = await Promise.all([
     load(`${base}/diff_${size}.webp`, true),
-    load(`${base}/nor_${size}.webp`, false),
-    load(`${base}/arm_${size}.webp`, false),
+    load(`${base}/nor_${detail}.webp`, false),
+    load(`${base}/arm_${detail}.webp`, false),
   ])
   return { map, normalMap, arm }
 }
