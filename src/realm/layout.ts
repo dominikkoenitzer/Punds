@@ -94,8 +94,8 @@ export const TERRACE_FRONT_Z = -9 // face of the retaining wall
 export const STEPS = { zFront: -8.2, zBack: -9.9, halfWidth: 1.5, count: 6 }
 
 // gravel beds either side of the path and the shrine forecourt
-export const GRAVEL_HALF_WIDTH = 3.3
-export const FORECOURT = { xMin: -8.5, xMax: 9.5, zMin: -21, zMax: -9 }
+export const GRAVEL_HALF_WIDTH = 2.75
+export const FORECOURT = { xMin: -6.8, xMax: 8.2, zMin: -20, zMax: -9 }
 
 export const SHRINE = { x: 0, z: -16.2, width: 7.2, depth: 5.4, rotation: 0 }
 export const EMA_RACK = { x: 6.6, z: -12.6, rotation: -0.785 }

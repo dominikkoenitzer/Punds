@@ -9,6 +9,9 @@ import { Lanterns } from './lanterns'
 import { Shrine } from './shrine'
 import { EmaRack } from './ema'
 import { Grass } from './grass'
+import { Skyscape } from './skyscape'
+import { Rocks } from './rocks'
+import { Pond } from './pond'
 
 // What the island is made of, in the order it is built. Each step yields to
 // the browser so the waking view keeps its frame rate while the rest loads.
@@ -68,10 +71,48 @@ class PointerGround implements RealmPart {
   dispose(): void {}
 }
 
+// Parts that render the scene again before the main pass (the clouds' depth
+// copy, the pond's reflection) skip what adds nothing there but cost: the sky
+// dome, the lawn, and each other's screen-space layers.
+interface Prerendering extends RealmPart {
+  prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void
+}
+
+class Sheltered implements RealmPart {
+  readonly object: THREE.Object3D
+  private part: Prerendering
+  private hidden: THREE.Object3D[]
+
+  constructor(part: Prerendering, hidden: THREE.Object3D[]) {
+    this.part = part
+    this.object = part.object
+    this.hidden = hidden
+  }
+
+  update(frame: Frame): void {
+    this.part.update(frame)
+  }
+
+  prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    const was = this.hidden.map((o) => o.visible)
+    for (const o of this.hidden) o.visible = false
+    this.part.prerender(renderer, scene, camera)
+    this.hidden.forEach((o, i) => (o.visible = was[i]))
+  }
+
+  dispose(): void {
+    this.part.dispose()
+  }
+}
+
 export async function buildIsland(realm: Realm): Promise<void> {
   const tier = realm.tier
   const pointer = new PointerGround()
   realm.add(pointer)
+  const hiddenFromClouds: THREE.Object3D[] = []
+  const hiddenFromPond: THREE.Object3D[] = []
+  const sky = realm.skyInfo
+  if (sky) hiddenFromClouds.push(sky.mesh)
   const steps: (() => Promise<RealmPart> | RealmPart)[] = [
     () => Terrain.create(tier),
     () => Stonework.create(tier),
@@ -79,10 +120,27 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Lanterns.create(tier),
     () => Shrine.create(tier),
     () => EmaRack.create(tier),
+    () => Rocks.create(),
     () => {
       const grass = new Grass({ tier })
       pointer.listenGround(grass)
+      hiddenFromClouds.push(grass.object)
+      hiddenFromPond.push(grass.object)
       return grass
+    },
+    () => {
+      const skyscape = new Skyscape({ tier })
+      // the cloud shader reads the panorama in its own convention, a quarter
+      // turn from three's equirect lookup
+      if (sky) skyscape.setSky(sky.panorama, { k: sky.k, yaw: -2 * Math.PI * sky.shift - Math.PI / 2 })
+      hiddenFromPond.push(skyscape.object)
+      return new Sheltered(skyscape, hiddenFromClouds)
+    },
+    () => {
+      const pond = new Pond({ tier })
+      pointer.listenWater(pond)
+      hiddenFromClouds.push(pond.object)
+      return new Sheltered(pond, hiddenFromPond)
     },
   ]
   for (const make of steps) {

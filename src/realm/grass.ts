@@ -18,21 +18,21 @@ interface TierSettings {
   // seen from the walk stays the same
   widen: number
   focus: number
-  // blades drawn per instance: on phones one instance is a tuft of three,
-  // which costs vertices but saves the per-instance work and keeps cover
+  // blades drawn per instance (a small tuft), so the short lawn stays dense
+  // without more per-instance work; `blades` counts instances
   strips: number
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { blades: 250_000, strips: 1, segments: 7, tile: 4, fadeStart: 46, fadeEnd: 70, widen: 1, focus: 0.45 },
-  high: { blades: 120_000, strips: 1, segments: 6, tile: 4, fadeStart: 40, fadeEnd: 62, widen: 1.25, focus: 0.6 },
-  phone: { blades: 30_000, strips: 3, segments: 5, tile: 6, fadeStart: 30, fadeEnd: 48, widen: 1.2, focus: 0.75 },
+  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 46, fadeEnd: 70, widen: 1, focus: 0.45 },
+  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 40, fadeEnd: 62, widen: 1.15, focus: 0.6 },
+  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 30, fadeEnd: 48, widen: 1.2, focus: 0.75 },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,
 // so the floor between blades reads as a dark thatch of old grass rather than
 // bare soil, which matters most from above and on phones with fewer blades.
-export const LAWN_FLOOR_TINT = new THREE.Color(0.38, 0.55, 0.28)
+export const LAWN_FLOOR_TINT = new THREE.Color(0.3, 0.52, 0.16)
 
 interface Tile {
   mesh: THREE.Mesh
@@ -103,6 +103,7 @@ uniform vec2 uWind;
 uniform float uGust;
 uniform vec4 uPointer;
 uniform vec2 uFade;
+uniform float uViewHeight;
 attribute vec4 aRoot;
 attribute vec4 aShape;
 varying vec3 vGrassColor;
@@ -110,6 +111,7 @@ varying float vGrassT;
 varying float vGrassAO;
 varying float vUpBlend;
 varying vec2 vGrassBlade;
+varying float vCalm;
 ${WIND_GLSL}
 float grassHash(float n) {
   return fract(sin(n * 91.3458) * 47453.5453);
@@ -184,7 +186,9 @@ float it = 1.0 - t;
 vec3 spine = it * it * root + 2.0 * it * t * p1 + t * t * p2;
 vec3 tangent = normalize(2.0 * it * (p1 - root) + 2.0 * t * (p2 - p1) + vec3(0.0, 1e-5, 0.0));
 
-vec3 sideDir = normalize(rgt - tangent * dot(rgt, tangent));
+vec3 sideRaw = rgt - tangent * dot(rgt, tangent);
+// a blade blown flat along its own side axis would leave no side vector
+vec3 sideDir = dot(sideRaw, sideRaw) > 1e-8 ? normalize(sideRaw) : normalize(cross(tangent, fwd) + vec3(1e-4, 0.0, 0.0));
 vec3 bin = cross(sideDir, tangent);
 float twist = (grassHash(seed * 11.7) - 0.5) * 1.6 * t;
 vec3 sideTw = sideDir * cos(twist) + bin * sin(twist);
@@ -196,7 +200,11 @@ vec3 bladeN = normalize(cross(sideTw, tangent) + sideTw * side * 1.1);
 objectNormal = bladeN;
 // near blades keep their own normals so back light reads as contrast; far
 // away the lawn shades as one soft surface
-vUpBlend = mix(0.12, 0.8, smoothstep(2.0, 26.0, dist)) * mix(0.5, 1.0, t);
+// Blades narrower than a pixel or two cannot show their own sheen, glow or
+// colour without turning into noise; they converge to the average lawn.
+float pixels = w * projectionMatrix[1][1] * 0.5 * uViewHeight / max(dist, 0.1);
+vCalm = max(1.0 - smoothstep(0.7, 2.5, pixels), smoothstep(18.0, 45.0, dist));
+vUpBlend = mix(mix(0.12, 0.8, smoothstep(2.0, 26.0, dist)) * mix(0.5, 1.0, t), 0.9, vCalm);
 
 float hueN = grassHash(seed * 3.71);
 float valN = grassHash(seed * 7.13);
@@ -221,6 +229,9 @@ col = mix(col, cTip, smoothstep(0.4, 1.0, t) * 0.85);
 col *= 0.7 + 0.6 * valN * valN;
 // gusts lay the blades over and turn their lit faces up: waves of lighter grass
 col *= 1.0 + (gust * 0.25 + wave * 0.5) * windAmount * t;
+vec3 calmCol = mix(cRoot, vec3(0.070, 0.150, 0.026), smoothstep(0.0, 0.5, t));
+calmCol = mix(calmCol, vec3(0.120, 0.215, 0.036), smoothstep(0.4, 1.0, t) * 0.85);
+col = mix(col, calmCol * (1.0 + gust * windAmount * 0.12 * t), vCalm * 0.85);
 vGrassColor = col;
 vGrassT = t;
 vGrassBlade = vec2(side * 2.0, seed);
@@ -234,6 +245,7 @@ varying float vGrassT;
 varying float vGrassAO;
 varying float vUpBlend;
 varying vec2 vGrassBlade;
+varying float vCalm;
 `
 
 // Back light: sun seen through the blades (forward scattering) plus a little
@@ -251,7 +263,7 @@ void RE_Direct_Grass(const in IncidentLight directLight, const in vec3 geometryP
   // light that passes through a leaf comes out deeper and more saturated than
   // the light it reflects
   vec3 trans = pow(material.diffuseColor, vec3(1.5)) * uSunTint;
-  reflectedLight.directDiffuse += (scatter + through) * thin * directLight.color * trans;
+  reflectedLight.directDiffuse += (scatter + through) * thin * (1.0 - vCalm * 0.85) * directLight.color * trans;
 }
 #undef RE_Direct
 #define RE_Direct RE_Direct_Grass
@@ -263,14 +275,16 @@ const COLOR_FRAGMENT = /* glsl */ `
 float grassAcross = abs(vGrassBlade.x);
 float grassRib = 1.0 - smoothstep(0.0, 0.16, grassAcross);
 float grassVeins = sin(vGrassBlade.x * 21.0 + vGrassBlade.y * 40.0) * 0.035;
-diffuseColor.rgb *= vGrassColor * (1.0 + grassRib * 0.14 + grassVeins - smoothstep(0.7, 1.0, grassAcross) * 0.12);
+diffuseColor.rgb *= vGrassColor * (1.0 + (grassRib * 0.14 + grassVeins - smoothstep(0.7, 1.0, grassAcross) * 0.12) * (1.0 - vCalm));
 `
 
 const NORMAL_FRAGMENT = /* glsl */ `
 float faceDirection = gl_FrontFacing ? 1.0 : - 1.0;
-vec3 normal = normalize(vNormal) * faceDirection;
+vec3 normal = dot(vNormal, vNormal) > 1e-12 ? normalize(vNormal) * faceDirection : vec3(0.0, 0.0, 1.0);
 vec3 grassUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-normal = normalize(mix(normal, grassUp, vUpBlend));
+// the back of a blade seen from above must not face the ground
+normal -= grassUp * min(dot(normal, grassUp), 0.0) * 1.2;
+normal = normalize(mix(normal, grassUp, vUpBlend) + grassUp * 1e-3);
 vec3 nonPerturbedNormal = normal;
 `
 
@@ -281,6 +295,8 @@ export class Grass implements RealmPart {
   private readonly settings: TierSettings
   private readonly pointer = { value: new THREE.Vector4(0, -100, 0, 0) }
   private readonly fade: { value: THREE.Vector2 }
+  private readonly viewHeight = { value: 1080 }
+  private readonly bufferSize = new THREE.Vector2()
   private readonly pointerTarget = new THREE.Vector3()
   private pointerActive = 0
   private pointerSeen = false
@@ -326,6 +342,12 @@ export class Grass implements RealmPart {
     }
   }
 
+  // blade size in pixels needs the drawing buffer height, which only the
+  // renderer knows
+  private readonly readViewHeight = (renderer: THREE.WebGLRenderer) => {
+    this.viewHeight.value = renderer.getDrawingBufferSize(this.bufferSize).y
+  }
+
   dispose(): void {
     for (const tile of this.tiles) {
       tile.geometry.dispose()
@@ -345,6 +367,7 @@ export class Grass implements RealmPart {
     const pointer = this.pointer
     const fade = this.fade
     const sunTint = { value: new THREE.Color(5.0, 4.6, 1.6) }
+    const viewHeight = this.viewHeight
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = realmUniforms.uTime
       shader.uniforms.uWind = realmUniforms.uWind
@@ -352,6 +375,7 @@ export class Grass implements RealmPart {
       shader.uniforms.uPointer = pointer
       shader.uniforms.uFade = fade
       shader.uniforms.uSunTint = sunTint
+      shader.uniforms.uViewHeight = viewHeight
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${VERTEX_PARS}`)
         .replace('#include <beginnormal_vertex>', `vec3 objectNormal = vec3(0.0, 1.0, 0.0);\n${VERTEX_MAIN}`)
@@ -367,7 +391,18 @@ export class Grass implements RealmPart {
           reflectedLight.indirectDiffuse *= vGrassAO;
           reflectedLight.indirectSpecular *= vGrassAO * vGrassAO * 0.45;
           reflectedLight.directDiffuse *= mix(0.45, 1.0, vGrassAO);
-          reflectedLight.directSpecular *= vGrassAO;`,
+          reflectedLight.directSpecular *= vGrassAO * (1.0 - vCalm * 0.9);
+          reflectedLight.indirectSpecular *= 1.0 - vCalm * 0.7;`,
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          `// no single blade may outshine the lawn: a cap on brightness keeps
+          // bloom from catching tips, and a broken value never reaches the post chain
+          if (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = vec3(0.0);
+          outgoingLight = max(outgoingLight, vec3(0.0));
+          float grassLum = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));
+          outgoingLight *= min(1.0, mix(1.2, 0.55, vCalm) / max(grassLum, 1e-5));
+          #include <opaque_fragment>`,
         )
     }
     // phones skip the second patch octave and the second flutter axis
@@ -530,6 +565,7 @@ export class Grass implements RealmPart {
         geometry.boundingBox = bounds.clone()
         geometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere())
         const mesh = new THREE.Mesh(geometry, this.material)
+        mesh.onBeforeRender = this.readViewHeight
         mesh.position.set(cx, cy, cz)
         mesh.castShadow = false
         mesh.receiveShadow = true

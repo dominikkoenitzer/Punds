@@ -20,7 +20,7 @@ interface Key {
 }
 
 const KEYS: Key[] = [
-  { x: 1.8, y: 1.55, z: 21.5, yaw: Math.PI + 0.55, pitch: -0.2, focus: 60 },
+  { x: 1.6, y: 1.55, z: 21.0, yaw: Math.PI + 0.5, pitch: -0.3, focus: 9 },
   { x: 1.5, y: 1.6, z: 21.2, yaw: 4.25, pitch: -0.1, focus: 40 },
   { x: 0.9, y: 1.62, z: 20.6, yaw: 5.95, pitch: 0.02, focus: 14 },
   { x: 0.2, y: 1.62, z: 16.4, yaw: 6.27, pitch: 0.035, focus: 18 },
