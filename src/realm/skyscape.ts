@@ -67,7 +67,7 @@ const MASSIFS: readonly [number, number, number, number, number][] = [
 ]
 
 // Distant islands: position of the top centre, top radius.
-const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii'; air?: number }[] = [
+const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii'; air?: number; shape?: number; deep?: number }[] = [
   // the prominent one behind the shrine, slightly left of the path, and a
   // smaller one to the right
   { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'grove', air: 650 },
@@ -79,11 +79,14 @@ const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: 
   { x: 330, y: -4, z: 110, r: 16, seed: 71, crown: 'grove' },
   // the focal point of the opening view out over the rim, a little right of
   // centre, lit from the left by the low sun
-  { x: 112, y: 10, z: 280, r: 17, seed: 83, crown: 'torii' },
+  // big rock masses with trees at their true size, so the distance reads:
+  // shape is the underside's taper (low: sheer cliffs then a short keel, high:
+  // a long spire), deep its length in radii
+  { x: 206, y: 18, z: 500, r: 36, seed: 83, crown: 'torii', shape: 0.38, deep: 1.5 },
   // a loose cluster further out to the left of the opening view
-  { x: 306, y: 45, z: 333, r: 8, seed: 89, crown: 'pine', air: 1000 },
-  { x: 452, y: 28, z: 417, r: 20, seed: 97, crown: 'grove', air: 1000 },
-  { x: 656, y: -6, z: 464, r: 27, seed: 101, crown: 'shrine', air: 1000 },
+  { x: 458, y: 66, z: 489, r: 16, seed: 89, crown: 'pine', air: 1600, shape: 0.9, deep: 2.4 },
+  { x: 587, y: 35, z: 536, r: 30, seed: 97, crown: 'grove', air: 1600, shape: 0.5, deep: 1.2 },
+  { x: 754, y: -8, z: 530, r: 40, seed: 101, crown: 'shrine', air: 1600, shape: 0.3, deep: 0.9 },
   { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
 ]
 
@@ -331,7 +334,8 @@ const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
 const float SLAB_BOTTOM = -105.0;
 const float SIGMA = 0.21;
-const float HAZE_DIST = 1900.0;
+const float HAZE_DIST = 1700.0;
+const float CLEAR_DIST = 900.0;
 
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -462,11 +466,12 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
   // thin sunlit edges glow gold: the rims of the billows on the sun side
   float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * 0.55;
   vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms + rim * vec3(1.0, 0.78, 0.45)) + amb;
-  float fog = 1.0 - exp(-t / HAZE_DIST);
+  // clear air for the first kilometre, haze building only towards the horizon
+  float fog = 1.0 - exp(-max(t - CLEAR_DIST, 0.0) / HAZE_DIST);
   // warm light scattered into the long air on the sun side, strongest in the
   // middle distance so the far edge still meets the sky's own horizon
   vec3 air = haze + sunC * warm * fog * (1.0 - fog) * 1.2;
-  lit = mix(lit, air, fog * fog * 0.92 + fog * 0.08);
+  lit = mix(lit, air, fog * sqrt(fog));
   float stepT = exp(-dens * SIGMA * dt);
   col += trans * lit * (1.0 - stepT);
   trans *= stepT;
@@ -587,13 +592,13 @@ void main() {
   // below the traced depth the sea is solid: shaded cloud interior fading
   // into the haze, so no ray ever sees through to the bottom of the sky
   if (rd.y < 0.0 && s1 > 0.0 && s1 < sceneT && trans > 0.0) {
-    float fog = 1.0 - exp(-s1 / HAZE_DIST);
+    float fog = 1.0 - exp(-max(s1 - CLEAR_DIST, 0.0) / HAZE_DIST);
     // a lower deck shows through the gaps, mottled so it never reads as a floor
     vec3 sp = ro + rd * s1 + vec3(uDrift.x, 0.0, uDrift.y) * 0.6;
     float dl = log2(max(1.0, s1 * uPixelAngle * (64.0 / 900.0)));
     float deck = textureLod(uNoise, sp * (1.0 / 900.0), dl).r * 0.6 + textureLod(uNoise, sp * (1.0 / 260.0), dl + 1.8).r * 0.4;
     // the gaps look down into deep shade between the billows, not onto a floor
-    vec3 deep = mix(mix(shadowC * 0.5, shadowC * 0.95 + sunC * 0.05, smoothstep(0.2, 0.8, deck)), haze, fog * fog * 0.92 + fog * 0.08);
+    vec3 deep = mix(mix(shadowC * 0.5, shadowC * 0.95 + sunC * 0.05, smoothstep(0.2, 0.8, deck)), haze, fog * sqrt(fog));
     col += trans * deep;
     if (front > 1e4) front = s1;
     trans = 0.0;
@@ -787,14 +792,14 @@ void main() {
   float ref = dot(skyLookup(normalize(vec3(-uSunDir.x, 0.15, -uSunDir.z))), vec3(0.2126, 0.7152, 0.0722));
   vec3 col = (uSunColor * (0.5 + fwd * 1.4) * mix(0.55, 1.0, n) + uShadowColor * 1.1) * ref;
   // far veils fade into the air like everything else out there
-  col = mix(col, hazeColor(view), 1.0 - exp(-dist / 1600.0));
+  col = mix(col, hazeColor(view), 1.0 - exp(-max(dist - 300.0, 0.0) / 1600.0));
   gl_FragColor = vec4(col * a, a);
 }
 `
 
 // --- distant islands ------------------------------------------------------------
 
-function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, seed: number): void {
+function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, seed: number, shape = 0.62): void {
   const pos = geo.attributes.position as THREE.BufferAttribute
   const v = new THREE.Vector3()
   for (let i = 0; i < pos.count; i++) {
@@ -811,7 +816,7 @@ function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, 
     const strata = Math.sin(k * 26 + fbm2(ca * 3 + seed, sa * 3, 2) * 6) * 0.035
     const kk = Math.min(1, Math.max(0, k + strata))
     const bulge = 1 + Math.sin(Math.min(1, k / 0.18) * Math.PI) * 0.1
-    const profile = Math.pow(Math.max(0, 1 - kk), 0.62) * bulge
+    const profile = Math.pow(Math.max(0, 1 - kk), shape) * bulge
     const crag = 1 + (ridge - 0.5) * 0.55 * Math.min(1, k * 2.5)
     const radial = r * rim * crag * profile
     const lean = (fbm2(seed * 0.7, k * 2.0, 2) - 0.5) * r * 0.5 * k
@@ -926,16 +931,16 @@ function buildCedar(rand: () => number, h: number): { trunk: THREE.BufferGeometr
 }
 
 // Low shrubs along a rim so the grass edge breaks into a living outline.
-function buildRimShrubs(rand: () => number, r: number, count: number, seed: number): THREE.BufferGeometry {
+function buildRimShrubs(rand: () => number, r: number, count: number, seed: number, size: number): THREE.BufferGeometry {
   const list: THREE.BufferGeometry[] = []
   for (let i = 0; i < count; i++) {
     const a = rand() * Math.PI * 2
     const rim = 1 + (fbm2(Math.cos(a) * 1.7 + seed, Math.sin(a) * 1.7 - seed, 3) - 0.5) * 0.35
     const d = r * rim * (0.82 + rand() * 0.14)
     const g = new THREE.IcosahedronGeometry(1, 1)
-    const w = r * (0.06 + rand() * 0.07)
+    const w = size * (0.06 + rand() * 0.07)
     g.scale(w * (1 + rand() * 0.6), w * 0.6, w)
-    g.translate(Math.cos(a) * d, w * 0.15 + r * 0.02, Math.sin(a) * d)
+    g.translate(Math.cos(a) * d, w * 0.15 + size * 0.02, Math.sin(a) * d)
     list.push(g)
   }
   const merged = mergeGeometries(list)
@@ -1082,7 +1087,8 @@ ${SKY_GLSL}`)
         `#include <dithering_fragment>
         vec3 aerialRay = vAerialWorld - cameraPosition;
         float aerialDist = length(aerialRay);
-        float aerial = 1.0 - exp(-aerialDist / vAerialLength);
+        // clear near air, the haze builds past a few hundred metres
+        float aerial = 1.0 - exp(-max(aerialDist - 300.0, 0.0) / vAerialLength);
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor(aerialRay / aerialDist), aerial);`,
       )
   }
@@ -1193,8 +1199,8 @@ export class Skyscape implements RealmPart {
       front.magFilter = THREE.NearestFilter
     }
 
-    const sunColor = new THREE.Color(1.0, 0.64, 0.23).multiplyScalar(3.2)
-    const shadowColor = new THREE.Color(0.29, 0.3, 0.66).multiplyScalar(0.78)
+    const sunColor = new THREE.Color(1.0, 0.62, 0.24).multiplyScalar(3.6)
+    const shadowColor = new THREE.Color(0.25, 0.27, 0.7).multiplyScalar(0.74)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1320,6 +1326,10 @@ export class Skyscape implements RealmPart {
       [-210, 30, 80, 160, 0.38],
       [250, -6, 40, 140, 0.4],
       [-320, 55, -180, 220, 0.32],
+      // cloud clinging under the big islands of the opening view
+      [206, -4, 500, 120, 0.55],
+      [587, 18, 536, 100, 0.5],
+      [754, -22, 530, 140, 0.5],
     ]
     const quads: THREE.BufferGeometry[] = []
     spots.forEach(([x, y, z, w, a], i) => {
@@ -1402,10 +1412,10 @@ export class Skyscape implements RealmPart {
     for (const isl of FAR_ISLANDS) {
       const marks = parts.map((l) => l.length)
       const rand = rng(isl.seed)
-      const depth = isl.r * (1.5 + rand() * 0.8)
+      const depth = isl.r * (isl.deep ?? 1.5 + rand() * 0.8)
       const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 32 : 48, lowPoly ? 14 : 24, true)
       under.translate(0, -depth / 2, 0)
-      displaceUnderside(under, isl.r, depth, isl.seed)
+      displaceUnderside(under, isl.r, depth, isl.seed, isl.shape)
       // planar uvs scaled to metres so the rock grain reads at the right size
       const pos = under.attributes.position as THREE.BufferAttribute
       const uv = under.attributes.uv as THREE.BufferAttribute
@@ -1432,29 +1442,32 @@ export class Skyscape implements RealmPart {
       top.translate(isl.x, isl.y, isl.z)
       parts[1]?.push(top)
       const ground = isl.y + isl.r * 0.06
+      // trees and buildings keep their real size however big the rock is
+      const ts = Math.min(isl.r, 13)
       const plant = (tree: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, x: number, z: number): void => {
         tree.trunk.translate(x, ground, z)
         tree.leaves.translate(x, ground, z)
         parts[3]?.push(tree.trunk)
         parts[2]?.push(tree.leaves)
       }
-      const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed)
+      const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed, ts)
       shrubs.translate(isl.x, isl.y, isl.z)
       parts[2]?.push(shrubs)
       if (isl.crown === 'grove') {
         // a leaning pine near the edge and a stand of cedars behind it
-        plant(buildPine(rand, isl.r * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
-        const cedars = isl.r > 20 ? 7 : 4
+        plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
+        // the stand grows with the island, so a big rock carries a real wood
+        const cedars = Math.min(18, 4 + Math.round((isl.r * isl.r) / 90))
         for (let k = 0; k < cedars; k++) {
           const a = rand() * Math.PI * 2
           const d = isl.r * (0.1 + rand() * 0.45)
-          plant(buildCedar(rand, isl.r * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
+          plant(buildCedar(rand, ts * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
         }
-        if (isl.r > 20) plant(buildPine(rand, isl.r * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
+        if (isl.r > 20) plant(buildPine(rand, ts * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
       } else if (isl.crown === 'torii') {
         // a leaning pine near the edge, a gate and two cedars behind
-        plant(buildPine(rand, isl.r * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
-        const gate = buildTorii(isl.r * 0.45)
+        plant(buildPine(rand, ts * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
+        const gate = buildTorii(ts * 0.45)
         gate.rotateY(-0.5)
         gate.translate(isl.x + isl.r * 0.25, ground, isl.z - isl.r * 0.1)
         // its own vermilion, carried with the grass, which keeps vertex colours
@@ -1463,22 +1476,30 @@ export class Skyscape implements RealmPart {
         for (let k = 0; k < gc.length; k += 3) gc.set([red.r, red.g, red.b], k)
         gate.setAttribute('color', new THREE.BufferAttribute(gc, 3))
         parts[1]?.push(gate)
-        plant(buildCedar(rand, isl.r * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
-        plant(buildCedar(rand, isl.r * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
+        plant(buildCedar(rand, ts * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
+        plant(buildCedar(rand, ts * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
+        // a wood of cedars and pines across the back half of a big island
+        const wood = Math.min(14, Math.round((isl.r * isl.r) / 110))
+        for (let k = 0; k < wood; k++) {
+          const a = Math.PI * (0.15 + rand() * 0.9)
+          const d = isl.r * (0.25 + rand() * 0.55)
+          const tree = rand() < 0.75 ? buildCedar(rand, ts * (0.7 + rand() * 0.6)) : buildPine(rand, ts * (0.6 + rand() * 0.4))
+          plant(tree, isl.x + Math.cos(a) * d, isl.z + Math.sin(a) * d)
+        }
       } else if (isl.crown === 'pine') {
-        plant(buildPine(rand, isl.r * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
-        plant(buildCedar(rand, isl.r * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
+        plant(buildPine(rand, ts * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
+        plant(buildCedar(rand, ts * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
       } else {
-        const sh = buildShrine(isl.r * 0.28)
+        const sh = buildShrine(ts * 0.28)
         sh.body.rotateY(0.6)
         sh.roof.rotateY(0.6)
         sh.body.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
         sh.roof.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
         parts[3]?.push(sh.body)
         parts[4]?.push(sh.roof)
-        plant(buildPine(rand, isl.r * 0.55), isl.x - isl.r * 0.4, isl.z + isl.r * 0.2)
-        plant(buildCedar(rand, isl.r * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
-        plant(buildCedar(rand, isl.r * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
+        plant(buildPine(rand, ts * 0.55), isl.x - isl.r * 0.4, isl.z + isl.r * 0.2)
+        plant(buildCedar(rand, ts * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
+        plant(buildCedar(rand, ts * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
       }
       // the air between the eye and this island, read per vertex
       parts.forEach((l, k) => {
@@ -1538,12 +1559,12 @@ export class Skyscape implements RealmPart {
     loadPbr('cliff', opts.tier)
       .then((set) => {
         if (this.disposed) return
-        const scanned = pbrMaterial(set, { color: 0xb8aca0 })
+        const scanned = pbrMaterial(set, { color: 0xa9a39d })
         this.cliffMaterial.map = scanned.map
         this.cliffMaterial.normalMap = scanned.normalMap
         this.cliffMaterial.aoMap = scanned.aoMap
         this.cliffMaterial.roughnessMap = scanned.roughnessMap
-        this.cliffMaterial.color.set(0xb8aca0)
+        this.cliffMaterial.color.set(0xa9a39d)
         scanned.dispose()
       })
       .catch(() => {
