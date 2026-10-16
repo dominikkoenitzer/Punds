@@ -317,6 +317,11 @@ void main() {
   col = max(mix(vec3(luma), col, uSaturation), 0.0);
   // white balance: a little warmer than the panorama, like late sun
   col *= uTint;
+  // split tone like a film grade: the shade leans cool blue-grey, the light
+  // gold, so warm and cool sit side by side in every frame
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  float lit = smoothstep(0.04, 0.5, lum);
+  col *= mix(vec3(0.92, 0.97, 1.08), vec3(1.05, 1.0, 0.92), lit);
 
   // a lens vignette, wider than it is tall
   vec2 q = (vUv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
