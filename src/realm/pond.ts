@@ -137,6 +137,8 @@ uniform sampler2D uSim;
 uniform sampler2D uKoiDepth;
 uniform sampler2D uReflection;
 uniform mat4 uReflMatrix;
+uniform vec2 uReflTexel;
+uniform float uReflBlur;
 uniform vec2 uSimTexel;
 uniform vec4 uBounds;
 uniform vec3 uSunDir;
@@ -216,7 +218,15 @@ void main() {
   // planar reflection, distorted by the surface normal
   vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
   vec2 ruv = rc.xy / rc.w + N.xz * 0.06 / (1.0 + dist * 0.04);
-  vec3 refl = texture2D(uReflection, clamp(ruv, 0.001, 0.999)).rgb;
+  // On phones the reflection is small; four taps spread a little further
+  // with distance and ripple strength keep its edges from stepping.
+  float spreadPx = uReflBlur * (0.6 + dist * 0.025 + length(simGrad) * 6.0);
+  vec2 o1 = vec2(0.5, 0.2) * uReflTexel * spreadPx;
+  vec2 o2 = vec2(-0.2, 0.5) * uReflTexel * spreadPx;
+  vec3 refl = (texture2D(uReflection, clamp(ruv + o1, 0.001, 0.999)).rgb +
+               texture2D(uReflection, clamp(ruv - o1, 0.001, 0.999)).rgb +
+               texture2D(uReflection, clamp(ruv + o2, 0.001, 0.999)).rgb +
+               texture2D(uReflection, clamp(ruv - o2, 0.001, 0.999)).rgb) * 0.25;
 
   // how much water the eye looks through: the bed, or a koi above it
   // the eye ray bends down as it enters the water
@@ -738,7 +748,7 @@ export class Pond implements RealmPart {
     this.simScene.add(this.simQuad)
 
     // reflection
-    this.reflectionScale = phone ? 0.25 : 0.5
+    this.reflectionScale = 0.5
     this.reflectionRT = new THREE.WebGLRenderTarget(16, 16, {
       type: THREE.HalfFloatType,
       minFilter: THREE.LinearFilter,
@@ -772,6 +782,8 @@ export class Pond implements RealmPart {
         uKoiDepth: { value: this.koiDepthRT.texture },
         uReflection: { value: this.reflectionRT.texture },
         uReflMatrix: { value: this.reflMatrix },
+        uReflTexel: { value: new THREE.Vector2(1 / 16, 1 / 16) },
+        uReflBlur: { value: phone ? 1 : 0 },
         uSimTexel: { value: new THREE.Vector2(1 / this.simSize, 1 / this.simSize) },
         uBounds: { value: new THREE.Vector4(POND_BOUNDS.xMin, POND_BOUNDS.zMin, BW, BH) },
         uOutflow: { value: new THREE.Vector4(OUTFLOW.x0, OUTFLOW.z0, OUTFLOW.x1, OUTFLOW.z1) },
@@ -1494,9 +1506,15 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
 
     // planar reflection
     renderer.getDrawingBufferSize(this.size)
-    const rw = Math.max(16, Math.round(this.size.x * this.reflectionScale))
-    const rh = Math.max(16, Math.round(this.size.y * this.reflectionScale))
-    if (this.reflectionRT.width !== rw || this.reflectionRT.height !== rh) this.reflectionRT.setSize(rw, rh)
+    // half the drawing buffer, but never so few texels across that the far
+    // shore turns into blocks when the host renders a phone at a low ratio
+    const rs = Math.max(this.reflectionScale, Math.min(1, 360 / Math.max(1, Math.min(this.size.x, this.size.y))))
+    const rw = Math.max(16, Math.round(this.size.x * rs))
+    const rh = Math.max(16, Math.round(this.size.y * rs))
+    if (this.reflectionRT.width !== rw || this.reflectionRT.height !== rh) {
+      this.reflectionRT.setSize(rw, rh)
+      ;(this.waterMaterial.uniforms.uReflTexel!.value as THREE.Vector2).set(1 / rw, 1 / rh)
+    }
     this.updateReflectCamera(camera)
     this.water.visible = false
     renderer.setRenderTarget(this.reflectionRT)
