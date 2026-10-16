@@ -239,6 +239,17 @@ export class Realm {
     await build(this)
     if (this.disposed) return
     this.renderer.compile(this.scene, this.camera)
+    // The passes that draw the scene again (reflection, cloud depth) compile
+    // their programs on first use, and the walk's later views show things the
+    // first view does not. Run a few frames at those views while the eyes are
+    // still closed, so the hitches happen in the dark.
+    const keep = this.walk.target
+    for (const p of [0, 0.5, 1, keep]) {
+      this.setProgress(p, true)
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      if (this.disposed) return
+    }
     this.ready = true
     this.opts.onReady?.()
   }
@@ -272,6 +283,14 @@ export class Realm {
       if (n === name) part.object.visible = visible
     }
     return names
+  }
+
+  // a link got keyboard focus (or lost it): its plaque turns as on hover
+  focusLink(index: number | null): void {
+    for (const part of this.parts) {
+      const p = part as Partial<{ focusLink(i: number | null): void }>
+      if (typeof p.focusLink === 'function') p.focusLink(index)
+    }
   }
 
   // water and wind; call from a click or key handler
@@ -343,7 +362,10 @@ export class Realm {
     this.camera.position.copy(pose.position)
     this.camera.position.y += -sleep * 0.55 + Math.sin(t * 0.9) * 0.006 * breathe
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
-    const pitch = pose.pitch + this.parallax.y * 0.015 + sleep * 0.22 + Math.sin(t * 0.43) * 0.003 * breathe
+    // on a tall screen the opening looks further down, so the rim and the
+    // cloud sea fill the frame instead of plain sky
+    const tall = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 0.22 * (1 - THREE.MathUtils.smoothstep(p, 0.04, 0.2)) : 0
+    const pitch = pose.pitch - tall + this.parallax.y * 0.015 + sleep * 0.22 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
     // a tall screen sees less across: near the end, where the plaques must
     // all be in frame, step back along the view to make room
