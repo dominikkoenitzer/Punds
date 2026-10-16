@@ -118,7 +118,6 @@ function hibukuro(): { stone: THREE.BufferGeometry; paper: THREE.BufferGeometry 
 export interface LanternLight {
   level: number // 0 dark .. 1 fully lit
   target: number
-  light: THREE.PointLight
   flicker: number
 }
 
@@ -128,15 +127,13 @@ export class Lanterns implements RealmPart {
   private paperMat: THREE.MeshStandardMaterial
   private paperMats: THREE.MeshStandardMaterial[] = []
   private disposables: { dispose(): void }[] = []
-  private tier: Tier
 
   static async create(tier: Tier): Promise<Lanterns> {
     const stone = await loadPbr('stone', tier)
-    return new Lanterns(tier, stone)
+    return new Lanterns(stone)
   }
 
-  private constructor(tier: Tier, stone: Awaited<ReturnType<typeof loadPbr>>) {
-    this.tier = tier
+  private constructor(stone: Awaited<ReturnType<typeof loadPbr>>) {
     const box = hibukuro()
     const pieces = parts()
     const stoneParts: THREE.BufferGeometry[] = []
@@ -218,10 +215,9 @@ export class Lanterns implements RealmPart {
       this.object.add(paper)
       this.disposables.push(paperGeo, mat)
 
-      const light = new THREE.PointLight(new THREE.Color(1.0, 0.62, 0.32), 0, tier === 'phone' ? 5 : 7, 2)
-      light.position.set(l.x, y + 1.15 * H, l.z)
-      this.object.add(light)
-      this.lights.push({ level: 0, target: 0, light, flicker: rand(i + 7) * 100 })
+      // no real light: in daylight a lantern's flame shows only in its paper,
+      // and eight point lights would weigh on every shader in the scene
+      this.lights.push({ level: 0, target: 0, flicker: rand(i + 7) * 100 })
     })
     unit.dispose()
     box.paper.dispose()
@@ -246,7 +242,6 @@ export class Lanterns implements RealmPart {
       l.flicker += frame.dt * (2.1 + i * 0.13)
       const f = 1 + (Math.sin(l.flicker * 3.1) * 0.04 + Math.sin(l.flicker * 7.7) * 0.03 + Math.sin(l.flicker * 13.3) * 0.02) * frame.motion
       const v = l.level * f
-      l.light.intensity = v * (this.tier === 'phone' ? 2.2 : 2.8)
       this.paperMats[i].emissiveIntensity = v * 3.2
     })
   }
