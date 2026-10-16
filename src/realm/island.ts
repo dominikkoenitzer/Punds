@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Realm } from './realm'
 import type { Frame, RealmPart } from './types'
-import { groundHeight, POND_LEVEL, pondSdf } from './layout'
+import { groundHeight, POND_LEVEL, pondSdf, CHERRY, MAPLES } from './layout'
 import { Terrain } from './terrain'
 import { Stonework } from './stonework'
 import { Torii } from './torii'
@@ -12,6 +12,8 @@ import { Grass } from './grass'
 import { Skyscape } from './skyscape'
 import { Rocks } from './rocks'
 import { Pond } from './pond'
+import { Plants } from './plants'
+import { CherryTree, MapleTree, Petals } from './trees'
 
 // What the island is made of, in the order it is built. Each step yields to
 // the browser so the waking view keeps its frame rate while the rest loads.
@@ -121,6 +123,10 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Shrine.create(tier),
     () => EmaRack.create(tier),
     () => Rocks.create(),
+    () => Plants.create(tier),
+    () => new CherryTree({ tier, x: CHERRY.x, z: CHERRY.z, height: CHERRY.height, spread: CHERRY.spread, lean: CHERRY.lean, seed: 11 }),
+    ...MAPLES.map((m, i) => () => new MapleTree({ tier, x: m.x, z: m.z, height: m.height, spread: m.spread, seed: 21 + i })),
+    () => new Petals({ tier }),
     () => {
       const grass = new Grass({ tier })
       pointer.listenGround(grass)
