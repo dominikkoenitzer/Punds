@@ -98,7 +98,7 @@ export const GRAVEL_HALF_WIDTH = 2.75
 export const FORECOURT = { xMin: -6.8, xMax: 8.2, zMin: -20, zMax: -9 }
 
 export const SHRINE = { x: 0, z: -16.2, width: 7.2, depth: 5.4, rotation: 0 }
-export const EMA_RACK = { x: 6.6, z: -12.6, rotation: -0.785 }
+export const EMA_RACK = { x: 5.6, z: -13.6, rotation: -0.45 }
 export const BASIN = { x: -4.6, z: -11.6, rotation: 0.5 }
 
 // stone lanterns in the order they light

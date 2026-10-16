@@ -27,7 +27,7 @@ const KEYS: Key[] = [
   { x: -0.3, y: 1.62, z: 9.0, yaw: 6.3, pitch: 0.035, focus: 20 },
   { x: -0.35, y: 1.62, z: 0.8, yaw: 6.24, pitch: 0.06, focus: 16 },
   { x: 0.05, y: 1.66, z: -6.0, yaw: 6.2, pitch: 0.15, focus: 10 },
-  { x: 4.15, y: 2.82, z: -10.15, yaw: 5.5, pitch: -0.1, focus: 3.4 },
+  { x: 3.15, y: 2.82, z: -10.55, yaw: 5.62, pitch: -0.11, focus: 3.6 },
 ]
 
 function catmull(p0: number, p1: number, p2: number, p3: number, t: number): number {
