@@ -167,16 +167,16 @@ export const MAPLES: readonly { x: number; z: number; height: number; spread: nu
   { x: 7.9, z: -16.2, height: 4.4, spread: 3.0 },
 ]
 
-// the shrine's grove: tall cedars behind the hall, the largest one sacred,
-// girdled with a straw rope
-export const CEDARS: readonly { x: number; z: number; height: number; sacred?: boolean }[] = [
-  { x: -8.4, z: -20.4, height: 21 },
-  { x: -5.6, z: -21.8, height: 25 },
-  { x: -2.6, z: -20.9, height: 23, sacred: true },
-  { x: 0.4, z: -22.5, height: 26 },
-  { x: 3.2, z: -21.3, height: 20 },
-  { x: -10.6, z: -18.2, height: 18 },
-  { x: 4.8, z: -22.4, height: 22 },
+// the shrine's grove: an old pair flanking the hall on the approach axis (the
+// left one sacred, girdled with a straw rope), and a younger grove behind them
+// at the sides, leaving the sky above the roof ridge open. girth: base radius (m)
+export const CEDARS: readonly { x: number; z: number; height: number; girth?: number; sacred?: boolean; back?: boolean }[] = [
+  { x: -5.3, z: -18.7, height: 24, girth: 0.7, sacred: true },
+  { x: 5.5, z: -19.3, height: 22.5, girth: 0.6 },
+  { x: -9.6, z: -17.4, height: 16, girth: 0.34, back: true },
+  { x: -7.6, z: -19.9, height: 19.5, girth: 0.44, back: true },
+  { x: 7.4, z: -20.2, height: 19, girth: 0.42, back: true },
+  { x: 9.6, z: -17.8, height: 15.5, girth: 0.32, back: true },
 ]
 
 // clipped azalea mounds: centre, radius, height

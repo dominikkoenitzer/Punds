@@ -1760,9 +1760,13 @@ export class CedarGrove extends Tree {
       const H = c.height
       const gy = groundHeight(c.x, c.z)
       const base = new THREE.Vector3(c.x, gy, c.z)
-      const r0 = (0.4 + (H - 18) * 0.03) * (c.sacred ? 1.25 : 1)
+      // the pair that flanks the hall is old and broad; the grove behind is younger
+      const old = !c.back
+      const r0 = c.girth ?? (0.4 + (H - 18) * 0.03) * (c.sacred ? 1.25 : 1)
       const limbs: Limb[] = []
-      const lean = new THREE.Vector3((r() - 0.5) * 0.04, 1, (r() - 0.5) * 0.04).normalize()
+      // old trees lean a touch away from the hall, so the pair opens like a gate
+      const out = Math.sign(c.x) * (old ? 0.025 : 0)
+      const lean = new THREE.Vector3(out + (r() - 0.5) * 0.03, 1, (r() - 0.5) * 0.03).normalize()
       const trunk = grow({
         start: new THREE.Vector3(0, -0.3, 0),
         dir: lean,
@@ -1783,10 +1787,13 @@ export class CedarGrove extends Tree {
         trunk.radii[i] = 0.04 + (r0 - 0.04) * Math.pow(1 - s, 1.1)
       }
       limbs.push(trunk)
-      // the crowns come down to just above the roof line, so the grove reads as a wall
-      const crownBase = H * (0.36 + r() * 0.08)
+      // The old pair branch from about the eaves upwards, so their lowest limbs
+      // frame the roof; the trees behind keep their crowns lower down too, so no
+      // bare poles stand in a row.
+      const crownBase = H * (old ? 0.22 + r() * 0.03 : 0.3 + r() * 0.08)
       // narrow: a sugi crown is a spire, a fifth as wide as the tree is tall
-      const crownR = H * (0.09 + r() * 0.025)
+      const crownR = H * (old ? 0.12 + r() * 0.02 : 0.085 + r() * 0.025)
+      const inward = -Math.sign(c.x)
       const golden = 2.39996
       const az0 = r() * 6.28
       const n = Math.round(branchesPer * (H / 22))
@@ -1802,7 +1809,9 @@ export class CedarGrove extends Tree {
         // a third are short or overlong, which breaks the outline into tufts
         const q = r()
         const short = q < 0.25 ? 0.45 : q > 0.88 ? 1.35 : 1
-        const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short)
+        // the old pair reach further over the hall than away from it
+        const toHall = old ? 1 + 0.35 * Math.max(0, d.x * inward) : 1
+        const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short * toHall)
         const rr = Math.max(0.025, 0.03 + 0.07 * (1 - u)) * (r0 / 0.55)
         limbs.push(
           grow({
@@ -1839,7 +1848,7 @@ export class CedarGrove extends Tree {
           texWorld: 0.85,
           vAspect: 2,
           gnarl: l.depth === 0 ? 0.03 : 0,
-          flare: l.depth === 0 ? 0.32 : 0,
+          flare: l.depth === 0 ? (old ? 0.5 : 0.28) : 0,
           seed: r() * 50,
         })
       }
@@ -1849,12 +1858,16 @@ export class CedarGrove extends Tree {
         lowY: (H - crownBase) / 2,
       }
       const sz: [number, number] = tier === 'phone' ? [1.0, 1.7] : [0.7, 1.3]
-      parts.push(
-        buildCards({
-          tips, count: Math.round(cardsPer * (H / 22)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.8,
-          clusterRadius: 0.6, perCluster: tier === 'phone' ? 8 : 11, flat: 0.4, reject: () => false,
-        }),
-      )
+      const cards = buildCards({
+        tips, count: Math.round(cardsPer * (H / 22) * (old ? 1.45 : 0.7)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.8,
+        clusterRadius: 0.6, perCluster: tier === 'phone' ? 8 : 11, flat: 0.4, reject: () => false,
+      })
+      if (!old) {
+        // the grove behind stands in more air: lighter and bluer, so it falls back
+        const col = cards.getAttribute('color') as THREE.BufferAttribute
+        for (let i = 0; i < col.count; i++) col.setXYZ(i, col.getX(i) * 1.08, col.getY(i) * 1.14, col.getZ(i) * 1.32)
+      }
+      parts.push(cards)
       if (c.sacred) {
         // the rope sits at about 2 m, where the trunk is a little thinner than at the flare
         const at = trunk.radii[Math.min(trunk.radii.length - 1, Math.round((2.3 / (H + 0.3)) * (trunk.radii.length - 1)))]!
