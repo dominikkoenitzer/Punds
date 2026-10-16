@@ -12,6 +12,7 @@ public/realm/tex/cedar_planks/ | japanese_cedar_planks | Charlotte Baglioni, Ric
 public/realm/tex/wood_aged/ | wood_planks_grey | Rob Tuytel | https://polyhaven.com/a/wood_planks_grey
 public/realm/tex/sakura_bark/ | sakura_bark | Charlotte Baglioni | https://polyhaven.com/a/sakura_bark
 public/realm/tex/maple_bark/ | trident_maple_bark | Charlotte Baglioni | https://polyhaven.com/a/trident_maple_bark
+public/realm/tex/cedar_bark/ | japanese_cedar_bark | Charlotte Baglioni | https://polyhaven.com/a/japanese_cedar_bark
 public/realm/tex/plaster/ | white_plaster_02 | Rob Tuytel | https://polyhaven.com/a/white_plaster_02
 public/realm/tex/copper/ | green_metal_rust | Rob Tuytel | https://polyhaven.com/a/green_metal_rust
 public/realm/tex/painted_wood/ | distressed_painted_planks | Rob Tuytel | https://polyhaven.com/a/distressed_painted_planks
