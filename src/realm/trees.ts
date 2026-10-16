@@ -1753,8 +1753,8 @@ export class CedarGrove extends Tree {
     const parts: THREE.BufferGeometry[] = []
     const atlas = acquireAtlas('cedar', tier)
     const SWAY_NORM = 10
-    const branchesPer = tier === 'ultra' ? 56 : tier === 'high' ? 44 : 28
-    const cardsPer = tier === 'ultra' ? 2100 : tier === 'high' ? 1500 : 600
+    const branchesPer = tier === 'ultra' ? 84 : tier === 'high' ? 62 : 34
+    const cardsPer = tier === 'ultra' ? 3600 : tier === 'high' ? 2500 : 800
     let rope: THREE.BufferGeometry | null = null
     for (const c of CEDARS) {
       const H = c.height
@@ -1857,10 +1857,12 @@ export class CedarGrove extends Tree {
         radii: new THREE.Vector3(crownR, (H - crownBase) / 2, crownR),
         lowY: (H - crownBase) / 2,
       }
-      const sz: [number, number] = tier === 'phone' ? [1.0, 1.7] : [0.7, 1.3]
+      // many small sprays rather than a few big cards: up close a crown is
+      // built of layered, overlapping tufts, never of flat sheets
+      const sz: [number, number] = tier === 'phone' ? [0.8, 1.4] : [0.42, 0.85]
       const cards = buildCards({
-        tips, count: Math.round(cardsPer * (H / 22) * (old ? 1.45 : 0.7)), size: sz, crown, rand: r, volume: 0.6, plate: 0, depthShade: 0.8,
-        clusterRadius: 0.6, perCluster: tier === 'phone' ? 8 : 11, flat: 0.4, reject: () => false,
+        tips, count: Math.round(cardsPer * (H / 22) * (old ? 1.45 : 0.7)), size: sz, crown, rand: r, volume: 0.72, plate: 0, depthShade: 0.85,
+        clusterRadius: 0.75, perCluster: tier === 'phone' ? 8 : 9, flat: 0.55, reject: () => false, ballShade: 0.45,
       })
       if (!old) {
         // the grove behind stands in more air: lighter and bluer, so it falls back
