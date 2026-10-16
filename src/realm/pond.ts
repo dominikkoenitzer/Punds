@@ -505,10 +505,10 @@ varying vec3 vWorld;
 varying vec3 vNormal;
 ${NOISE_GLSL}
 // one rope of water: a lane across the sheet that wanders as it falls
-float rope(float s, float v, float k) {
+float rope(float s, float v, float k, float wide) {
   float swing = 0.09 * sin(uTime * 0.6 + k * 2.3 + v * 5.0) * smoothstep(0.05, 0.4, v);
   float centre = (k - 1.0) * 0.95 * smoothstep(0.03, 0.35, v) + 0.1 * sin(v * 9.0 + k * 2.1 + uSeed) + swing;
-  float width = mix(1.3, 0.22 + 0.06 * k, smoothstep(0.02, 0.3, v));
+  float width = mix(1.3, (0.27 + 0.06 * k) * wide, smoothstep(0.02, 0.3, v));
   float d = (s - centre) / width;
   return exp(-d * d);
 }
@@ -526,9 +526,13 @@ void main() {
   float packets = pNoise(vec2(s * 2.6 + uSeed * 1.3, flow * 1.4));
   float body = (streak * 0.78 + fine * 0.22) * (0.75 + 0.5 * packets);
   // the sheet narrows and splits into ropes on the way down
+  // seen from far the sheet spans few pixels: the ropes widen and the
+  // threshold drops so the water reads as one body instead of a few threads
+  float far = smoothstep(0.015, 0.09, fwidth(s));
   float sw = s + warp * 0.25;
-  float ropes = max(rope(sw, v, 0.0), max(rope(sw, v, 1.0), rope(sw, v, 2.0) * 0.85));
-  float thr = mix(0.04, 0.4, smoothstep(0.03, 0.7, v));
+  float wide = 1.0 + far * 1.1;
+  float ropes = max(rope(sw, v, 0.0, wide), max(rope(sw, v, 1.0, wide), rope(sw, v, 2.0, wide) * 0.85));
+  float thr = mix(0.04, 0.4, smoothstep(0.03, 0.7, v)) * (1.0 - 0.45 * far);
   float cov = smoothstep(thr - 0.1, thr + 0.1, body * (0.55 + 0.6 * ropes)) * smoothstep(0.3, 0.75, ropes);
   float sides = 1.0 - smoothstep(0.55 + 0.3 * warp, 1.0, abs(s));
   // white water: the channel breaking over the lip, the ledges it strikes,
@@ -553,7 +557,7 @@ void main() {
   col += uSunColor * pow(max(dot(N, normalize(uSunDir + V)), 0.0), 80.0) * (1.0 - aer) * 2.0;
 
   float alpha = cov * sides * mix(0.5 + 0.4 * F, 0.85, aer);
-  alpha *= mix(1.0, 0.7, smoothstep(0.2, 0.8, v));
+  alpha *= mix(1.0, mix(0.7, 0.9, far), smoothstep(0.2, 0.8, v));
   // into the clouds
   alpha *= 1.0 - smoothstep(0.72, 1.0, v);
   alpha = clamp(alpha * uOpacity, 0.0, 1.0);

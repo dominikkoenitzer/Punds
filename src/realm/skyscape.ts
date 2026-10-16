@@ -424,7 +424,7 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
     d -= (1.0 - det) * mix(0.3, 0.2, far) * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.6);
   }
   // a hard surface near the island, softer far out where it only blurs
-  return clamp(d * mix(15.0, 8.0, far), 0.0, 1.0);
+  return clamp(d * mix(20.0, 10.0, far), 0.0, 1.0);
 }
 
 float phaseHG(float c, float g) {
@@ -915,9 +915,9 @@ function buildPine(rand: () => number, h: number): { trunk: THREE.BufferGeometry
     limb.applyQuaternion(q)
     limb.translate(base.x, base.y, base.z)
     trunks.push(limb)
-    addPad(end.x, end.y + h * 0.04, end.z, h * (0.3 - k * 0.1) * (0.85 + rand() * 0.3))
+    addPad(end.x, end.y + h * 0.04, end.z, h * (0.36 - k * 0.1) * (0.85 + rand() * 0.3))
   }
-  addPad(top.x, top.y, top.z, h * 0.24)
+  addPad(top.x, top.y, top.z, h * 0.29)
   return { trunk: mergeGeometries(trunks), leaves: mergeGeometries(pads) }
 }
 
@@ -927,7 +927,7 @@ function buildCedar(rand: () => number, h: number): { trunk: THREE.BufferGeometr
   const trunk = new THREE.CylinderGeometry(h * 0.015, h * 0.03, h * 0.9, 5, 1)
   trunk.translate(0, h * 0.45, 0)
   const clumps: THREE.BufferGeometry[] = []
-  const n = 6
+  const n = 7
   for (let i = 0; i < n; i++) {
     const k = i / (n - 1)
     const c = new THREE.IcosahedronGeometry(1, 1)
@@ -937,9 +937,9 @@ function buildCedar(rand: () => number, h: number): { trunk: THREE.BufferGeometr
       const lump = 0.8 + fbm2(cp.getX(j) * 2 + o, cp.getZ(j) * 2 + cp.getY(j) - o, 2) * 0.45
       cp.setXYZ(j, cp.getX(j) * lump, cp.getY(j) * lump, cp.getZ(j) * lump)
     }
-    const w = h * (0.17 - k * 0.12) * (0.85 + rand() * 0.3)
-    c.scale(w, h * 0.13, w)
-    c.translate((rand() - 0.5) * w * 0.4, h * (0.3 + k * 0.66), (rand() - 0.5) * w * 0.4)
+    const w = h * (0.22 - k * 0.15) * (0.85 + rand() * 0.3)
+    c.scale(w, h * 0.14, w)
+    c.translate((rand() - 0.5) * w * 0.4, h * (0.24 + k * 0.7), (rand() - 0.5) * w * 0.4)
     clumps.push(c)
   }
   const leaves = mergeGeometries(clumps)
@@ -1475,7 +1475,7 @@ export class Skyscape implements RealmPart {
         // a leaning pine near the edge and a stand of cedars behind it
         plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
         // the stand grows with the island, so a big rock carries a real wood
-        const cedars = Math.min(18, 4 + Math.round((isl.r * isl.r) / 90))
+        const cedars = Math.min(24, 6 + Math.round((isl.r * isl.r) / 70))
         for (let k = 0; k < cedars; k++) {
           const a = rand() * Math.PI * 2
           const d = isl.r * (0.1 + rand() * 0.45)

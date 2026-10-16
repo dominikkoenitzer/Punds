@@ -33,7 +33,7 @@ interface TierSettings {
 const TIERS: Record<Tier, TierSettings> = {
   ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13], cover: 1, landing: 1.3 },
   high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12], cover: 1.1, landing: 1.6 },
-  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.08, near: [4.5, 9], cover: 1.4, landing: 3.2 },
+  phone: { blades: 32_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.16, near: [5, 10.5], cover: 1.4, landing: 3.2 },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,

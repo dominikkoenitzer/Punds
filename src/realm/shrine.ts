@@ -504,11 +504,12 @@ export class Shrine implements RealmPart {
 
     const redMat = this.redMaterial(paint)
     const goldMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setRGB(0.34, 0.21, 0.06),
+      color: new THREE.Color().setRGB(0.3, 0.19, 0.06),
       metalness: 1,
-      roughness: 0.48,
-      // dull brass: it should not mirror the bright sky as a pale block
-      envMapIntensity: 0.35,
+      roughness: 0.62,
+      // dull, handled brass: it should neither mirror the bright sky as a
+      // pale block nor flash in the low sun
+      envMapIntensity: 0.3,
       normalMap: copper.normalMap,
       normalScale: new THREE.Vector2(0.25, 0.25),
     })
@@ -1417,6 +1418,14 @@ export class Shrine implements RealmPart {
             float thinFade = 1.0 - smoothstep(0.002, 0.008, fw);
             float big = nNoise(vCuP * 0.3 + 2.0) * 0.6 + nNoise(vCuP * 0.9 + 7.0) * 0.4;
             vec3 c = mix(vec3(0.2, 0.42, 0.34), vec3(0.33, 0.56, 0.47), smoothstep(0.2, 0.8, big));
+            // from mid range: patches of fresher and older patina a metre or
+            // so across, and broad lanes where the rain gathers down the slope
+            float midFade = 1.0 - smoothstep(0.02, 0.06, fw);
+            float mottle = nNoise(vCuP * 2.4 + 11.0) * 0.6 + nNoise(vCuP * 5.5 - 3.0) * 0.4;
+            c = mix(c, vec3(0.13, 0.29, 0.23), smoothstep(0.55, 0.85, mottle) * 0.45 * midFade);
+            c = mix(c, vec3(0.4, 0.62, 0.53), smoothstep(0.45, 0.15, mottle) * 0.3 * midFade);
+            float lanes = nNoise(vec3(q.x * 5.0, q.y * 0.08, 9.0));
+            c = mix(c, vec3(0.1, 0.22, 0.17), smoothstep(0.62, 0.9, lanes) * 0.35 * midFade);
             float runs = (nNoise(vec3(q.x * 26.0, q.y * 0.28, 1.0)) * 0.65 + nNoise(vec3(q.x * 61.0, q.y * 0.5, 4.0)) * 0.35 - 0.5) * thinFade;
             float wash = nNoise(vec3(q.x * 2.2, q.y * 0.12, 5.0));
             c = mix(c, vec3(0.08, 0.18, 0.14), clamp(smoothstep(0.6, 0.95, wash) * 0.18 + max(runs, 0.0) * 1.3, 0.0, 0.6));
