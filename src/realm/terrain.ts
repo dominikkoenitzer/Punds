@@ -11,6 +11,10 @@ import {
   lawnWeight,
   pathWeight,
   TERRACE_FRONT_Z,
+  PATH_HALF_WIDTH,
+  GRAVEL_HALF_WIDTH,
+  LANTERNS,
+  SHRINE,
 } from './layout'
 import { loadPbr, pbrMaterial, type PbrSet } from './assets'
 import { LAWN_FLOOR_TINT } from './grass'
@@ -38,6 +42,82 @@ function mossWeight(x: number, z: number): number {
   const patches = smooth(0.52, 0.72, fbm2(x * 0.18 + 3.3, z * 0.18 - 7.1, 4))
   return Math.max(pond * 0.85, wall * 0.9, patches * 0.75)
 }
+
+// Gravel: raked in lines along the approach that turn into rings around the
+// lanterns, trodden flat with a few footprints near the paving, darker where
+// it banks against the kerbs and the wall.
+const glf = (n: number): string => n.toFixed(3)
+const GRAVEL_GLSL = /* glsl */ `
+const float G_SPACING = 0.065;
+const float G_PATH = ${glf(PATH_HALF_WIDTH + 0.17)};
+const float G_BED = ${glf(GRAVEL_HALF_WIDTH)};
+const vec2 G_LANTERN[${LANTERNS.length}] = vec2[](${LANTERNS.map((l) => `vec2(${glf(l.x)}, ${glf(l.z)})`).join(', ')});
+// a rake line: rounded crests, narrow troughs; returns height and d/du
+vec2 gLine(float u) {
+  float c = cos(6.2832 * u);
+  float b = 0.5 + 0.5 * c;
+  float sb = sqrt(b);
+  return vec2(b * sb, -1.5 * sb * 3.1416 * sin(6.2832 * u));
+}
+// one footprint per cell along the path edge, on either side; returns depth 0..1
+float gStep(vec2 p) {
+  float side = sign(p.x);
+  float cz = floor(p.y / 0.36);
+  float hsh = tHash(vec2(cz, side * 7.0 + 3.0));
+  if (hsh < 0.45) return 0.0;
+  vec2 c = vec2(side * (G_PATH + 0.1 + tHash(vec2(cz, side + 11.0)) * 0.32), (cz + 0.3 + hsh * 0.4) * 0.36);
+  vec2 q = p - c;
+  float a = (tHash(vec2(cz, side - 5.0)) - 0.5) * 0.5;
+  q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
+  float e = length(q / vec2(0.055, 0.135));
+  return 1.0 - smoothstep(0.55, 1.0, e);
+}
+void gravelDetail(vec2 xz, inout vec3 d, inout vec3 n, inout vec3 a) {
+  float ax = abs(xz.x);
+  bool terrace = xz.y < ${glf(TERRACE_FRONT_Z)};
+  // lines along the approach, wandering a little like a rake drawn by hand
+  float wob = (tNoise(vec2(xz.y * 0.35, 1.7)) - 0.5) * 0.2 + (tNoise(xz * vec2(0.6, 2.4)) - 0.5) * 0.02 + (tNoise(xz * vec2(3.0, 9.0)) - 0.5) * 0.006;
+  vec2 ln = gLine((xz.x + wob) / G_SPACING);
+  vec2 grad = vec2(ln.y / G_SPACING, 0.0);
+  float hgt = ln.x;
+  // around each lantern the lines turn into rings
+  for (int i = 0; i < ${LANTERNS.length}; i++) {
+    vec2 q = xz - G_LANTERN[i];
+    float r = length(q);
+    float k = 1.0 - smoothstep(0.8, 1.05, r);
+    if (k > 0.0) {
+      vec2 rl = gLine(r / G_SPACING);
+      hgt = mix(hgt, rl.x, k);
+      grad = mix(grad, rl.y / G_SPACING * q / max(r, 1e-3), k);
+    }
+  }
+  // trodden near the paving: the lines break down, footprints press in
+  float edge = ax - G_PATH;
+  float tramp = (1.0 - smoothstep(0.05, 0.55, edge)) * (0.55 + 0.45 * tNoise(xz * 2.7));
+  float fp = gStep(xz);
+  vec2 fg = vec2(gStep(xz + vec2(0.01, 0.0)) - fp, gStep(xz + vec2(0.0, 0.01)) - fp) / 0.01;
+  // the lines are softened by weather and feet in patches
+  float fade = mix(0.6, 1.0, smoothstep(0.3, 0.7, tNoise(xz * 0.9 + 5.0)));
+  float amp = 0.008 * fade * (1.0 - tramp * 0.8) * (1.0 - fp);
+  grad = grad * amp - fg * 0.008;
+  n = normalize(n * vec3(1.0, 1.0, 1.0 + fp * 0.6) + vec3(-grad.x, grad.y, 0.0) * 1.1);
+  float crest = mix(hgt, 0.6, clamp(tramp * 0.8 + fp + (1.0 - fade), 0.0, 1.0));
+  d *= mix(0.86, 1.03, crest);
+  a.r *= mix(0.8, 1.0, crest);
+  d *= 1.0 - fp * 0.12;
+  // where the gravel banks against a kerb or the wall it is damp and dark
+  float kd = 10.0;
+  if (!terrace) kd = min(abs(edge), abs(G_BED - ax));
+  else if (xz.y > ${glf(SHRINE.z + SHRINE.depth / 2 + 0.6)}) kd = abs(edge);
+  if (terrace) kd = min(kd, abs(xz.y + 9.42));
+  float dark = 1.0 - smoothstep(0.0, 0.07 + 0.06 * tNoise(xz * 9.0), kd);
+  d *= mix(1.0, 0.6, dark);
+  a.r *= mix(1.0, 0.7, dark);
+  // light grey pebbles, a few patches warmer or cooler, never one flat white
+  float tone = tNoise(xz * 4.3 + 2.0);
+  d *= mix(vec3(0.84, 0.85, 0.87), vec3(0.92, 0.89, 0.84), tone) * mix(0.92, 1.04, tNoise(xz * 11.0));
+}
+`
 
 const SPLAT_VERT_PARS = /* glsl */ `
 attribute vec4 splat;
@@ -71,6 +151,7 @@ void sampleSet(sampler2D d, sampler2D n, sampler2D a, vec2 uv, out vec3 cd, out 
   cn = mix(texture2D(n, uv).rgb, texture2D(n, uv2).rgb, m) * 2.0 - 1.0;
   ca = mix(texture2D(a, uv).rgb, texture2D(a, uv2).rgb, m);
 }
+${GRAVEL_GLSL}
 `
 
 const SPLAT_MAP = /* glsl */ `
@@ -79,6 +160,7 @@ const SPLAT_MAP = /* glsl */ `
   vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, d3, n3, a3;
   sampleSet(tSoilD, tSoilN, tSoilA, xz / 2.6, d0, n0, a0);
   sampleSet(tGravelD, tGravelN, tGravelA, xz / 1.6, d1, n1, a1);
+  gravelDetail(xz, d1, n1, a1);
   sampleSet(tMossD, tMossN, tMossA, xz / 2.2, d2, n2, a2);
   sampleSet(tPebD, tPebN, tPebA, xz / 1.4, d3, n3, a3);
   vec4 w = vSplat;
