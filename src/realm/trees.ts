@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
-import { realmUniforms, SUN_DIRECTION, WIND_GLSL } from './atmosphere'
+import { realmUniforms, WIND_GLSL } from './atmosphere'
 import { loadPbr } from './assets'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { CEDARS, CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
@@ -82,6 +82,12 @@ function grow(o: GrowOpts): Limb {
     limb.sway.push(o.sway0 + o.length * s)
   }
   return limb
+}
+
+// the first `keep` share of a limb, by point count, at least two points
+function trimLimb(l: Limb, keep: number): Limb {
+  const n = Math.max(2, Math.round(l.pts.length * keep))
+  return { pts: l.pts.slice(0, n), radii: l.radii.slice(0, n), sway: l.sway.slice(0, n), depth: l.depth }
 }
 
 // rotate v away from its own direction by `angle` around a random perpendicular
@@ -362,15 +368,6 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
     shader.uniforms.uGust = realmUniforms.uGust
     Object.assign(shader.uniforms, uniforms)
     if (!o.instanced) {
-      // Cards of one cluster sit a few centimetres apart and would shadow each other
-      // in a fine stipple, worst with the smaller phone shadow map. The lookup moves
-      // towards the sun by about a cluster's depth, so only the crown shades the crown.
-      const sd = SUN_DIRECTION
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <shadowmap_vertex>',
-        `worldPosition.xyz += vec3(${sd.x.toFixed(4)}, ${sd.y.toFixed(4)}, ${sd.z.toFixed(4)}) * 0.35;
-        #include <shadowmap_vertex>`,
-      )
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${FOLIAGE_HEAD}`)
         .replace(
@@ -1264,8 +1261,15 @@ class Tree implements RealmPart {
   // Foliage casts from a blurred level of its painting: the shadow of a cluster is
   // a solid soft mass. Cast from every flower hole, the shadow map's texel grid
   // shows on the cards behind as a regular stipple, worst with the phone map size.
+  //
+  // The cards do not take the shadow map themselves. At these sizes a card lies
+  // inside or right behind the casters of its neighbours, and the comparison
+  // flickers between shadow texels across its face: a grey checker up close. The
+  // crown's own shading comes from the baked depth, cluster and height terms in
+  // the vertex colours instead, which also keep the back light from blowing out.
   protected addFoliage(g: THREE.BufferGeometry, m: THREE.Material): void {
     const mesh = this.addMesh(g, m, true)
+    mesh.receiveShadow = false
     const depth = new THREE.MeshDepthMaterial()
     depth.onBeforeCompile = (shader) => {
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -1442,8 +1446,10 @@ export class CherryTree extends Tree {
     }
 
     const tubes = new TubeBuilder()
-    for (const l of limbs) {
-      if (opts.tier === 'phone' && l.depth >= maxDepth) continue
+    for (const l0 of limbs) {
+      if (opts.tier === 'phone' && l0.depth >= maxDepth) continue
+      // the last twigs end inside their blossom rather than poking past it
+      const l = l0.depth >= maxDepth ? trimLimb(l0, 0.62) : l0
       const r0 = l.radii[0]!
       tubes.add(l, {
         radial: radialFor(opts.tier, r0),
@@ -1466,7 +1472,7 @@ export class CherryTree extends Tree {
     const sz: [number, number] = opts.tier === 'phone' ? [0.46, 0.74] : [0.36, 0.6]
     const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
     const cards = buildCards({
-      tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.5,
+      tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.62,
       clusterRadius: 0.36, perCluster: opts.tier === 'phone' ? 11 : 16, flat: 0.8, reject, ballShade: 0.6,
     })
     const mat = foliageMaterial({
@@ -1620,7 +1626,7 @@ export class MapleTree extends Tree {
     const sz: [number, number] = opts.tier === 'phone' ? [0.55, 0.85] : [0.42, 0.7]
     const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
     const cards = buildCards({
-      tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.6,
+      tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.72,
       clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 9 : 13, flat: 0.45, reject,
     })
     const mat = foliageMaterial({
@@ -1877,7 +1883,7 @@ export class CedarGrove extends Tree {
       softEdge: true,
     })
     // sugi foliage is dark and a little blue beside the maples' warm reds
-    mat.color.setRGB(0.52, 0.64, 0.8)
+    mat.color.setRGB(0.4, 0.5, 0.66)
     this.addFoliage(cards, mat)
     if (rope) {
       const ropeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })
