@@ -20,7 +20,7 @@ const LINK_H = 0.24
 const OLD_W = 0.18
 const OLD_H = 0.12
 // how far each link plaque hangs turned away on its cord, in radians
-const LINK_REST = [-0.5, 0.35, 0.6]
+const LINK_REST = [-0.22, 0.12, 0.28]
 
 function plaqueShape(w: number, h: number): THREE.Shape {
   // a rectangle with a shallow gabled top
@@ -154,7 +154,6 @@ interface Plaque {
   hit: THREE.Mesh | null
   glow: THREE.MeshStandardMaterial | null
   focus: number
-  instance?: number // decoys: their slot in the instanced meshes
 }
 
 export class EmaRack implements RealmPart {
@@ -168,8 +167,6 @@ export class EmaRack implements RealmPart {
   private camLocal = new THREE.Vector3()
   private decoys: THREE.InstancedMesh | null = null
   private cords: THREE.InstancedMesh | null = null
-  private cordOffset = new THREE.Matrix4().makeScale(1, 1.3, 1)
-  private scratch = new THREE.Matrix4()
 
   static async create(tier: Tier): Promise<EmaRack> {
     const [aged, cedar, copper] = await Promise.all([loadPbr('wood_aged', tier), loadPbr('cedar_planks', tier), loadPbr('copper', tier)])
@@ -181,7 +178,7 @@ export class EmaRack implements RealmPart {
     const frame: THREE.BufferGeometry[] = []
     const roof: THREE.BufferGeometry[] = []
     for (const side of [-1, 1]) {
-      frame.push(transformed(bevelBox(0.11, POST_H, 0.11, 0.012, 2), (side * RACK_W) / 2, POST_H / 2, 0))
+      frame.push(transformed(bevelBox(0.085, POST_H, 0.085, 0.01, 2), (side * RACK_W) / 2, POST_H / 2, 0))
     }
     // the rails: squared bars with a peg every few plaques
     for (const y of RAILS) {
@@ -191,6 +188,8 @@ export class EmaRack implements RealmPart {
         frame.push(transformed(new THREE.CylinderGeometry(0.006, 0.006, 0.06, 6), x, y + 0.01, 0.03, Math.PI / 2))
       }
     }
+    // a backboard of broad slats behind each rail, as on a wall rack
+    for (const y of RAILS) frame.push(transformed(bevelBox(RACK_W - 0.02, 0.2, 0.025, 0.004, 1), 0, y - 0.07, -0.035))
     // tie beam under the roof, past the posts
     frame.push(transformed(bevelBox(RACK_W + 0.34, 0.11, 0.1, 0.01, 2), 0, POST_H - 0.04, 0))
     // the little gabled roof: two boards, purlins, a copper ridge
@@ -247,60 +246,89 @@ export class EmaRack implements RealmPart {
     const cordGeo = new THREE.TorusGeometry(0.018, 0.0025, 4, 12)
     const cordMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.7 })
     this.disposables.push(decoyGeo, decoyMat, wishes, cordGeo, cordMat)
-    const tones = ['#e3cfa8', '#d6bd92', '#c9b08a', '#b9ae9f', '#ad9f8c'].map((c) => new THREE.Color(c).convertSRGBToLinear())
-    const red = new THREE.Color(0.55, 0.05, 0.035)
-    const white = new THREE.Color(0.8, 0.78, 0.74)
-    const places: { x: number; y: number; z: number; sx: number; sy: number; flip: boolean; tone: THREE.Color; cord: THREE.Color }[] = []
+    const tones = ['#ead9b4', '#e3cfa8', '#dcc69c', '#d2ba90', '#c4b39a'].map((c) => new THREE.Color(c).convertSRGBToLinear())
+    const white = new THREE.Color(0.86, 0.84, 0.8)
+    const red = new THREE.Color(0.6, 0.06, 0.04)
+    // Plaques hang in stacks, many to a hook, each a little lower and nearer
+    // than the one behind, their cords gathered into one bundle at the hook.
+    interface Hung {
+      x: number
+      y: number
+      z: number
+      k: number
+      tilt: number
+      turn: number
+      tone: THREE.Color
+      cord: THREE.Color
+      hookY: number
+      hookX: number
+    }
+    const hung: Hung[] = []
     for (let r = 0; r < RAILS.length; r++) {
-      for (let layer = 0; layer < 2; layer++) {
-        const count = 15 - r
-        for (let i = 0; i < count; i++) {
-          const x = -RACK_W / 2 + 0.1 + ((RACK_W - 0.2) * (i + 0.5 + (rand() - 0.5) * 0.7 + layer * 0.5)) / count
-          if (Math.abs(x) > RACK_W / 2 - 0.08) continue
-          // the centre of the top rail is kept for the three new plaques
-          if (r === 0 && Math.abs(x) < 0.7) continue
-          const k = 0.8 + rand() * 0.45
-          places.push({
-            x,
-            y: RAILS[r] - 0.005,
-            z: 0.025 + layer * 0.012 + rand() * 0.006,
-            sx: k,
-            sy: k * (0.92 + rand() * 0.16),
-            flip: rand() < 0.3,
+      const hooks = 6
+      for (let hk = 0; hk < hooks; hk++) {
+        const hx = -RACK_W / 2 + 0.16 + ((RACK_W - 0.32) * hk) / (hooks - 1) + (rand() - 0.5) * 0.04
+        // the middle of the top rail belongs to the three link plaques
+        if (r === 0 && Math.abs(hx) < 0.62) continue
+        const n = 3 + Math.floor(rand() * 4)
+        for (let j = 0; j < n; j++) {
+          const k = 0.95 + rand() * 0.3
+          hung.push({
+            x: hx + (rand() - 0.5) * 0.05,
+            y: RAILS[r] - 0.06 - j * 0.012 - rand() * 0.01,
+            z: 0.03 + j * 0.0085,
+            k,
+            tilt: (rand() - 0.5) * 0.16,
+            turn: (rand() - 0.5) * 0.18,
             tone: tones[Math.floor(rand() * tones.length)],
-            cord: rand() < 0.7 ? red : white,
+            cord: rand() < 0.85 ? white : red,
+            hookY: RAILS[r] + 0.04,
+            hookX: hx,
           })
         }
       }
     }
-    const decoys = new THREE.InstancedMesh(decoyGeo, decoyMat, places.length)
-    const cords = new THREE.InstancedMesh(cordGeo, cordMat, places.length)
+    const decoys = new THREE.InstancedMesh(decoyGeo, decoyMat, hung.length)
+    // each cord is a thin strand from the plaque's hole up to the hook
+    const strandGeo = new THREE.CylinderGeometry(0.0016, 0.0016, 1, 4, 1, true)
+    strandGeo.translate(0, 0.5, 0)
+    const strands = new THREE.InstancedMesh(strandGeo, cordMat, hung.length * 2)
+    this.disposables.push(strandGeo)
     this.decoys = decoys
-    this.cords = cords
-    const cells = new Float32Array(places.length)
-    places.forEach((pl, i) => {
-      const pivot = new THREE.Group()
-      pivot.position.set(pl.x, pl.y, pl.z)
-      pivot.scale.set(pl.sx, pl.sy, 1)
-      decoys.setColorAt(i, pl.tone)
-      cords.setColorAt(i, pl.cord)
+    this.cords = strands
+    const cells = new Float32Array(hung.length)
+    const m4 = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const e = new THREE.Euler()
+    const sc = new THREE.Vector3()
+    const at = new THREE.Vector3()
+    const top = new THREE.Vector3()
+    const hook = new THREE.Vector3()
+    const dir = new THREE.Vector3()
+    const up = new THREE.Vector3(0, 1, 0)
+    hung.forEach((h, i) => {
+      q.setFromEuler(e.set(0, h.turn, h.tilt))
+      sc.set(h.k, h.k, 1)
+      at.set(h.x, h.y, h.z)
+      decoys.setMatrixAt(i, m4.compose(at, q, sc))
+      decoys.setColorAt(i, h.tone)
       cells[i] = Math.floor(rand() * 4)
-      this.plaques.push({
-        pivot,
-        link: null,
-        rest: (rand() - 0.5) * 0.7 + (pl.flip ? Math.PI : 0),
-        turn: 0,
-        turnVel: 0,
-        swing: (rand() - 0.5) * 0.12,
-        phase: rand() * 10,
-        hit: null,
-        glow: null,
-        focus: 0,
-        instance: i,
-      })
+      // two strands per plaque, a few millimetres apart at the hole
+      for (let side = 0; side < 2; side++) {
+        top.set(h.x + (side - 0.5) * 0.008, h.y - 0.004, h.z)
+        hook.set(h.hookX + (side - 0.5) * 0.004, h.hookY, 0.02)
+        dir.subVectors(hook, top)
+        const len = dir.length()
+        q.setFromUnitVectors(up, dir.normalize())
+        sc.set(1, len, 1)
+        strands.setMatrixAt(i * 2 + side, m4.compose(top, q, sc))
+        strands.setColorAt(i * 2 + side, h.cord)
+      }
     })
+    decoys.instanceMatrix.needsUpdate = true
+    strands.instanceMatrix.needsUpdate = true
     decoyGeo.setAttribute('cell', new THREE.InstancedBufferAttribute(cells, 1))
-    for (const m of [decoys, cords]) {
+    for (const m of [decoys, strands]) {
       m.castShadow = true
       m.receiveShadow = true
       m.frustumCulled = false
@@ -410,15 +438,6 @@ export class EmaRack implements RealmPart {
       const breeze = frame.motion * (Math.sin(p.phase * 1.3) * 0.05 + Math.sin(p.phase * 2.9) * 0.02)
       p.pivot.rotation.set(Math.sin(p.phase * 1.7) * 0.03 * frame.motion, p.turn + breeze, p.swing)
       if (p.glow) p.glow.emissiveIntensity = p.focus * 0.12
-      if (p.instance !== undefined && this.decoys && this.cords) {
-        p.pivot.updateMatrix()
-        this.decoys.setMatrixAt(p.instance, p.pivot.matrix)
-        this.cords.setMatrixAt(p.instance, this.scratch.multiplyMatrices(p.pivot.matrix, this.cordOffset))
-      }
-    }
-    if (this.decoys && this.cords) {
-      this.decoys.instanceMatrix.needsUpdate = true
-      this.cords.instanceMatrix.needsUpdate = true
     }
   }
 
