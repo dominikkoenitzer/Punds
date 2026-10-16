@@ -26,7 +26,7 @@ interface TierSettings {
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { scale: 0.36, depthScale: 1, steps: 46, towerSteps: 26, lightSteps: 3 },
+  ultra: { scale: 0.4, depthScale: 1, steps: 48, towerSteps: 26, lightSteps: 3 },
   high: { scale: 0.32, depthScale: 1, steps: 40, towerSteps: 22, lightSteps: 3 },
   phone: { scale: 0.3, depthScale: 0.5, steps: 28, towerSteps: 16, lightSteps: 2 },
 }
@@ -77,7 +77,6 @@ const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: 
   // the prominent one behind the shrine, slightly left of the path, and a
   // smaller one to the right
   { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'grove', air: 650 },
-  { x: 122, y: 100, z: -320, r: 14, seed: 67, crown: 'pine' },
   { x: -160, y: -20, z: -210, r: 9, seed: 11, crown: 'pine' },
   { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'grove' },
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
