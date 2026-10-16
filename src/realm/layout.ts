@@ -167,6 +167,18 @@ export const MAPLES: readonly { x: number; z: number; height: number; spread: nu
   { x: 7.9, z: -16.2, height: 4.4, spread: 3.0 },
 ]
 
+// the shrine's grove: tall cedars behind the hall, the largest one sacred,
+// girdled with a straw rope
+export const CEDARS: readonly { x: number; z: number; height: number; sacred?: boolean }[] = [
+  { x: -8.4, z: -20.4, height: 21 },
+  { x: -5.6, z: -21.8, height: 25 },
+  { x: -2.6, z: -20.9, height: 23, sacred: true },
+  { x: 0.4, z: -22.5, height: 26 },
+  { x: 3.2, z: -21.3, height: 20 },
+  { x: -10.6, z: -18.2, height: 18 },
+  { x: 4.8, z: -22.4, height: 22 },
+]
+
 // clipped azalea mounds: centre, radius, height
 export const AZALEAS: readonly { x: number; z: number; r: number; h: number }[] = [
   { x: 4.6, z: -8.1, r: 1.25, h: 0.8 },
