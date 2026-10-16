@@ -33,6 +33,13 @@ const TIERS: Record<Tier, TierSettings> = {
 
 const NOISE_SIZE = 64
 
+// The depth copy only draws what is on this layer: the large, plain meshes
+// the clouds actually meet (terrain, the island rock, buildings, the far
+// islands). Instanced and transparent things are left to the main pass's
+// depth test, so the copy compiles one program instead of one per material.
+const DEPTH_LAYER = 29
+const DEPTH_MIN_RADIUS = 4
+
 // Towering banks: x, z, radius, height above the sea, all in metres. They
 // stand behind the shrine, under the sun, over the right rim at the end of
 // the walk and out past the landing, so every view has a far layer.
@@ -59,7 +66,7 @@ const MASSIFS: readonly [number, number, number, number, number][] = [
 ]
 
 // Distant islands: position of the top centre, top radius.
-const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' }[] = [
+const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii' }[] = [
   // the prominent one behind the shrine, slightly left of the path, and a
   // smaller one to the right
   { x: -88, y: 92, z: -330, r: 30, seed: 61, crown: 'grove' },
@@ -69,6 +76,9 @@ const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: 
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
   { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'pine' },
   { x: 320, y: -4, z: 200, r: 16, seed: 71, crown: 'grove' },
+  // the focal point of the opening view out over the rim, a little right of
+  // centre, lit from the left by the low sun
+  { x: 112, y: 10, z: 280, r: 17, seed: 83, crown: 'torii' },
   { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
 ]
 
@@ -81,8 +91,24 @@ function hash3(x: number, y: number, z: number, s: number): number {
   return (h >>> 0) / 4294967296
 }
 
-// Tileable value noise with period `p` cells.
-function valueNoise(x: number, y: number, z: number, p: number, seed: number): number {
+// Per cell random values for one period and seed, computed once: the noise
+// below reads them from tables instead of hashing per sample, which keeps the
+// volume's construction short on a phone.
+function cellTable(p: number, seed: number, channels: number): Float64Array {
+  const t = new Float64Array(p * p * p * channels)
+  let k = 0
+  for (let z = 0; z < p; z++) {
+    for (let y = 0; y < p; y++) {
+      for (let x = 0; x < p; x++) {
+        for (let c = 0; c < channels; c++) t[k++] = hash3(x, y, z, seed + c)
+      }
+    }
+  }
+  return t
+}
+
+// Tileable value noise with period `p` cells; tab from cellTable(p, seed, 1).
+function valueNoise(x: number, y: number, z: number, p: number, tab: Float64Array): number {
   const ix = Math.floor(x)
   const iy = Math.floor(y)
   const iz = Math.floor(z)
@@ -98,33 +124,36 @@ function valueNoise(x: number, y: number, z: number, p: number, seed: number): n
   const x1 = (x0 + 1) % p
   const y1 = (y0 + 1) % p
   const z1 = (z0 + 1) % p
-  const a = hash3(x0, y0, z0, seed) + (hash3(x1, y0, z0, seed) - hash3(x0, y0, z0, seed)) * ux
-  const b = hash3(x0, y1, z0, seed) + (hash3(x1, y1, z0, seed) - hash3(x0, y1, z0, seed)) * ux
-  const c = hash3(x0, y0, z1, seed) + (hash3(x1, y0, z1, seed) - hash3(x0, y0, z1, seed)) * ux
-  const d = hash3(x0, y1, z1, seed) + (hash3(x1, y1, z1, seed) - hash3(x0, y1, z1, seed)) * ux
+  const at = (xx: number, yy: number, zz: number): number => tab[(zz * p + yy) * p + xx]!
+  const a = at(x0, y0, z0) + (at(x1, y0, z0) - at(x0, y0, z0)) * ux
+  const b = at(x0, y1, z0) + (at(x1, y1, z0) - at(x0, y1, z0)) * ux
+  const c = at(x0, y0, z1) + (at(x1, y0, z1) - at(x0, y0, z1)) * ux
+  const d = at(x0, y1, z1) + (at(x1, y1, z1) - at(x0, y1, z1)) * ux
   const e = a + (b - a) * uy
   const f = c + (d - c) * uy
   return e + (f - e) * uz
 }
 
-// Tileable cellular noise: 1 at feature points, 0 far from them.
-function worley(x: number, y: number, z: number, p: number, seed: number): number {
+// Tileable cellular noise: 1 at feature points, 0 far from them; tab from
+// cellTable(p, seed, 3).
+function worley(x: number, y: number, z: number, p: number, tab: Float64Array): number {
   const ix = Math.floor(x)
   const iy = Math.floor(y)
   const iz = Math.floor(z)
   let best = 9
   for (let dz = -1; dz <= 1; dz++) {
+    const cz = iz + dz
+    const wz = ((cz % p) + p) % p
     for (let dy = -1; dy <= 1; dy++) {
+      const cy = iy + dy
+      const wy = ((cy % p) + p) % p
       for (let dx = -1; dx <= 1; dx++) {
         const cx = ix + dx
-        const cy = iy + dy
-        const cz = iz + dz
         const wx = ((cx % p) + p) % p
-        const wy = ((cy % p) + p) % p
-        const wz = ((cz % p) + p) % p
-        const px = cx + hash3(wx, wy, wz, seed) - x
-        const py = cy + hash3(wx, wy, wz, seed + 1) - y
-        const pz = cz + hash3(wx, wy, wz, seed + 2) - z
+        const k = ((wz * p + wy) * p + wx) * 3
+        const px = cx + tab[k]! - x
+        const py = cy + tab[k + 1]! - y
+        const pz = cz + tab[k + 2]! - z
         const d = px * px + py * py + pz * pz
         if (d < best) best = d
       }
@@ -135,36 +164,64 @@ function worley(x: number, y: number, z: number, p: number, seed: number): numbe
 
 // r: billowy base shape (value fbm eroded by cellular fbm), g: fine cellular
 // detail for the edges. Both tile, the shader breaks the period by mixing
-// scales and rotations.
-function buildNoiseVolume(): THREE.Data3DTexture {
+// scales and rotations. The volume is filled a few slices per frame (see
+// Skyscape.update), so building it never holds up the page in one go.
+interface NoiseTables {
+  v4: Float64Array
+  v8: Float64Array
+  v16: Float64Array
+  w4: Float64Array
+  w8: Float64Array
+  w16: Float64Array
+  d8: Float64Array
+  d16: Float64Array
+  d32: Float64Array
+}
+
+function noiseTables(): NoiseTables {
+  return {
+    v4: cellTable(4, 1, 1),
+    v8: cellTable(8, 2, 1),
+    v16: cellTable(16, 3, 1),
+    w4: cellTable(4, 7, 3),
+    w8: cellTable(8, 11, 3),
+    w16: cellTable(16, 13, 3),
+    d8: cellTable(8, 17, 3),
+    d16: cellTable(16, 19, 3),
+    d32: cellTable(32, 23, 3),
+  }
+}
+
+function fillNoiseSlice(data: Uint8Array, z: number, t: NoiseTables): void {
   const n = NOISE_SIZE
-  const data = new Uint8Array(n * n * n * 2)
-  let i = 0
-  for (let z = 0; z < n; z++) {
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const u = x / n
-        const v = y / n
-        const w = z / n
-        const vn =
-          valueNoise(u * 4, v * 4, w * 4, 4, 1) * 0.5 +
-          valueNoise(u * 8, v * 8, w * 8, 8, 2) * 0.3 +
-          valueNoise(u * 16, v * 16, w * 16, 16, 3) * 0.2
-        const wf =
-          worley(u * 4, v * 4, w * 4, 4, 7) * 0.625 +
-          worley(u * 8, v * 8, w * 8, 8, 11) * 0.25 +
-          worley(u * 16, v * 16, w * 16, 16, 13) * 0.125
-        // remap the value noise by the cellular field: round billows
-        const base = Math.min(1, Math.max(0, (vn - (1 - wf)) / Math.max(1e-3, wf) + 0.5 * wf))
-        const det =
-          worley(u * 8, v * 8, w * 8, 8, 17) * 0.55 +
-          worley(u * 16, v * 16, w * 16, 16, 19) * 0.3 +
-          worley(u * 32, v * 32, w * 32, 32, 23) * 0.15
-        data[i++] = Math.round(base * 255)
-        data[i++] = Math.round(det * 255)
-      }
+  let i = z * n * n * 2
+  const w = z / n
+  for (let y = 0; y < n; y++) {
+    const v = y / n
+    for (let x = 0; x < n; x++) {
+      const u = x / n
+      const vn =
+        valueNoise(u * 4, v * 4, w * 4, 4, t.v4) * 0.5 +
+        valueNoise(u * 8, v * 8, w * 8, 8, t.v8) * 0.3 +
+        valueNoise(u * 16, v * 16, w * 16, 16, t.v16) * 0.2
+      const wf =
+        worley(u * 4, v * 4, w * 4, 4, t.w4) * 0.625 +
+        worley(u * 8, v * 8, w * 8, 8, t.w8) * 0.25 +
+        worley(u * 16, v * 16, w * 16, 16, t.w16) * 0.125
+      // remap the value noise by the cellular field: round billows
+      const base = Math.min(1, Math.max(0, (vn - (1 - wf)) / Math.max(1e-3, wf) + 0.5 * wf))
+      const det =
+        worley(u * 8, v * 8, w * 8, 8, t.d8) * 0.55 +
+        worley(u * 16, v * 16, w * 16, 16, t.d16) * 0.3 +
+        worley(u * 32, v * 32, w * 32, 32, t.d32) * 0.15
+      data[i++] = Math.round(base * 255)
+      data[i++] = Math.round(det * 255)
     }
   }
+}
+
+function noiseTexture(data: Uint8Array): THREE.Data3DTexture {
+  const n = NOISE_SIZE
   const tex = new THREE.Data3DTexture(data, n, n, n)
   tex.format = THREE.RGFormat
   tex.type = THREE.UnsignedByteType
@@ -259,11 +316,11 @@ uniform vec4 uTowers[${TOWER_COUNT}];
 uniform vec4 uTowerBounds[${TOWER_COUNT}];
 uniform float uMaxScene;
 uniform float uFrame;
+uniform int uSteps;
+uniform int uTowerSteps;
+uniform int uLightSteps;
+uniform float uPixelAngle;
 ${SKY_GLSL}
-
-#define STEPS ${'${STEPS}'}
-#define TOWER_STEPS ${'${TOWER_STEPS}'}
-#define LIGHT_STEPS ${'${LIGHT_STEPS}'}
 
 const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
@@ -293,7 +350,7 @@ float tops(vec2 xz, vec2 q, out float tower) {
     + (vnoise(q * 0.0016 + 3.1) - 0.5) * 22.0
     + (vnoise(q * 0.0047 - 7.7) - 0.5) * 9.0;
   // cellular masses a few hundred metres across, with lower lanes between
-  float mass = texture(uNoise, vec3(q.x, 0.0, q.y) * (1.0 / 1700.0) + vec3(0.0, 0.43, 0.0)).r;
+  float mass = textureLod(uNoise, vec3(q.x, 0.0, q.y) * (1.0 / 1700.0) + vec3(0.0, 0.43, 0.0), 0.0).r;
   h += (smoothstep(0.15, 0.75, mass) - 0.5) * 36.0;
   // the sea heaps up around the foot of the island and wraps the lower rock
   float r = length(xz * vec2(1.0, 0.75)) * (0.6 + 0.8 * vnoise(xz * 0.035 + q * 0.004));
@@ -312,26 +369,33 @@ float tops(vec2 xz, vec2 q, out float tower) {
   return h;
 }
 
-float density(vec3 p, float detail) {
+// Every lookup inside the march names its mip level: implicit derivatives in
+// a loop make the shader compiler unroll it, which costs seconds to compile.
+// lod is the mip level for the base shape at this distance; dTopOut and
+// towerOut hand the column back to the lighting.
+float density(vec3 p, float detail, float lod, out float dTopOut, out float towerOut) {
   vec3 q = p + vec3(uDrift.x, 0.0, uDrift.y);
   float tower;
   float top = tops(p.xz, q.xz, tower);
   float dTop = top - p.y;
+  dTopOut = dTop;
+  towerOut = tower;
   if (dTop < 0.0) return 0.0;
   // the billow size wanders across the sea so no two stretches match
   float wander = vnoise(q.xz * 0.0011 - 4.3);
   float big = mix(0.75 + wander * 0.7, 2.6, tower);
   vec3 warp = vec3(vnoise(q.xz * 0.004), 0.0, vnoise(q.zx * 0.004 + 9.1)) * 90.0;
   q += warp;
+  float l = max(0.0, lod - log2(big));
   vec3 s1 = q * (1.0 / (210.0 * big));
   vec3 s2 = vec3(q.x * 0.8 + q.z * 0.6, q.y, q.z * 0.8 - q.x * 0.6) * (1.0 / (530.0 * big)) + vec3(0.31, uTime * 0.0004, 0.77);
-  float shape = texture(uNoise, s1).r * 0.62 + texture(uNoise, s2).r * 0.38;
+  float shape = textureLod(uNoise, s1, l).r * 0.62 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.38;
   float fade = clamp(dTop / mix(26.0 + wander * 34.0, 120.0, tower), 0.0, 1.0);
   float d = shape * 1.0 + fade * 0.95 - 0.87;
   if (d <= 0.0) return 0.0;
   if (detail > 0.0) {
     vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.0035, 0.0);
-    float det = texture(uNoise, s3).g;
+    float det = textureLod(uNoise, s3, l + 2.13).g;
     d -= (1.0 - det) * 0.16 * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.75);
   }
   return clamp(d * 6.0, 0.0, 1.0);
@@ -342,48 +406,41 @@ float phaseHG(float c, float g) {
   return (1.0 - g2) / pow(1.0 + g2 - 2.0 * g * c, 1.5);
 }
 
-// integrates one segment of the ray; col and trans carry across segments
-void marchSegment(vec3 ro, vec3 rd, float t0, float t1, int steps, float jitter, float phase, vec3 haze,
-                  vec3 skyUp, vec3 sunC, vec3 shadowC, inout vec3 col, inout float trans, inout float front) {
-  float len = t1 - t0;
-  if (len <= 0.0) return;
-  float dt = len / float(steps);
-  float t = t0 + dt * jitter;
-  for (int i = 0; i < 128; i++) {
-    if (i >= steps || trans < 0.01) break;
-    vec3 p = ro + rd * t;
-    float detail = clamp(1.0 - t / 1300.0, 0.0, 1.0);
-    float dens = density(p, detail);
-    if (dens > 0.001) {
-      if (front > 1e4 && dens > 0.02) front = t;
-      float od = 0.0;
-      float ls = 4.0;
-      float lt = 0.0;
-      for (int j = 0; j < LIGHT_STEPS; j++) {
-        lt += ls * 0.5;
-        od += density(p + uSunDir * lt, 0.0) * ls;
-        lt += ls * 0.5;
-        ls *= 2.3;
-      }
-      float tl = exp(-od * SIGMA);
-      // a cheap stand in for multiple scattering: a softer second lobe
-      float ms = exp(-od * SIGMA * 0.12) * 0.07;
-      float tower;
-      vec3 q = p + vec3(uDrift.x, 0.0, uDrift.y);
-      float top = tops(p.xz, q.xz, tower);
-      float lift = clamp(1.0 - (top - p.y) / mix(55.0, 220.0, tower), 0.0, 1.0);
-      vec3 amb = mix(shadowC * 0.6, skyUp * 0.08 + shadowC * 0.75, lift * lift);
-      float powder = 1.0 - exp(-dens * 2.5);
-      vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms) + amb;
-      float fog = 1.0 - exp(-t / HAZE_DIST);
-      lit = mix(lit, haze, fog * fog * 0.92 + fog * 0.08);
-      float ext = dens * SIGMA;
-      float stepT = exp(-ext * dt);
-      col += trans * lit * (1.0 - stepT);
-      trans *= stepT;
-    }
-    t += dt * (0.85 + 0.3 * fract(jitter + float(i) * 0.618));
+// One step of the march: the light towards the sun, scattering, haze.
+void marchStep(vec3 p, float t, float dt, float phase, vec3 haze, vec3 skyUp, vec3 sunC, vec3 shadowC,
+               inout vec3 col, inout float trans, inout float front) {
+  // mip level of the base shape for this pixel's footprint at distance t
+  float lod = log2(max(1.0, t * uPixelAngle * (64.0 / 210.0)));
+  float detail = clamp(1.0 - t / 1300.0, 0.0, 1.0);
+  float dTop;
+  float tower;
+  float dens = density(p, detail, lod, dTop, tower);
+  if (dens <= 0.001) return;
+  if (front > 1e4 && dens > 0.02) front = t;
+  float od = 0.0;
+  float ls = 4.0;
+  float lt = 0.0;
+  float dl;
+  float tl2;
+  for (int j = 0; j < 4; j++) {
+    if (j >= uLightSteps) break;
+    lt += ls * 0.5;
+    od += density(p + uSunDir * lt, 0.0, lod, dl, tl2) * ls;
+    lt += ls * 0.5;
+    ls *= 2.3;
   }
+  float tl = exp(-od * SIGMA);
+  // a cheap stand in for multiple scattering: a softer second lobe
+  float ms = exp(-od * SIGMA * 0.12) * 0.07;
+  float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
+  vec3 amb = mix(shadowC * 0.6, skyUp * 0.08 + shadowC * 0.75, lift * lift);
+  float powder = 1.0 - exp(-dens * 2.5);
+  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms) + amb;
+  float fog = 1.0 - exp(-t / HAZE_DIST);
+  lit = mix(lit, haze, fog * fog * 0.92 + fog * 0.08);
+  float stepT = exp(-dens * SIGMA * dt);
+  col += trans * lit * (1.0 - stepT);
+  trans *= stepT;
 }
 
 bool hitEllipsoid(vec3 ro, vec3 rd, vec4 b, float ry, out float ta, out float tb) {
@@ -458,13 +515,41 @@ void main() {
   }
 
   // in ray order: sea before the tower, the tower with its own finer steps
-  // (its base included, so there is no seam at the slab top), sea after it
+  // (its base included, so there is no seam at the slab top), sea after it.
+  // The segments go into one loop so its body exists once in the shader.
+  vec3 seg0 = vec3(0.0);
+  vec3 seg1 = vec3(0.0);
+  vec3 seg2 = vec3(0.0);
+  int count = 0;
+  float fs = float(uSteps);
+  float ft = float(uTowerSteps);
   if (w1 > 0.0) {
-    if (s1 > 0.0 && s0 < w0) marchSegment(ro, rd, s0, min(min(s1, w0), sceneT), STEPS, jitter, phase, haze, skyUp, sunC, shadowC, col, trans, front);
-    marchSegment(ro, rd, w0, min(w1, sceneT), TOWER_STEPS, jitter, phase, haze, skyUp, sunC, shadowC, col, trans, front);
-    if (s1 > w1) marchSegment(ro, rd, max(s0, w1), min(s1, sceneT), STEPS, jitter, phase, haze, skyUp, sunC, shadowC, col, trans, front);
+    if (s1 > 0.0 && s0 < w0) { seg0 = vec3(s0, min(min(s1, w0), sceneT), fs); count = 1; }
+    vec3 tw = vec3(w0, min(w1, sceneT), ft);
+    if (count == 0) seg0 = tw; else seg1 = tw;
+    count += 1;
+    if (s1 > w1) {
+      vec3 after = vec3(max(s0, w1), min(s1, sceneT), fs);
+      if (count == 1) seg1 = after; else seg2 = after;
+      count += 1;
+    }
   } else if (s1 > 0.0) {
-    marchSegment(ro, rd, s0, min(s1, sceneT), STEPS, jitter, phase, haze, skyUp, sunC, shadowC, col, trans, front);
+    seg0 = vec3(s0, min(s1, sceneT), fs);
+    count = 1;
+  }
+  for (int k = 0; k < 3; k++) {
+    if (k >= count || trans < 0.01) break;
+    vec3 seg = k == 0 ? seg0 : (k == 1 ? seg1 : seg2);
+    float len = seg.y - seg.x;
+    if (len <= 0.0) continue;
+    int steps = int(seg.z);
+    float dt = len / seg.z;
+    float t = seg.x + dt * jitter;
+    for (int i = 0; i < 96; i++) {
+      if (i >= steps || trans < 0.01) break;
+      marchStep(ro + rd * t, t, dt, phase, haze, skyUp, sunC, shadowC, col, trans, front);
+      t += dt * (0.85 + 0.3 * fract(jitter + float(i) * 0.618));
+    }
   }
 
   // below the traced depth the sea is solid: shaded cloud interior fading
@@ -473,7 +558,8 @@ void main() {
     float fog = 1.0 - exp(-s1 / HAZE_DIST);
     // a lower deck shows through the gaps, mottled so it never reads as a floor
     vec3 sp = ro + rd * s1 + vec3(uDrift.x, 0.0, uDrift.y) * 0.6;
-    float deck = texture(uNoise, sp * (1.0 / 900.0)).r * 0.6 + texture(uNoise, sp * (1.0 / 260.0)).r * 0.4;
+    float dl = log2(max(1.0, s1 * uPixelAngle * (64.0 / 900.0)));
+    float deck = textureLod(uNoise, sp * (1.0 / 900.0), dl).r * 0.6 + textureLod(uNoise, sp * (1.0 / 260.0), dl + 1.8).r * 0.4;
     vec3 deep = mix(mix(shadowC * 0.85, shadowC * 1.35 + sunC * 0.1, smoothstep(0.2, 0.8, deck)), haze, fog * fog * 0.92 + fog * 0.08);
     col += trans * deep;
     if (front > 1e4) front = s1;
@@ -814,8 +900,7 @@ function buildRimShrubs(rand: () => number, r: number, count: number, seed: numb
 
 // A distant range: ridged peaks over a broad base whose skirt sinks below the
 // cloud tops, so only the crests stand out of the sea.
-function buildMassif(r: number, h: number, seed: number): THREE.BufferGeometry {
-  const seg = 96
+function buildMassif(r: number, h: number, seed: number, seg: number): THREE.BufferGeometry {
   const geo = new THREE.PlaneGeometry(r * 2, r * 2, seg, seg)
   geo.rotateX(-Math.PI / 2)
   const pos = geo.attributes.position as THREE.BufferAttribute
@@ -850,6 +935,31 @@ function buildMassif(r: number, h: number, seed: number): THREE.BufferGeometry {
   return geo
 }
 
+// A torii seen from far away: two posts, the tie beam and the top beam
+// with its ends swept up, all vermilion.
+function buildTorii(h: number): THREE.BufferGeometry {
+  const list: THREE.BufferGeometry[] = []
+  for (const side of [-1, 1]) {
+    const post = new THREE.CylinderGeometry(h * 0.045, h * 0.055, h, 6, 1)
+    post.translate(side * h * 0.42, h / 2, 0)
+    list.push(post)
+  }
+  const tie = new THREE.BoxGeometry(h * 1.0, h * 0.06, h * 0.06)
+  tie.translate(0, h * 0.78, 0)
+  list.push(tie)
+  const top = new THREE.BoxGeometry(h * 1.35, h * 0.08, h * 0.1, 8, 1, 1)
+  const tp = top.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < tp.count; i++) {
+    const x = tp.getX(i) / (h * 0.675)
+    tp.setY(i, tp.getY(i) + x * x * h * 0.07)
+  }
+  top.translate(0, h * 0.97, 0)
+  list.push(top)
+  const merged = mergeGeometries(list)
+  list.forEach((g) => g.dispose())
+  return merged
+}
+
 // A small hall with a curved hip roof, only ever seen as a silhouette.
 function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.BufferGeometry } {
   const body = new THREE.BoxGeometry(s, s * 0.55, s * 0.8)
@@ -875,20 +985,34 @@ function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.Buffe
   return { body, roof }
 }
 
-function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>, distance = 1300): void {
+// distance: the air's fade length in metres, or omitted to read it per
+// vertex from an `aerial` attribute (one material for near and far things)
+function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>, distance?: number): void {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, skyUniforms)
+    const perVertex = distance === undefined
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vAerialWorld;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvAerialWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+      .replace('#include <common>', `#include <common>
+varying vec3 vAerialWorld;
+varying float vAerialLength;
+${perVertex ? 'attribute float aerial;' : ''}`)
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+vAerialWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vAerialLength = ${perVertex ? 'aerial' : distance.toFixed(1)};`,
+      )
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vAerialWorld;\n${SKY_GLSL}`)
+      .replace('#include <common>', `#include <common>
+varying vec3 vAerialWorld;
+varying float vAerialLength;
+${SKY_GLSL}`)
       .replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
         vec3 aerialRay = vAerialWorld - cameraPosition;
         float aerialDist = length(aerialRay);
-        float aerial = 1.0 - exp(-aerialDist / ${distance.toFixed(1)});
+        float aerial = 1.0 - exp(-aerialDist / vAerialLength);
         gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor(aerialRay / aerialDist), aerial);`,
       )
   }
@@ -902,6 +1026,9 @@ export class Skyscape implements RealmPart {
 
   private readonly settings: TierSettings
   private readonly noise: THREE.Data3DTexture
+  private readonly noiseData = new Uint8Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE * 2)
+  private noiseTables: NoiseTables | null = null
+  private noiseSlice = 0
   private readonly fallbackSky: THREE.DataTexture
   private readonly skyUniforms: {
     uSkyTex: THREE.IUniform<THREE.Texture>
@@ -921,6 +1048,20 @@ export class Skyscape implements RealmPart {
   private frameIndex = 0
   private historyValid = false
   private readonly depthMaterial = new THREE.MeshBasicMaterial({ colorWrite: false })
+  private readonly depthCamera = new THREE.PerspectiveCamera()
+  private readonly proxyGeometry = new THREE.PlaneGeometry(1, 1)
+  private tagCountdown = 0
+  private readonly tagVisitor = (o: THREE.Object3D): void => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh || (mesh as THREE.InstancedMesh).isInstancedMesh || (mesh as THREE.SkinnedMesh).isSkinnedMesh) return
+    if (o.layers.isEnabled(DEPTH_LAYER)) return
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+    if (!mat || mat.transparent || !mat.depthWrite) return
+    const geo = mesh.geometry
+    if (!geo.boundingSphere) geo.computeBoundingSphere()
+    const r = (geo.boundingSphere?.radius ?? 0) * mesh.matrixWorld.getMaxScaleOnAxis()
+    if (r >= DEPTH_MIN_RADIUS) o.layers.enable(DEPTH_LAYER)
+  }
   private readonly marchMaterial: THREE.RawShaderMaterial
   private readonly marchScene = new THREE.Scene()
   private readonly marchCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
@@ -935,14 +1076,17 @@ export class Skyscape implements RealmPart {
   private readonly islandMaterials: THREE.Material[] = []
   private readonly cliffMaterial: THREE.MeshStandardMaterial
   private disposed = false
+  private readonly placeholders: THREE.Texture[] = []
 
   private readonly size = new THREE.Vector2()
   private readonly drift = new THREE.Vector2()
   private readonly clearColor = new THREE.Color()
 
   constructor(opts: { tier: Tier }) {
+    this.depthCamera.layers.set(DEPTH_LAYER)
+    this.depthCamera.matrixWorldAutoUpdate = false
     this.settings = TIERS[opts.tier]
-    this.noise = buildNoiseVolume()
+    this.noise = noiseTexture(this.noiseData)
 
     // a one texel stand in until the host's sky is seen
     this.fallbackSky = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1)
@@ -987,9 +1131,7 @@ export class Skyscape implements RealmPart {
     this.marchMaterial = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: MARCH_VERT,
-      fragmentShader: MARCH_FRAG.replace('${STEPS}', String(s.steps))
-        .replace('${TOWER_STEPS}', String(s.towerSteps))
-        .replace('${LIGHT_STEPS}', String(s.lightSteps)),
+      fragmentShader: MARCH_FRAG,
       uniforms: {
         ...this.skyUniforms,
         uNoise: { value: this.noise },
@@ -1006,6 +1148,10 @@ export class Skyscape implements RealmPart {
         uTowerBounds: { value: bounds },
         uMaxScene: { value: 1e6 },
         uFrame: { value: 0 },
+        uSteps: { value: s.steps },
+        uTowerSteps: { value: s.towerSteps },
+        uLightSteps: { value: s.lightSteps },
+        uPixelAngle: { value: 0.002 },
       },
       depthTest: false,
       depthWrite: false,
@@ -1034,6 +1180,17 @@ export class Skyscape implements RealmPart {
     const marchMesh = new THREE.Mesh(this.quad, this.marchMaterial)
     marchMesh.frustumCulled = false
     this.marchScene.add(marchMesh)
+
+    // The offscreen passes draw with materials the host never sees. Proxies
+    // on a layer no camera renders carry them into the host's parallel
+    // compile of this part, so they do not compile one by one, blocking, on
+    // the first frame.
+    for (const m of [this.marchMaterial, this.resolveMaterial, this.depthMaterial]) {
+      const proxy = new THREE.Mesh(this.proxyGeometry, m)
+      proxy.layers.set(30)
+      proxy.frustumCulled = false
+      this.object.add(proxy)
+    }
 
     this.compositeMaterial = new THREE.ShaderMaterial({
       vertexShader: COMPOSITE_VERT,
@@ -1115,24 +1272,49 @@ export class Skyscape implements RealmPart {
     this.wisps.renderOrder = -5
     this.object.add(this.wisps)
 
-    // distant islands
-    this.cliffMaterial = new THREE.MeshStandardMaterial({ color: 0x6d6258, roughness: 0.95 })
-    patchAerial(this.cliffMaterial, 'skyscape-far-cliff', this.skyUniforms)
-    const grassMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })
-    patchAerial(grassMaterial, 'skyscape-far-grass', this.skyUniforms)
-    const leafMaterial = new THREE.MeshStandardMaterial({ color: 0x1f3320, roughness: 0.85 })
-    patchAerial(leafMaterial, 'skyscape-far-leaf', this.skyUniforms)
-    const woodMaterial = new THREE.MeshStandardMaterial({ color: 0x5a2c1e, roughness: 0.8 })
-    patchAerial(woodMaterial, 'skyscape-far-wood', this.skyUniforms)
-    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.6 })
-    patchAerial(roofMaterial, 'skyscape-far-roof', this.skyUniforms)
-    this.islandMaterials.push(this.cliffMaterial, grassMaterial, leafMaterial, woodMaterial, roofMaterial)
+    // distant islands: the scanned cliff, and one vertex coloured material for
+    // grass, foliage, wood, roofs and the far ranges, so they cost two
+    // programs between them
+    // one texel stand ins until the scanned set arrives, so swapping in the
+    // real maps changes no program
+    const texel = (r: number, g: number, b: number, srgb: boolean): THREE.DataTexture => {
+      const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1)
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace
+      t.needsUpdate = true
+      this.placeholders.push(t)
+      return t
+    }
+    const arm = texel(255, 242, 0, false)
+    this.cliffMaterial = new THREE.MeshStandardMaterial({
+      color: 0x6d6258,
+      roughness: 1,
+      map: texel(255, 255, 255, true),
+      normalMap: texel(128, 128, 255, false),
+      aoMap: arm,
+      roughnessMap: arm,
+    })
+    patchAerial(this.cliffMaterial, 'skyscape-far-cliff', this.skyUniforms, 1300)
+    const plainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 })
+    patchAerial(plainMaterial, 'skyscape-far-plain', this.skyUniforms)
+    this.islandMaterials.push(this.cliffMaterial, plainMaterial)
+    // per part: colour (null keeps the vertex colours) and fade length
+    const looks: [number | null, number][] = [
+      [null, 1300], // cliff, unused here
+      [null, 1300], // grass
+      [0x1f3320, 1300], // foliage
+      [0x5a2c1e, 1300], // wood
+      [0x2a2a2e, 1300], // roofs
+      [0x5b5e66, 2300], // the far ranges: much longer air to the eye
+    ]
+    const tint = new THREE.Color()
 
+    // phones get the far shapes at lower density; they are small on screen
+    const lowPoly = opts.tier === 'phone'
     const parts: THREE.BufferGeometry[][] = [[], [], [], [], []]
     for (const isl of FAR_ISLANDS) {
       const rand = rng(isl.seed)
       const depth = isl.r * (1.5 + rand() * 0.8)
-      const under = new THREE.CylinderGeometry(1, 0.02, depth, 48, 24, true)
+      const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 32 : 48, lowPoly ? 14 : 24, true)
       under.translate(0, -depth / 2, 0)
       displaceUnderside(under, isl.r, depth, isl.seed)
       // planar uvs scaled to metres so the rock grain reads at the right size
@@ -1149,7 +1331,7 @@ export class Skyscape implements RealmPart {
       for (let l = 0; l < lobes; l++) {
         const lr = isl.r * (0.4 + rand() * 0.2)
         const ld = depth * (0.45 + rand() * 0.35)
-        const lobe = new THREE.CylinderGeometry(1, 0.02, ld, 24, 12, true)
+        const lobe = new THREE.CylinderGeometry(1, 0.02, ld, lowPoly ? 16 : 24, lowPoly ? 8 : 12, true)
         lobe.translate(0, -ld / 2, 0)
         displaceUnderside(lobe, lr, ld, isl.seed + l * 7 + 3)
         const la = rand() * Math.PI * 2
@@ -1180,6 +1362,15 @@ export class Skyscape implements RealmPart {
           plant(buildCedar(rand, isl.r * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
         }
         if (isl.r > 20) plant(buildPine(rand, isl.r * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
+      } else if (isl.crown === 'torii') {
+        // a leaning pine near the edge, a gate and two cedars behind
+        plant(buildPine(rand, isl.r * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
+        const gate = buildTorii(isl.r * 0.32)
+        gate.rotateY(-0.5)
+        gate.translate(isl.x + isl.r * 0.25, ground, isl.z - isl.r * 0.1)
+        parts[4]?.push(gate)
+        plant(buildCedar(rand, isl.r * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
+        plant(buildCedar(rand, isl.r * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
       } else if (isl.crown === 'pine') {
         plant(buildPine(rand, isl.r * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
         plant(buildCedar(rand, isl.r * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
@@ -1196,42 +1387,46 @@ export class Skyscape implements RealmPart {
         plant(buildCedar(rand, isl.r * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
       }
     }
-    // the far ranges, in their own material: much longer air between them
-    // and the eye
-    const rangeMaterial = new THREE.MeshStandardMaterial({ color: 0x5b5e66, roughness: 1 })
-    patchAerial(rangeMaterial, 'skyscape-far-range', this.skyUniforms, 2300)
-    this.islandMaterials.push(rangeMaterial)
+    // the far ranges
     const ranges: THREE.BufferGeometry[] = []
     MASSIFS.forEach(([x, z, r, h, y], k) => {
-      const g = buildMassif(r, h, 101 + k * 17)
+      const g = buildMassif(r, h, 101 + k * 17, lowPoly ? 56 : 96)
       g.translate(x, y, z)
       ranges.push(g)
     })
     parts.push(ranges)
+    const plainParts: THREE.BufferGeometry[] = []
     parts.forEach((list, i) => {
       if (list.length === 0) return
+      const [hex, fadeLength] = looks[i] ?? [null, 1300]
+      if (hex !== null) tint.set(hex)
       const cleaned = list.map((g) => {
         const ng = g.index ? g.toNonIndexed() : g
         if (ng !== g) g.dispose()
         for (const name of Object.keys(ng.attributes)) {
           if (name !== 'position' && name !== 'normal' && name !== 'uv' && name !== 'color') ng.deleteAttribute(name)
         }
-        if (!ng.attributes.color) {
-          const c = new Float32Array(ng.attributes.position!.count * 3).fill(1)
+        const n = ng.attributes.position!.count
+        if (!ng.attributes.color || hex !== null) {
+          const c = new Float32Array(n * 3)
+          for (let k = 0; k < n; k++) c.set(hex !== null ? [tint.r, tint.g, tint.b] : [1, 1, 1], k * 3)
           ng.setAttribute('color', new THREE.BufferAttribute(c, 3))
         }
-        if (!ng.attributes.uv) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(ng.attributes.position!.count * 2), 2))
+        if (!ng.attributes.uv) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2))
+        if (i > 0) ng.setAttribute('aerial', new THREE.BufferAttribute(new Float32Array(n).fill(fadeLength), 1))
         return ng
       })
-      const merged = mergeGeometries(cleaned)
-      cleaned.forEach((g) => g.dispose())
-      this.islandGeometries.push(merged)
-      const mesh = new THREE.Mesh(merged, this.islandMaterials[i])
-      mesh.castShadow = false
-      mesh.receiveShadow = false
-      mesh.frustumCulled = false
-      this.object.add(mesh)
+      if (i === 0) {
+        const merged = mergeGeometries(cleaned)
+        cleaned.forEach((g) => g.dispose())
+        this.addFar(merged, this.cliffMaterial)
+      } else {
+        plainParts.push(...cleaned)
+      }
     })
+    const plain = mergeGeometries(plainParts)
+    plainParts.forEach((g) => g.dispose())
+    this.addFar(plain, plainMaterial)
 
     loadPbr('cliff', opts.tier)
       .then((set) => {
@@ -1242,13 +1437,23 @@ export class Skyscape implements RealmPart {
         this.cliffMaterial.aoMap = scanned.aoMap
         this.cliffMaterial.roughnessMap = scanned.roughnessMap
         this.cliffMaterial.color.set(0xb8aca0)
-        this.cliffMaterial.roughness = 1
-        this.cliffMaterial.needsUpdate = true
         scanned.dispose()
       })
       .catch(() => {
         // the plain rock colour stays until the scanned set exists
       })
+  }
+
+  private addFar(geo: THREE.BufferGeometry, mat: THREE.Material): void {
+    this.islandGeometries.push(geo)
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.castShadow = false
+    mesh.receiveShadow = false
+    mesh.frustumCulled = false
+    // the clouds stop at the far islands and ranges, so they go into the
+    // depth copy
+    mesh.layers.enable(DEPTH_LAYER)
+    this.object.add(mesh)
   }
 
   // Hands over the host's sky so the haze matches it. Pass the cropped
@@ -1263,6 +1468,19 @@ export class Skyscape implements RealmPart {
   }
 
   update(frame: Frame): void {
+    // fill the noise volume a few slices at a time, a few milliseconds per
+    // frame, and upload it once it is whole
+    if (this.noiseSlice < NOISE_SIZE) {
+      const t0 = performance.now()
+      if (!this.noiseTables) this.noiseTables = noiseTables()
+      while (this.noiseSlice < NOISE_SIZE && performance.now() - t0 < 4) {
+        fillNoiseSlice(this.noiseData, this.noiseSlice++, this.noiseTables)
+      }
+      if (this.noiseSlice === NOISE_SIZE) {
+        this.noise.needsUpdate = true
+        this.noiseTables = null
+      }
+    }
     // the sea drifts slowly with the wind
     const w = realmUniforms.uWind.value
     this.drift.x += w.x * frame.dt * 1.6 * frame.motion
@@ -1285,6 +1503,7 @@ export class Skyscape implements RealmPart {
       this.historyValid = false
     }
     ;(this.marchMaterial.uniforms.uTexel!.value as THREE.Vector2).set(1 / w, 1 / h)
+    this.marchMaterial.uniforms.uPixelAngle!.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / (h * camera.zoom)
     // the depth pass runs at full resolution so the upsample can match
     // every screen pixel against its own surface; phones use half, read with
     // nearest filtering, since a full extra scene draw costs too much there
@@ -1310,28 +1529,37 @@ export class Skyscape implements RealmPart {
     const prevAutoClear = renderer.autoClear
     const prevBackground = scene.background
     const prevOverride = scene.overrideMaterial
+    // tag new large meshes for the depth copy now and then; parts arrive
+    // over the first seconds
+    if (this.tagCountdown-- <= 0) {
+      scene.traverse(this.tagVisitor)
+      this.tagCountdown = 90
+    }
+    const dc = this.depthCamera
+    dc.matrixWorld.copy(camera.matrixWorld)
+    dc.matrixWorldInverse.copy(camera.matrixWorldInverse)
+    dc.projectionMatrix.copy(camera.projectionMatrix)
+    dc.projectionMatrixInverse.copy(camera.projectionMatrixInverse)
+    dc.near = camera.near
+    dc.far = camera.far
     const sm = renderer.shadowMap
     const prevAuto = sm.autoUpdate
     const prevNeeds = sm.needsUpdate
     renderer.getClearColor(this.clearColor)
     const prevAlpha = renderer.getClearAlpha()
 
-    // depth of the opaque scene at the cloud resolution
-    this.composite.visible = false
-    this.wisps.visible = false
+    // depth of the large opaque meshes
     scene.background = null
     scene.overrideMaterial = this.depthMaterial
     sm.autoUpdate = false
     sm.needsUpdate = false
     renderer.autoClear = true
     renderer.setRenderTarget(this.depthTarget)
-    renderer.render(scene, camera)
+    renderer.render(scene, dc)
     scene.overrideMaterial = prevOverride
     scene.background = prevBackground
     sm.autoUpdate = prevAuto
     sm.needsUpdate = prevNeeds
-    this.composite.visible = true
-    this.wisps.visible = true
 
     renderer.setRenderTarget(this.cloudTarget)
     renderer.setClearColor(0x000000, 0)
@@ -1374,5 +1602,7 @@ export class Skyscape implements RealmPart {
     this.wispMaterial.dispose()
     for (const g of this.islandGeometries) g.dispose()
     for (const m of this.islandMaterials) m.dispose()
+    for (const t of this.placeholders) t.dispose()
+    this.proxyGeometry.dispose()
   }
 }
