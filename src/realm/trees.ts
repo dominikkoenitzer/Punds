@@ -388,7 +388,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
           // ever drawn at partial coverage
           vec3 faceW = normalize(mat3(modelMatrix) * aFaceN);
           vec3 toCam = normalize(cameraPosition - (modelMatrix * vec4(aCentre, 1.0)).xyz);
-          float facing = smoothstep(0.08, 0.3, abs(dot(faceW, toCam)));
+          float facing = smoothstep(0.18, 0.45, abs(dot(faceW, toCam)));
           transformed = aCentre + (transformed - aCentre) * keep * facing * (1.0 + far * 0.55);
           float flex = pow(clamp(aSway / uSwayNorm, 0.0, 1.0), 2.2);
           transformed += windSway(anchorW, flex * uBranchAmp);
@@ -408,7 +408,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
       // card sits at partial coverage (which would dither into a checker).
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <alphatest_fragment>',
-        `float aw = max(fwidth(diffuseColor.a) * 0.5, 0.004);
+        `float aw = clamp(fwidth(diffuseColor.a) * 0.5, 0.004, 0.05);
         diffuseColor.a = smoothstep(alphaTest - aw, alphaTest + aw, diffuseColor.a);
         if (diffuseColor.a < 0.02) discard;`,
       )
@@ -682,8 +682,9 @@ function drawBlossom(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: numb
     petalPath(ctx, pr)
     if (pass === 'color') {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, pr)
-      g.addColorStop(0, rgbStr((0.93 - 0.03 * pink) * shade, (0.68 - 0.08 * pink) * shade, (0.74 - 0.05 * pink) * shade))
-      g.addColorStop(0.3, rgbStr(0.97 * shade, (0.84 - 0.06 * pink) * shade, (0.87 - 0.04 * pink) * shade))
+      g.addColorStop(0, rgbStr((0.88 - 0.04 * pink) * shade, (0.5 - 0.1 * pink) * shade, (0.6 - 0.06 * pink) * shade))
+      g.addColorStop(0.22, rgbStr((0.94 - 0.02 * pink) * shade, (0.72 - 0.08 * pink) * shade, (0.78 - 0.05 * pink) * shade))
+      g.addColorStop(0.45, rgbStr(0.97 * shade, (0.84 - 0.06 * pink) * shade, (0.87 - 0.04 * pink) * shade))
       g.addColorStop(1, rgbStr(1.0 * shade, (0.96 - 0.03 * pink) * shade, 0.96 * shade))
       ctx.fillStyle = g
       ctx.fill()
@@ -755,8 +756,31 @@ function drawYoungLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: nu
   ctx.restore()
 }
 
+// a closed bud: a deeper pink drop in a dark calyx, pointing away from its stalk
+function drawBud(ctx: CanvasRenderingContext2D, pass: Pass, x: number, y: number, R: number, ang: number, shade: number): void {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(ang)
+  ctx.beginPath()
+  ctx.ellipse(0, -R * 0.45, R * 0.3, R * 0.5, 0, 0, Math.PI * 2)
+  if (pass === 'color') {
+    const g = ctx.createLinearGradient(0, 0, 0, -R * 0.95)
+    g.addColorStop(0, rgbStr(0.72 * shade, 0.3 * shade, 0.4 * shade))
+    g.addColorStop(1, rgbStr(0.95 * shade, 0.62 * shade, 0.72 * shade))
+    ctx.fillStyle = g
+  } else {
+    ctx.fillStyle = grey(0.6 + shade * 0.2)
+  }
+  ctx.fill()
+  ctx.beginPath()
+  ctx.ellipse(0, -R * 0.08, R * 0.2, R * 0.16, 0, 0, Math.PI * 2)
+  ctx.fillStyle = pass === 'color' ? rgbStr(0.38 * shade, 0.14 * shade, 0.14 * shade) : grey(0.45)
+  ctx.fill()
+  ctx.restore()
+}
+
 function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
-  const twigCol = pass === 'color' ? rgbStr(0.27, 0.18, 0.16) : grey(0.42)
+  const twigCol = pass === 'color' ? rgbStr(0.19, 0.12, 0.11) : grey(0.42)
   const main = wanderTwig(r, ox + S * (0.35 + r() * 0.3), oy + S * 1.02, -Math.PI / 2 + (r() - 0.5) * 0.7, S * 0.85, 16, 0.3)
   const twigs = [main]
   const spurs = 2 + Math.floor(r() * 3)
@@ -765,7 +789,8 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
     const side = r() < 0.5 ? -1 : 1
     twigs.push(wanderTwig(r, at.x, at.y, -Math.PI / 2 + side * (0.6 + r() * 0.6), S * (0.2 + r() * 0.25), 10, 0.35))
   }
-  twigs.forEach((t, i) => strokePath(ctx, t, S * (i === 0 ? 0.009 : 0.006), S * 0.003, twigCol))
+  // the twig is clearly there under the flowers: they hang from it
+  twigs.forEach((t, i) => strokePath(ctx, t, S * (i === 0 ? 0.013 : 0.008), S * 0.004, twigCol))
   interface F {
     x: number
     y: number
@@ -773,11 +798,12 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
     depth: number
     ux: number
     uy: number
+    bud: boolean
   }
   const flowers: F[] = []
-  // full bloom: the cluster is a packed ball of flowers with only small gaps
-  const umbels = 24 + Math.floor(r() * 6)
-  const R0 = S * 0.047
+  // full bloom: a packed ball of flowers about 3 cm across, with small gaps
+  const umbels = 32 + Math.floor(r() * 8)
+  const R0 = S * 0.037
   for (let u = 0; u < umbels; u++) {
     const t = twigs[Math.floor(r() * twigs.length)]!
     const p = t[1 + Math.floor(r() * (t.length - 1))]!
@@ -789,9 +815,10 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
       const fx = p.x + Math.cos(a) * l
       const fy = p.y + Math.sin(a) * l
       const depth = r()
+      const bud = r() < 0.14
       // a rounded cluster: nothing near the cell edges, so cards never show a straight cut
       if (Math.hypot(fx - ox - S / 2, fy - oy - S / 2) > S * 0.5 - R * 1.1) continue
-      flowers.push({ x: fx, y: fy, R, depth, ux: p.x, uy: p.y })
+      flowers.push({ x: fx, y: fy, R, depth, ux: p.x, uy: p.y, bud })
     }
     if (r() < 0.14) {
       const a = r() * Math.PI * 2
@@ -801,14 +828,29 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
   flowers.sort((a, b) => a.depth - b.depth)
   // pedicels from the spur to each flower
   for (const f of flowers) {
-    ctx.strokeStyle = pass === 'color' ? rgbStr(0.5, 0.3, 0.27) : grey(0.45)
-    ctx.lineWidth = Math.max(0.6, S * 0.0025)
+    ctx.strokeStyle = pass === 'color' ? rgbStr(0.36, 0.17, 0.16) : grey(0.45)
+    ctx.lineWidth = Math.max(0.7, S * 0.0034)
     ctx.beginPath()
     ctx.moveTo(f.ux, f.uy)
     ctx.lineTo(f.x, f.y)
     ctx.stroke()
   }
-  for (const f of flowers) drawBlossom(ctx, pass, r, f.x, f.y, f.R, 0.86 + f.depth * 0.14)
+  for (const f of flowers) {
+    // flowers deeper in the cluster are in each other's shade
+    const shade = 0.62 + Math.pow(f.depth, 0.7) * 0.38
+    if (pass === 'color') {
+      // a soft contact shadow on whatever lies behind, so the ball has depth
+      const sh = ctx.createRadialGradient(f.x, f.y + f.R * 0.25, 0, f.x, f.y + f.R * 0.25, f.R * 1.35)
+      sh.addColorStop(0, 'rgba(70,30,45,0.32)')
+      sh.addColorStop(1, 'rgba(70,30,45,0)')
+      ctx.fillStyle = sh
+      ctx.beginPath()
+      ctx.arc(f.x, f.y + f.R * 0.25, f.R * 1.35, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    if (f.bud) drawBud(ctx, pass, f.x, f.y, f.R, Math.atan2(f.y - f.uy, f.x - f.ux) + Math.PI / 2, shade)
+    else drawBlossom(ctx, pass, r, f.x, f.y, f.R, shade)
+  }
 }
 
 function drawMapleLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: number, y: number, R: number, ang: number, shade: number): void {
@@ -996,7 +1038,7 @@ function acquireAtlas(kind: AtlasKind, tier: Tier): Atlas {
     const size = tier === 'phone' ? 1024 : 2048
     const atlas =
       kind === 'blossom'
-        ? paintAtlas(size, 4111, paintBlossomCell, 5)
+        ? paintAtlas(size, 4111, paintBlossomCell, 7)
         : kind === 'maple'
           ? paintAtlas(size, 9001, paintMapleCell, 3)
           : paintAtlas(size, 7307, paintCedarCell, 4)
@@ -1047,6 +1089,8 @@ interface CardOpts {
   flat: number
   // true where no card may hang (the walk below the canopy)
   reject: (p: THREE.Vector3) => boolean
+  // how much darker the heart of each cluster is than its shell
+  ballShade?: number
 }
 
 function crownOutward(c: CrownShape, p: THREE.Vector3, out: THREE.Vector3): number {
@@ -1139,7 +1183,8 @@ function buildCards(o: CardOpts): THREE.BufferGeometry {
       // the heart of each cluster and the inner and lower crown get less sky
       const inner = THREE.MathUtils.smoothstep(ev, 0.25, 1.0)
       const low = THREE.MathUtils.smoothstep(v.y, o.crown.centre.y - o.crown.lowY, o.crown.centre.y + o.crown.radii.y * 0.6)
-      const ball = 0.55 + 0.45 * THREE.MathUtils.smoothstep(shell, 0.2, 0.95)
+      const bs = o.ballShade ?? 0.45
+      const ball = 1 - bs + bs * THREE.MathUtils.smoothstep(shell, 0.2, 0.95)
       const ao = (1 - o.depthShade + o.depthShade * inner) * (0.7 + 0.3 * low) * ball * tint
       col.push(ao, ao * (0.985 + 0.03 * r()), ao)
       anchor.push(seat.p.x, seat.p.y, seat.p.z)
@@ -1323,7 +1368,7 @@ export class CherryTree extends Tree {
         length,
         r0,
         // fine twigs end at about 1 cm so they still draw as dark lines between clusters
-        r1: Math.max(depth >= maxDepth ? 0.006 : 0.01, r0 * (depth >= maxDepth ? 0.15 : 0.12)),
+        r1: Math.max(depth >= maxDepth ? 0.0025 : 0.01, r0 * (depth >= maxDepth ? 0.1 : 0.12)),
         depth,
         sway0,
         segLen: depth < 2 ? segLen : segLen * 1.3,
@@ -1422,7 +1467,7 @@ export class CherryTree extends Tree {
     const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
     const cards = buildCards({
       tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.5,
-      clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 15 : 24, flat: 0.8, reject,
+      clusterRadius: 0.36, perCluster: opts.tier === 'phone' ? 11 : 16, flat: 0.8, reject, ballShade: 0.6,
     })
     const mat = foliageMaterial({
       key: 'blossom',
