@@ -5,6 +5,7 @@ import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { setMaxAnisotropy } from './assets'
 import { Walk, heading } from './walk'
 import { Ambience } from './ambience'
+import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
@@ -56,12 +57,22 @@ function rendererName(renderer: THREE.WebGLRenderer): string {
   return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
 }
 
-// frames per second when the screen holds still, and always on phones, where
-// the battery and the heat matter more than the last bit of smoothness
+// Frame rates: never above 60, even on fast screens; 30 when the screen holds
+// still, and always on phones, where the battery and the heat matter more
+// than the last bit of smoothness; nothing at all once the window has been
+// in the background for a while and nobody touches it.
+const MAX_FPS = 60
 const CALM_FPS = 30
 const IDLE_AFTER_MS = 12000
+const ASLEEP_AFTER_MS = 60000
+// headless cost checks measure the frame without the caps
+const UNCAPPED = new URLSearchParams(location.search).has('uncapped')
+const NO_BUDGET = new URLSearchParams(location.search).has('nobudget')
 
 const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
+// and a budget of drawn pixels: a 4K screen is drawn at about 1440p and
+// scaled up, which looks nearly the same at a fraction of the work
+const PIXEL_BUDGET: Record<Tier, number> = { ultra: 2560 * 1440, high: 1920 * 1080, phone: 1300 * 600 }
 
 // light through the walk: warm afternoon gold deepening as the sun sinks
 const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
@@ -256,7 +267,8 @@ export class Realm {
   private resize(): void {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
-    this.dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP[this.tier]) * this.dprScale
+    const budget = NO_BUDGET ? Infinity : Math.sqrt(PIXEL_BUDGET[this.tier] / Math.max(1, w * h))
+    this.dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP[this.tier], budget) * this.dprScale
     this.renderer.setPixelRatio(this.dpr)
     this.renderer.setSize(w, h, false)
     this.renderer.domElement.style.width = '100%'
@@ -344,11 +356,13 @@ export class Realm {
   setProgress(p: number, immediate = false): void {
     this.walk.target = THREE.MathUtils.clamp(p, 0, 1)
     if (immediate) this.walk.progress = this.walk.target
+    this.onInput()
   }
 
   // headless checks: look from one point at another instead of the walk
   view(from: [number, number, number] | null, to: [number, number, number] = [0, 0, 0]): void {
     this.debugView = from ? { from: new THREE.Vector3(...from), to: new THREE.Vector3(...to) } : null
+    this.onInput()
   }
 
   // headless checks: show or hide every part of one kind, to measure it
@@ -387,6 +401,14 @@ export class Realm {
     return this.sky
   }
 
+  // headless cost checks: GPU milliseconds per section of the frame
+  gpuTimes(reset = false): Record<string, number> | null {
+    if (!this.pipeline.timer) this.pipeline.timer = new GpuTimer(this.renderer.getContext() as WebGL2RenderingContext)
+    if (!this.pipeline.timer.available) return null
+    if (reset) this.pipeline.timer.reset()
+    return this.pipeline.timer.report()
+  }
+
   get isReady(): boolean {
     return this.ready
   }
@@ -412,13 +434,18 @@ export class Realm {
   private tick = () => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.tick)
-    // a calm frame rate on phones and whenever nothing moves
     const now = performance.now()
-    const settled = now - this.lastInput > IDLE_AFTER_MS && Math.abs(this.walk.target - this.walk.progress) < 1e-3
-    const calm = this.ready && (this.tier === 'phone' || settled)
-    if (calm && now - this.lastDraw < 1000 / CALM_FPS - 2) return
-    this.lastDraw = now
-    this.calm = calm
+    if (this.ready && !UNCAPPED) {
+      const quiet = now - this.lastInput
+      const settled = quiet > IDLE_AFTER_MS && Math.abs(this.walk.target - this.walk.progress) < 1e-3
+      if (!document.hasFocus() && quiet > ASLEEP_AFTER_MS) return
+      this.calm = this.tier === 'phone' || settled
+      // hold the beat: a 144 Hz screen alternates gaps of two and three
+      // refreshes instead of dropping to 48 frames a second
+      const interval = 1000 / (this.calm ? CALM_FPS : MAX_FPS)
+      if (now - this.lastDraw < interval - 1.5) return
+      this.lastDraw = Math.max(this.lastDraw + interval, now - interval)
+    }
     this.clock.update()
     const raw = this.clock.getDelta()
     const dt = Math.min(raw, 1 / 20)
@@ -497,7 +524,11 @@ export class Realm {
     this.frame.progress = p
     for (const part of this.parts) part.update(this.frame)
     this.ambience.update(dt, this.camera.position, realmUniforms.uGust.value)
-    for (const part of this.parts) if (hasPrerender(part)) part.prerender(this.renderer, this.scene, this.camera)
+    for (const part of this.parts) {
+      if (!hasPrerender(part)) continue
+      this.pipeline.timer?.begin((part as { label?: string }).label ?? part.constructor.name)
+      part.prerender(this.renderer, this.scene, this.camera)
+    }
 
     const pp = this.post
     pp.wake = wake

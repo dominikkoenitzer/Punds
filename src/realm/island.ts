@@ -93,6 +93,11 @@ class Sheltered implements RealmPart {
     this.hidden = hidden
   }
 
+  // the wrapped part's name, for cost reports
+  get label(): string {
+    return this.part.constructor.name
+  }
+
   update(frame: Frame): void {
     this.part.update(frame)
   }

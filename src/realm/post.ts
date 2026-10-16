@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import type { GpuTimer } from './gpuTimer'
 import type { Tier } from './types'
 
 // The frame after the scene is drawn: height fog and haze from the depth
@@ -355,6 +356,8 @@ function makeTarget(w: number, h: number, type: THREE.TextureDataType = THREE.Ha
 const MIPS = 6
 
 export class Pipeline {
+  // headless cost checks only
+  timer: GpuTimer | null = null
   readonly main: THREE.WebGLRenderTarget
   private renderer: THREE.WebGLRenderer
   private tier: Tier
@@ -533,8 +536,11 @@ export class Pipeline {
 
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, p: PostParams, sunDir: THREE.Vector3, t: number): void {
     const r = this.renderer
+    const tm = this.timer
+    tm?.begin('scene')
     r.setRenderTarget(this.main)
     r.render(scene, camera)
+    tm?.begin('ao')
 
     // ambient occlusion, skipped on phones where the scans' own occlusion
     // carries it
@@ -555,6 +561,7 @@ export class Pipeline {
     }
 
     // fog and haze
+    tm?.begin('fog')
     const a = this.atmosMat.uniforms
     a.uInvProj.value.copy(camera.projectionMatrixInverse)
     a.uCamWorld.value.copy(camera.matrixWorld)
@@ -569,6 +576,7 @@ export class Pipeline {
     this.draw(this.atmosMat, this.atmos)
 
     // two soft copies for the depth of field
+    tm?.begin('dof')
     let src: THREE.Texture = this.atmos.texture
     let sw = this.width
     let sh = this.height
@@ -584,6 +592,7 @@ export class Pipeline {
     }
 
     // the bloom chain: highlights, down then up
+    tm?.begin('bloom')
     src = this.atmos.texture
     sw = this.width
     sh = this.height
@@ -607,6 +616,7 @@ export class Pipeline {
     }
 
     // light shafts, only while the sun is ahead of the camera
+    tm?.begin('shafts')
     camera.getWorldDirection(this.camDir)
     const facing = this.camDir.dot(sunDir)
     let shafts = 0
@@ -641,7 +651,9 @@ export class Pipeline {
     f.uSaturation.value = p.saturation
     f.uWake.value = p.wake
     f.uTime.value = t
+    tm?.begin('final')
     this.draw(this.finalMat, null)
+    tm?.collect()
   }
 
   dispose(): void {
