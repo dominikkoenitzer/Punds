@@ -594,7 +594,7 @@ export class Pipeline {
     src = this.atmos.texture
     sw = this.width
     sh = this.height
-    this.downMat.uniforms.uThreshold.value = 1.6
+    this.downMat.uniforms.uThreshold.value = 2.8
     for (let i = 0; i < MIPS; i++) {
       this.downMat.uniforms.tSrc.value = src
       this.downMat.uniforms.uTexel.value.set(1 / sw, 1 / sh)
