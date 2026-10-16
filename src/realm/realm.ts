@@ -345,6 +345,12 @@ export class Realm {
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
     const pitch = pose.pitch + this.parallax.y * 0.015 + sleep * 0.22 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
+    // a tall screen sees less across: near the end, where the plaques must
+    // all be in frame, step back along the view to make room
+    if (this.camera.aspect < 1) {
+      const back = (1 - this.camera.aspect) * 2.2 * THREE.MathUtils.smoothstep(p, 0.86, 1)
+      this.camera.position.addScaledVector(this.dir, -back)
+    }
     this.look.copy(this.camera.position).add(this.dir)
     this.camera.up.set(Math.sin(sleep * 0.12), 1, 0).normalize()
     this.camera.lookAt(this.look)
