@@ -73,14 +73,14 @@ const MASSIFS: readonly [number, number, number, number, number][] = [
 ]
 
 // Distant islands: position of the top centre, top radius.
-const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii'; air?: number; shape?: number; deep?: number }[] = [
+const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii' | 'blossom'; air?: number; shape?: number; deep?: number }[] = [
   // the prominent one behind the shrine, slightly left of the path, and a
   // smaller one to the right
-  { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'grove', air: 650 },
+  { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'blossom', air: 650 },
   { x: -160, y: -20, z: -210, r: 9, seed: 11, crown: 'pine' },
-  { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'grove' },
+  { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'blossom' },
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
-  { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'pine' },
+  { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'shrine' },
   { x: 330, y: -4, z: 110, r: 16, seed: 71, crown: 'grove' },
   // the focal point of the opening view out over the rim, a little right of
   // centre, lit from the left by the low sun
@@ -90,7 +90,7 @@ const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: 
   { x: 206, y: 18, z: 500, r: 36, seed: 83, crown: 'torii', shape: 0.38, deep: 1.5 },
   // a loose cluster further out to the left of the opening view
   { x: 458, y: 66, z: 489, r: 16, seed: 89, crown: 'pine', air: 1600, shape: 0.9, deep: 2.4 },
-  { x: 587, y: 35, z: 536, r: 30, seed: 97, crown: 'grove', air: 1600, shape: 0.5, deep: 1.2 },
+  { x: 587, y: 35, z: 536, r: 30, seed: 97, crown: 'blossom', air: 1600, shape: 0.5, deep: 1.2 },
   { x: 754, y: -8, z: 530, r: 40, seed: 101, crown: 'shrine', air: 1600, shape: 0.3, deep: 0.9 },
   { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
 ]
@@ -734,6 +734,20 @@ void main() {
   }
   vec4 c = wsum > 1e-3 ? sum / wsum : bestC;
   if (wsum <= 1e-3) front = bestF;
+  // against open sky nothing in front can bleed, so the edge of a bank is
+  // filtered over a wider tent: a soft rim instead of a staircase of texels
+  if (dist > 59999.0) {
+    vec4 wide = vec4(0.0);
+    float ws = 0.0;
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        float w = (2.0 - abs(float(i))) * (2.0 - abs(float(j)));
+        wide += texture2D(uCloud, vUv + vec2(float(i), float(j)) * uTexel * 0.75) * w;
+        ws += w;
+      }
+    }
+    c = mix(c, wide / ws, 0.85);
+  }
   if (c.a < 0.002) discard;
   // the cloud front still takes part in the depth test, for things the depth
   // pass leaves out (grass)
@@ -759,7 +773,7 @@ void main() {
   vec3 centre = (modelMatrix * vec4(position, 1.0)).xyz;
   // big veils drift further and a little faster than the small rim wisps
   float span = max(32.0, wisp.y * 1.4);
-  float drift = mod(uTime * (0.3 + wisp.y * 0.006) + wisp.x * span, span) - span * 0.5;
+  float drift = mod(uTime * 0.1 * (0.3 + wisp.y * 0.006) + wisp.x * span, span) - span * 0.5;
   vec2 wd = normalize(uWind + vec2(1e-4));
   centre.xz += wd * drift;
   vec3 toCam = cameraPosition - centre;
@@ -982,6 +996,60 @@ function buildCedar(rand: () => number, h: number): { trunk: THREE.BufferGeometr
   const leaves = mergeGeometries(clumps)
   clumps.forEach((g) => g.dispose())
   return { trunk, leaves }
+}
+
+// An ancient blossom tree seen from far off: a short, massive trunk that
+// forks low, under a broad, layered dome of pale pink blossom. The crown
+// carries its own colour, so it travels with the grass, which keeps vertex
+// colours.
+function buildBlossom(rand: () => number, h: number): { trunk: THREE.BufferGeometry; crown: THREE.BufferGeometry } {
+  const trunks: THREE.BufferGeometry[] = []
+  const t = new THREE.CylinderGeometry(h * 0.05, h * 0.09, h * 0.42, 8, 1)
+  t.translate(0, h * 0.21, 0)
+  trunks.push(t)
+  const forks = 4
+  for (let k = 0; k < forks; k++) {
+    const a = (k / forks) * Math.PI * 2 + rand() * 0.6
+    const len = h * (0.34 + rand() * 0.12)
+    const limb = new THREE.CylinderGeometry(h * 0.018, h * 0.04, len, 6, 1)
+    limb.translate(0, len / 2, 0)
+    limb.rotateZ(0.75 + rand() * 0.25)
+    limb.rotateY(a)
+    limb.translate(0, h * 0.38, 0)
+    trunks.push(limb)
+  }
+  const lumps: THREE.BufferGeometry[] = []
+  const n = 16
+  for (let k = 0; k < n; k++) {
+    const a = rand() * Math.PI * 2
+    const d = Math.sqrt(rand()) * h * 0.55
+    const c = new THREE.IcosahedronGeometry(1, 2)
+    const cp = c.attributes.position as THREE.BufferAttribute
+    const o = rand() * 10
+    for (let j = 0; j < cp.count; j++) {
+      const lump = 0.78 + fbm2(cp.getX(j) * 1.7 + o, cp.getZ(j) * 1.7 + cp.getY(j) - o, 2) * 0.5
+      cp.setXYZ(j, cp.getX(j) * lump, cp.getY(j) > 0 ? cp.getY(j) * lump : cp.getY(j) * lump * 0.45, cp.getZ(j) * lump)
+    }
+    const w = h * (0.2 + rand() * 0.12) * (1 - (d / (h * 0.55)) * 0.35)
+    c.scale(w, w * 0.62, w)
+    c.translate(Math.cos(a) * d, h * (0.66 + rand() * 0.16) - (d / h) * h * 0.18, Math.sin(a) * d)
+    lumps.push(c)
+  }
+  const crown = mergeGeometries(lumps)
+  lumps.forEach((g) => g.dispose())
+  // pale blossom, a little deeper in tone underneath
+  const pc = crown.attributes.position as THREE.BufferAttribute
+  const col = new Float32Array(pc.count * 3)
+  const top = new THREE.Color(0.98, 0.86, 0.9)
+  const under = new THREE.Color(0.84, 0.64, 0.72)
+  const tmp = new THREE.Color()
+  for (let i = 0; i < pc.count; i++) {
+    const y = pc.getY(i) / h
+    tmp.copy(under).lerp(top, Math.min(1, Math.max(0, (y - 0.5) / 0.35)))
+    col.set([tmp.r, tmp.g, tmp.b], i * 3)
+  }
+  crown.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  return { trunk: mergeGeometries(trunks), crown }
 }
 
 // Low shrubs along a rim so the grass edge breaks into a living outline.
@@ -1258,8 +1326,10 @@ export class Skyscape implements RealmPart {
       front.magFilter = THREE.NearestFilter
     }
 
-    const sunColor = new THREE.Color(1.0, 0.8, 0.56).multiplyScalar(3.3)
-    const shadowColor = new THREE.Color(0.42, 0.52, 0.74).multiplyScalar(0.8)
+    // gold-white on the sunlit tops, soft rose and lilac in the shade: a
+    // sunset sea that glows rather than a stormy one
+    const sunColor = new THREE.Color(1.0, 0.87, 0.7).multiplyScalar(3.5)
+    const shadowColor = new THREE.Color(0.66, 0.6, 0.76).multiplyScalar(0.95)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1518,7 +1588,22 @@ export class Skyscape implements RealmPart {
       const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed, ts)
       shrubs.translate(isl.x, isl.y, isl.z)
       parts[2]?.push(shrubs)
-      if (isl.crown === 'grove') {
+      if (isl.crown === 'blossom') {
+        // one ancient tree far larger than the island's others, its crown a
+        // pale cloud of blossom, with a hall beneath it
+        const big = buildBlossom(rand, Math.min(isl.r * 1.4, 42))
+        big.trunk.translate(isl.x - isl.r * 0.1, ground, isl.z)
+        big.crown.translate(isl.x - isl.r * 0.1, ground, isl.z)
+        parts[3]?.push(big.trunk)
+        parts[1]?.push(big.crown)
+        const sh = buildShrine(ts * 0.24)
+        sh.body.rotateY(-0.4)
+        sh.roof.rotateY(-0.4)
+        sh.body.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
+        sh.roof.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
+        parts[3]?.push(sh.body)
+        parts[4]?.push(sh.roof)
+      } else if (isl.crown === 'grove') {
         // a leaning pine near the edge and a stand of cedars behind it
         plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
         // the stand grows with the island, so a big rock carries a real wood
@@ -1675,8 +1760,8 @@ export class Skyscape implements RealmPart {
     }
     // the sea drifts slowly with the wind
     const w = realmUniforms.uWind.value
-    this.drift.x += w.x * frame.dt * 2.6 * frame.motion
-    this.drift.y += w.y * frame.dt * 2.6 * frame.motion
+    this.drift.x += w.x * frame.dt * 1.2 * frame.motion
+    this.drift.y += w.y * frame.dt * 1.2 * frame.motion
   }
 
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
