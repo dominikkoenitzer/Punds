@@ -177,7 +177,7 @@ export class Lanterns implements RealmPart {
     this.paperMat = new THREE.MeshStandardMaterial({
       // dark while unlit, so the windows read as openings in the stone
       color: new THREE.Color(0.07, 0.06, 0.05),
-      emissive: new THREE.Color(1.0, 0.55, 0.2),
+      emissive: new THREE.Color(1.0, 0.48, 0.16),
       emissiveIntensity: 0,
       roughness: 0.9,
       side: THREE.DoubleSide,
@@ -238,7 +238,7 @@ export class Lanterns implements RealmPart {
       const f = 1 + (Math.sin(l.flicker * 3.1) * 0.04 + Math.sin(l.flicker * 7.7) * 0.03 + Math.sin(l.flicker * 13.3) * 0.02) * frame.motion
       const v = l.level * f
       l.light.intensity = v * (this.tier === 'phone' ? 2.2 : 2.8)
-      this.paperMats[i].emissiveIntensity = v * 6
+      this.paperMats[i].emissiveIntensity = v * 3.2
     })
   }
 
