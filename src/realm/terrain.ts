@@ -189,33 +189,39 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
 // The rock under the island: rings that start at the lip and narrow towards
 // a ragged point far below, pushed in and out by noise in strata so it reads
 // as layered stone that broke away from a mountain.
+// A point on the rock under the island at bearing `a` (radians, as in
+// layout.rimScale) and depth fraction `f` (0 at the lip, 1 at the bottom).
+// Shared with the rocks that are set into the cliff.
+export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.Vector3 {
+  const k = rimScale(a)
+  const rx = Math.cos(a) * ISLAND_RX * k
+  const rz = Math.sin(a) * ISLAND_RZ * k
+  const yRim = groundHeight(rx, rz) - RIM_DROP
+  // a short, almost vertical cliff band below the lip, then the long taper
+  const taper = Math.pow(1 - smooth(0.04, 1, f), 1.15) * (1 - f * 0.08)
+  const strata = Math.sin(f * 41 + noise2(a * 3, f * 6) * 2.4) * 0.5 + 0.5
+  const n = fbm2(a * 4.2 + 11, f * 9.5, 4)
+  const bulge = 1 + (n - 0.5) * 0.32 * smooth(0.02, 0.2, f) + strata * 0.035 * smooth(0.02, 0.1, f)
+  const sc = Math.max(taper * bulge, 0.004)
+  const depth = UNDERSIDE_DEPTH * (0.8 + fbm2(Math.cos(a) * 1.3, Math.sin(a) * 1.3, 2) * 0.45)
+  return out.set(rx * sc, yRim - f * depth - (f > 0 ? 0.15 : 0), rz * sc)
+}
+
 function buildUnderside(tier: Tier): THREE.BufferGeometry {
   const rings = tier === 'phone' ? 48 : 90
   const segs = tier === 'phone' ? 180 : 300
   const pos: number[] = []
   const uv: number[] = []
   const index: number[] = []
+  const p = new THREE.Vector3()
   for (let i = 0; i <= rings; i++) {
     const f = i / rings
     for (let j = 0; j <= segs; j++) {
       const a = (j / segs) * Math.PI * 2
-      const k = rimScale(a)
-      const rx = Math.cos(a) * ISLAND_RX * k
-      const rz = Math.sin(a) * ISLAND_RZ * k
-      const yRim = groundHeight(rx, rz) - RIM_DROP
-      // a short, almost vertical cliff band below the lip, then the long taper
-      const taper = Math.pow(1 - smooth(0.04, 1, f), 1.15) * (1 - f * 0.08)
-      const strata = Math.sin(f * 41 + noise2(a * 3, f * 6) * 2.4) * 0.5 + 0.5
-      const n = fbm2(a * 4.2 + 11, f * 9.5, 4)
-      const bulge = 1 + (n - 0.5) * 0.32 * smooth(0.02, 0.2, f) + strata * 0.035 * smooth(0.02, 0.1, f)
-      const s = Math.max(taper * bulge, 0.004)
-      const x = rx * s
-      const z = rz * s
-      const depth = UNDERSIDE_DEPTH * (0.8 + fbm2(Math.cos(a) * 1.3, Math.sin(a) * 1.3, 2) * 0.45)
-      const y = yRim - f * depth - (i === 0 ? 0 : 0.15)
-      pos.push(x, y, z)
+      undersidePoint(a, f, p)
+      pos.push(p.x, p.y, p.z)
       const circ = a * (ISLAND_RX + ISLAND_RZ) * 0.5
-      uv.push(circ / 6, y / 6)
+      uv.push(circ / 6, p.y / 6)
     }
   }
   for (let i = 0; i < rings; i++) {
