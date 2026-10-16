@@ -161,6 +161,23 @@ export class Lanterns implements RealmPart {
       stoneParts.push(knob.toNonIndexed())
       knob.dispose()
     }
+    // lotus petals: a ring turned down over the base and one cupping the
+    // underside of the platform, each petal a swollen, pointed lobe
+    const petalRing = (count: number, radius: number, y: number, tilt: number, size: number) => {
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + Math.PI / count
+        const petal = new THREE.SphereGeometry(size, 10, 6)
+        petal.scale(0.55, 0.32, 1)
+        petal.translate(0, 0, size * 0.6)
+        petal.rotateX(tilt)
+        petal.rotateY(a)
+        petal.translate(Math.sin(a) * radius, y, Math.cos(a) * radius)
+        stoneParts.push(petal.toNonIndexed())
+        petal.dispose()
+      }
+    }
+    petalRing(12, 0.19 * H, 0.2 * H, 0.55, 0.055 * H)
+    petalRing(12, 0.17 * H, 0.87 * H, -0.7, 0.05 * H)
     for (const g of stoneParts) g.computeVertexNormals()
     const unit = merge(stoneParts)
     box.stone.dispose()
