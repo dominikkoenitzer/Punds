@@ -28,7 +28,7 @@ interface TierSettings {
 const TIERS: Record<Tier, TierSettings> = {
   ultra: { scale: 0.5, depthScale: 1, steps: 72, towerSteps: 40, lightSteps: 4 },
   high: { scale: 0.4, depthScale: 1, steps: 56, towerSteps: 32, lightSteps: 3 },
-  phone: { scale: 0.22, depthScale: 0.5, steps: 30, towerSteps: 18, lightSteps: 2 },
+  phone: { scale: 0.3, depthScale: 0.5, steps: 28, towerSteps: 16, lightSteps: 2 },
 }
 
 const NOISE_SIZE = 64
@@ -458,14 +458,19 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
   // light is shadowed harder than the eye sees through: deep valleys
   float tl = exp(-od * SIGMA * mix(2.4, 1.6, clamp(t / 1500.0, 0.0, 1.0)));
   // a cheap stand in for multiple scattering: a softer second lobe
-  float ms = exp(-od * SIGMA * 0.12) * 0.05;
+  float ms = exp(-od * SIGMA * 0.12) * 0.035;
   float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
   // the hollows between billows sink into a deeper blue shade
-  vec3 amb = mix(shadowC * 0.3, skyUp * 0.08 + shadowC * 0.75, lift * lift);
+  vec3 amb = mix(shadowC * 0.2, skyUp * 0.08 + shadowC * 0.75, lift * lift);
   float powder = 1.0 - exp(-dens * 2.5);
   // thin sunlit edges glow gold: the rims of the billows on the sun side
-  float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * 0.55;
-  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms + rim * vec3(1.0, 0.78, 0.45)) + amb;
+  // the sea carries a gradient toward the sun: brighter and warmer on the
+  // sun side of the frame, cool on the far side, with a silver lining on
+  // edges seen against the light
+  float sunward = pow(warm, 0.4);
+  float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * (0.35 + sunward * 1.1);
+  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) * (0.8 + sunward * 0.45) + ms + rim * mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward))
+           + amb * mix(vec3(0.86, 0.96, 1.12), vec3(1.0), sunward);
   // clear air for the first kilometre, haze building only towards the horizon
   float fog = 1.0 - exp(-max(t - CLEAR_DIST, 0.0) / HAZE_DIST);
   // warm light scattered into the long air on the sun side, strongest in the
@@ -799,6 +804,15 @@ void main() {
 
 // --- distant islands ------------------------------------------------------------
 
+// The outline of a far island's top, shared by the grass and the rock so
+// they meet: a broad wobble plus a ragged short one, so the rim never reads
+// as a drawn disc.
+function rimAt(a: number, seed: number): number {
+  const ca = Math.cos(a)
+  const sa = Math.sin(a)
+  return 1 + (fbm2(ca * 1.7 + seed, sa * 1.7 - seed, 3) - 0.5) * 0.35 + (fbm2(ca * 6 + seed * 2, sa * 6 - seed, 2) - 0.5) * 0.14
+}
+
 function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, seed: number, shape = 0.62): void {
   const pos = geo.attributes.position as THREE.BufferAttribute
   const v = new THREE.Vector3()
@@ -809,7 +823,7 @@ function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, 
     const a = Math.atan2(v.z, v.x)
     const ca = Math.cos(a)
     const sa = Math.sin(a)
-    const rim = 1 + (fbm2(ca * 1.7 + seed, sa * 1.7 - seed, 3) - 0.5) * 0.35
+    const rim = rimAt(a, seed)
     // ridged noise for buttresses and gullies, stepped strata down the face
     const n = fbm2(ca * 2.4 + k * 3.0 + seed * 3.1, sa * 2.4 + k * 6.0 + seed, 4)
     const ridge = 1 - Math.abs(n * 2 - 1)
@@ -829,7 +843,7 @@ function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, 
 }
 
 function buildTop(r: number, seed: number): THREE.BufferGeometry {
-  const geo = new THREE.CircleGeometry(r, 40, 0, Math.PI * 2)
+  const geo = new THREE.CircleGeometry(r, 72, 0, Math.PI * 2)
   geo.rotateX(-Math.PI / 2)
   const pos = geo.attributes.position as THREE.BufferAttribute
   const colors = new Float32Array(pos.count * 3)
@@ -837,17 +851,20 @@ function buildTop(r: number, seed: number): THREE.BufferGeometry {
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i)
     const d = Math.hypot(v.x, v.z) / r
-    const a = Math.atan2(v.z, v.x)
-    const rim = 1 + (fbm2(Math.cos(a) * 1.7 + seed, Math.sin(a) * 1.7 - seed, 3) - 0.5) * 0.35
+    const rim = rimAt(Math.atan2(v.z, v.x), seed)
     v.x *= rim
     v.z *= rim
-    v.y = (1 - d * d) * r * 0.12 + (fbm2(v.x * 0.15 + seed, v.z * 0.15, 3) - 0.5) * r * 0.08
+    // the turf rolls over the edge onto the rock instead of ending in a lip
+    const roll = Math.max(0, d - 0.8) / 0.2
+    v.y = (1 - d * d) * r * 0.12 + (fbm2(v.x * 0.15 + seed, v.z * 0.15, 3) - 0.5) * r * 0.08 - roll * roll * r * 0.04
     pos.setXYZ(i, v.x, v.y, v.z)
     const g = fbm2(v.x * 0.2 + seed * 2, v.z * 0.2, 3)
-    const edge = Math.max(0, d - 0.8) * 3
-    colors[i * 3] = 0.16 + g * 0.06 + edge * 0.08
-    colors[i * 3 + 1] = 0.24 + g * 0.08 + edge * 0.02
-    colors[i * 3 + 2] = 0.08 + g * 0.03 + edge * 0.03
+    // worn ground and bare rock show through at the rim
+    const bare = Math.min(1, Math.max(0, (d - 0.86) / 0.12)) * (0.5 + fbm2(v.x * 0.4, v.z * 0.4 + seed, 2) * 0.7)
+    const e = Math.min(1, bare)
+    colors[i * 3] = (0.16 + g * 0.06) * (1 - e) + 0.34 * e
+    colors[i * 3 + 1] = (0.24 + g * 0.08) * (1 - e) + 0.3 * e
+    colors[i * 3 + 2] = (0.08 + g * 0.03) * (1 - e) + 0.26 * e
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
   geo.computeVertexNormals()
@@ -1200,7 +1217,7 @@ export class Skyscape implements RealmPart {
     }
 
     const sunColor = new THREE.Color(1.0, 0.62, 0.24).multiplyScalar(3.6)
-    const shadowColor = new THREE.Color(0.25, 0.27, 0.7).multiplyScalar(0.74)
+    const shadowColor = new THREE.Color(0.3, 0.42, 0.74).multiplyScalar(0.74)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1423,7 +1440,8 @@ export class Skyscape implements RealmPart {
         const a = Math.atan2(pos.getZ(i), pos.getX(i))
         uv.setXY(i, (a / (Math.PI * 2)) * isl.r * 0.6, pos.getY(i) * 0.1)
       }
-      under.translate(isl.x, isl.y + 0.2, isl.z)
+      // the rock's lip sits just under the turf, which rolls over onto it
+      under.translate(isl.x, isl.y - isl.r * 0.045, isl.z)
       parts[0]?.push(under)
       // smaller crags hang beside the main one so the underside is never a cone
       const lobes = 2 + Math.floor(rand() * 2)
@@ -1696,7 +1714,8 @@ export class Skyscape implements RealmPart {
     // resolve into the write history, then swap so the composite reads it
     const ru = this.resolveMaterial.uniforms
     ru.uHistory!.value = this.historyRead.texture
-    ru.uBlend!.value = this.historyValid ? 0.8 : 0
+    // phones keep less history: their coarser trace smears sooner
+    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) : 0
     renderer.setRenderTarget(this.historyWrite)
     renderer.render(this.resolveScene, this.marchCamera)
     this.compositeMaterial.uniforms.uCloud!.value = this.historyWrite.texture
