@@ -43,9 +43,10 @@ function slabGeometry(s: Slab, rand: () => number): THREE.BufferGeometry {
     (rand() - 0.5) * 0.006,
   )
   worldUv(g, 1.3, rand() * 7, rand() * 7)
-  const v = 0.84 + rand() * 0.2
-  const warm = (rand() - 0.5) * 0.05
-  return tint(g, v + warm, v, v - warm)
+  // granite greys, a few slabs warmer or cooler than the rest
+  const v = 0.66 + rand() * 0.2
+  const warm = (rand() - 0.5) * 0.06
+  return tint(g, v + warm, v + 0.01, v + 0.04 - warm)
 }
 
 // a band of rows between z0 (front, larger z) and z1, `half` either side of

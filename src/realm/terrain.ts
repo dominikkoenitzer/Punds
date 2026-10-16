@@ -9,6 +9,7 @@ import {
   fbm2,
   noise2,
   lawnWeight,
+  pathWeight,
   TERRACE_FRONT_Z,
 } from './layout'
 import { loadPbr, pbrMaterial, type PbrSet } from './assets'
@@ -165,7 +166,8 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
       uv.push(x, z)
       const g = gravelWeight(x, z)
       const p = smooth(0.1, -0.3, pondSdf(x, z))
-      const m = mossWeight(x, z) * (1 - g) * (1 - p)
+      // moss fills the joints between the paving slabs
+      const m = Math.max(mossWeight(x, z), pathWeight(x, z)) * (1 - g) * (1 - p)
       // the lip itself is bare soil and roots, never gravel
       splat.push(g * (1 - lip), m, p, lawnWeight(x, z))
     }
