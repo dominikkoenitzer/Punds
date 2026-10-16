@@ -263,6 +263,17 @@ export class Realm {
     this.debugView = from ? { from: new THREE.Vector3(...from), to: new THREE.Vector3(...to) } : null
   }
 
+  // headless checks: show or hide every part of one kind, to measure it
+  setPartVisible(name: string, visible: boolean): string[] {
+    const names: string[] = []
+    for (const part of this.parts) {
+      const n = part.constructor.name
+      names.push(n)
+      if (n === name) part.object.visible = visible
+    }
+    return names
+  }
+
   // water and wind; call from a click or key handler
   setSound(on: boolean): void {
     this.ambience.setEnabled(on)
