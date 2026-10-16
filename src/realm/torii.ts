@@ -145,7 +145,7 @@ export class Torii implements RealmPart {
     }
 
     const redGeo = merge([...red.map((g) => worldUv(g, 1.6)), ...pillars])
-    const vermilion = new THREE.Color('#c9462a').convertSRGBToLinear()
+    const vermilion = new THREE.Color('#b93c21').convertSRGBToLinear()
     // the scan is of planks; on round lacquered posts its seams must not
     // read as joints, so its relief stays faint
     const redMat = paintedMaterial(paint, vermilion, { roughness: 0.82, metalness: 0, normalScale: new THREE.Vector2(0.3, 0.3) })

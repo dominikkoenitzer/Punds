@@ -1304,7 +1304,7 @@ export class Shrine implements RealmPart {
   // shu paint over timber: bleached and chalky where it faces the sky, grimy
   // near the ground, worn through to grey wood where hands and feet go
   private redMaterial(paint: PbrSet): THREE.MeshStandardMaterial {
-    const mat = pbrMaterial(paint, { color: new THREE.Color().setRGB(0.5, 0.085, 0.022), metalness: 0, normalScale: new THREE.Vector2(0.4, 0.4) })
+    const mat = pbrMaterial(paint, { color: new THREE.Color().setRGB(0.44, 0.058, 0.017), metalness: 0, normalScale: new THREE.Vector2(0.4, 0.4) })
     mat.metalnessMap = null
     mat.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
