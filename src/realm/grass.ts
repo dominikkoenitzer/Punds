@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
-import { ISLAND_RX, ISLAND_RZ, AZALEAS, LANTERNS, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
+import { ISLAND_RX, ISLAND_RZ, AZALEAS, CHERRY, LANTERNS, MAPLES, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
 import { WIND_GLSL, realmUniforms } from './atmosphere'
 
 // The lawn: instanced geometry blades in square tiles, so the renderer can cull
@@ -26,9 +26,9 @@ interface TierSettings {
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 46, fadeEnd: 70, widen: 1, focus: 0.35, near: [4, 13] },
-  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 40, fadeEnd: 62, widen: 1.15, focus: 0.45, near: [4, 12] },
-  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 30, fadeEnd: 48, widen: 1.2, focus: 0.12, near: [4.5, 9] },
+  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13] },
+  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12] },
+  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.12, near: [4.5, 9] },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,
@@ -99,6 +99,20 @@ function longness(x: number, z: number): number {
   return clamp01(Math.max(rim, bank * 0.9, near * 0.5))
 }
 
+// 0..1: grass worn thin and short under the trees, where the canopy shades it
+// and feet gather; strongest inside the drip line
+function wornness(x: number, z: number): number {
+  const cx = CHERRY.x + CHERRY.lean.x * CHERRY.height * 0.4
+  const cz = CHERRY.z + CHERRY.lean.z * CHERRY.height * 0.4
+  const r = CHERRY.spread * 0.75
+  let w = 1 - smooth(r * 0.45, r, Math.hypot(x - cx, z - cz))
+  for (const m of MAPLES) {
+    const mr = m.spread * 0.75
+    w = Math.max(w, 1 - smooth(mr * 0.45, mr, Math.hypot(x - m.x, z - m.z)))
+  }
+  return w * 0.85
+}
+
 const VERTEX_PARS = /* glsl */ `
 uniform float uTime;
 uniform vec2 uWind;
@@ -108,6 +122,8 @@ uniform vec2 uFade;
 uniform float uViewHeight;
 attribute vec4 aRoot;
 attribute vec4 aShape;
+// wear, dry straw, dark clump, seed head
+attribute vec4 aTone;
 varying vec3 vGrassColor;
 varying float vGrassT;
 varying float vGrassAO;
@@ -195,6 +211,8 @@ vec3 bin = cross(sideDir, tangent);
 float twist = (grassHash(seed * 11.7) - 0.5) * 1.6 * t;
 vec3 sideTw = sideDir * cos(twist) + bin * sin(twist);
 float width = w * (1.0 - pow(t, 2.5)) * (0.8 + 0.2 * smoothstep(0.0, 0.18, t));
+// a seed head swells the last part of the stem
+width *= 1.0 + aTone.w * 1.4 * smoothstep(0.72, 0.86, t) * (1.0 - smoothstep(0.96, 1.0, t));
 vec3 grassWorld = spine + sideTw * side * width;
 
 // a rounded cross section: normals fan out towards the edges
@@ -233,6 +251,24 @@ col *= 0.7 + 0.6 * valN * valN;
 col *= 1.0 + (gust * 0.25 + wave * 0.5) * windAmount * t;
 vec3 calmCol = mix(cRoot, vec3(0.070, 0.150, 0.026), smoothstep(0.0, 0.5, t));
 calmCol = mix(calmCol, vec3(0.120, 0.215, 0.036), smoothstep(0.4, 1.0, t) * 0.85);
+// Patches a few metres across drift in hue and value the way a real lawn
+// does; they live in both the near and the calm far colour, so the lawn seen
+// from above is not one flat green.
+float fieldA = realmNoise(root.xz * 0.28 + 21.0);
+float fieldB = realmNoise(root.xz * 0.11 - 5.0);
+vec3 field = mix(vec3(0.80, 0.95, 1.18), vec3(1.25, 1.08, 0.66), smoothstep(0.25, 0.75, fieldA));
+field *= 0.7 + 0.6 * smoothstep(0.15, 0.85, fieldB);
+field *= 1.0 - aTone.z * 0.45;
+field = mix(field, field * vec3(1.45, 1.2, 0.68), aTone.x * 0.75);
+col *= field;
+calmCol *= field;
+vec3 straw = vec3(0.30, 0.25, 0.12) * mix(0.55, 1.0, t);
+float dryAmt = aTone.y * 0.65 * smoothstep(0.15, 0.9, t);
+col = mix(col, straw, dryAmt);
+calmCol = mix(calmCol, straw, dryAmt);
+float headAmt = aTone.w * smoothstep(0.74, 0.84, t);
+col = mix(col, vec3(0.20, 0.16, 0.09), headAmt);
+calmCol = mix(calmCol, vec3(0.20, 0.16, 0.09), headAmt);
 col = mix(col, calmCol * (1.0 + gust * windAmount * 0.12 * t), vCalm * 0.85);
 vGrassColor = col;
 vGrassT = t;
@@ -512,6 +548,7 @@ export class Grass implements RealmPart {
         const cy = groundHeight(cx, cz)
         const roots = new Float32Array(target * 4)
         const shapes = new Float32Array(target * 4)
+        const tones = new Float32Array(target * 4)
         let n = 0
         let tries = 0
         bounds.makeEmpty()
@@ -527,7 +564,15 @@ export class Grass implements RealmPart {
           const clump = rand() < 0.006
           const loose = Math.max(long, clump ? 0.65 + rand() * 0.35 : 0)
           // mown height drifts a little across the lawn, as real mowing does
-          const mown = 0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025
+          // worn, shorter grass along the path edges and under the trees
+          const shade = wornness(px, pz)
+          const wear = Math.max(shade, (1 - smooth(0.0, 1.1, sample(edge, px, pz))) * (1 - long))
+          // darker, denser clumps; the rest of the tile gives way to them
+          const dark = smooth(0.55, 0.7, fbm2(px * 0.7 - 3.3, pz * 0.7 + 8.8, 2)) * (1 - wear)
+          // only the shade under the trees thins the grass; worn path edges stay full but short
+          if (rand() > (0.75 + 0.25 * dark) * (1 - 0.45 * shade)) continue
+          const patchH = 0.8 + 0.45 * fbm2(px * 0.3 + 12.1, pz * 0.3 - 6.4, 2)
+          const mown = (0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025) * patchH * (1 - 0.45 * wear) * (1 + 0.15 * dark)
           const tuftHeight = mown + (0.25 + rand() * 0.22 - mown) * loose
           // most blades grow in small tufts that splay outwards; where an
           // instance already draws a tuft, roots spread evenly instead
@@ -536,6 +581,8 @@ export class Grass implements RealmPart {
           if (clump) tuft = Math.ceil((5 + rand() * 6) / s.strips)
           else if (loose > 0.4) tuft = Math.max(tuft, Math.ceil((4 + rand() * 4) / s.strips))
           const spread = (0.025 + rand() * 0.05) * (1 + loose)
+          // a hint of straw in the long fringe, and the odd seed head
+          const dry = loose > 0.4 && rand() < 0.35 ? (0.4 + 0.6 * rand()) * loose : 0
           for (let b = 0; b < tuft && n < target; b++) {
             const a = rand() * Math.PI * 2
             const r = tuft === 1 ? 0 : spread * Math.sqrt(rand())
@@ -550,16 +597,21 @@ export class Grass implements RealmPart {
             const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
             const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
             const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen
-            const bendAmt = 0.1 + rand() * 0.3 + loose * 0.35
+            const head = loose > 0.55 && rand() < 0.07 ? 1 : 0
+            const bendAmt = (0.1 + rand() * 0.3 + loose * 0.35) * (head ? 0.45 : 1)
             const i = n * 4
             roots[i] = bx - cx
             roots[i + 1] = by - cy
             roots[i + 2] = bz - cz
             roots[i + 3] = yaw
-            shapes[i] = height
+            shapes[i] = head ? Math.min(0.55, height * 1.15) : height
             shapes[i + 1] = width
             shapes[i + 2] = bendAmt
             shapes[i + 3] = rand()
+            tones[i] = wear
+            tones[i + 1] = dry
+            tones[i + 2] = dark
+            tones[i + 3] = head
             bounds.expandByPoint(sphere.center.set(roots[i], roots[i + 1], roots[i + 2]))
             n++
           }
@@ -573,6 +625,7 @@ export class Grass implements RealmPart {
         geometry.setAttribute('normal', this.shared.normal)
         geometry.setAttribute('aRoot', new THREE.InstancedBufferAttribute(roots.subarray(0, n * 4), 4))
         geometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(shapes.subarray(0, n * 4), 4))
+        geometry.setAttribute('aTone', new THREE.InstancedBufferAttribute(tones.subarray(0, n * 4), 4))
         geometry.instanceCount = n
         geometry.boundingBox = bounds.clone()
         geometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere())
