@@ -64,7 +64,7 @@ const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: 
   // smaller one to the right
   { x: -88, y: 92, z: -330, r: 30, seed: 61, crown: 'grove' },
   { x: 122, y: 100, z: -320, r: 14, seed: 67, crown: 'pine' },
-  { x: -170, y: -6, z: -250, r: 9, seed: 11, crown: 'pine' },
+  { x: -160, y: -20, z: -210, r: 9, seed: 11, crown: 'pine' },
   { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'grove' },
   { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
   { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'pine' },
