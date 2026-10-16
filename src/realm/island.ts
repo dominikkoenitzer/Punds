@@ -10,6 +10,7 @@ import { Shrine } from './shrine'
 import { EmaRack } from './ema'
 import { Grass } from './grass'
 import { Skyscape } from './skyscape'
+import { loadPbr } from './assets'
 import { Rocks } from './rocks'
 import { Roots } from './roots'
 import { Pond } from './pond'
@@ -108,8 +109,13 @@ class Sheltered implements RealmPart {
   }
 }
 
+// every scanned set the parts ask for, requested at once so the downloads
+// overlap instead of waiting step by step; the parts get them from the cache
+const SETS = ['soil', 'gravel', 'moss', 'pebbles', 'cliff', 'rock', 'stone', 'wall', 'painted_wood', 'plaster', 'cedar_planks', 'wood_aged', 'copper', 'sakura_bark', 'maple_bark']
+
 export async function buildIsland(realm: Realm): Promise<void> {
   const tier = realm.tier
+  for (const name of SETS) loadPbr(name, tier).catch(() => {})
   const pointer = new PointerGround()
   realm.add(pointer)
   const hiddenFromClouds: THREE.Object3D[] = []
@@ -151,8 +157,15 @@ export async function buildIsland(realm: Realm): Promise<void> {
       return new Sheltered(pond, hiddenFromPond)
     },
   ]
-  for (const make of steps) {
+  // ?debug&skip=2,7 leaves build steps out, to measure what each one costs
+  const params = new URLSearchParams(location.search)
+  const skip = params.has('debug') ? new Set((params.get('skip') ?? '').split(',').filter(Boolean).map(Number)) : new Set<number>()
+  for (const [index, make] of steps.entries()) {
+    if (skip.has(index)) continue
     await yieldToMain()
-    realm.add(await make())
+    const t0 = performance.now()
+    const part = await make()
+    realm.add(part)
+    realm.buildTimes.push([part.constructor.name, Math.round(performance.now() - t0)])
   }
 }
