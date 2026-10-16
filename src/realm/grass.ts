@@ -20,15 +20,17 @@ interface TierSettings {
   focus: number
   // how far from the walk the full density reaches, and where it bottoms out
   near: [number, number]
+  // extra width and height for the mown blades, where few blades must cover
+  cover: number
   // blades drawn per instance (a small tuft), so the short lawn stays dense
   // without more per-instance work; `blades` counts instances
   strips: number
 }
 
 const TIERS: Record<Tier, TierSettings> = {
-  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13] },
-  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12] },
-  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.12, near: [4.5, 9] },
+  ultra: { blades: 250_000, strips: 2, segments: 6, tile: 4, fadeStart: 66, fadeEnd: 92, widen: 1, focus: 0.35, near: [4, 13], cover: 1 },
+  high: { blades: 120_000, strips: 2, segments: 5, tile: 4, fadeStart: 58, fadeEnd: 84, widen: 1.15, focus: 0.45, near: [4, 12], cover: 1.1 },
+  phone: { blades: 26_000, strips: 3, segments: 5, tile: 6, fadeStart: 42, fadeEnd: 66, widen: 1.2, focus: 0.08, near: [4.5, 9], cover: 1.4 },
 }
 
 // The host terrain should multiply its albedo by this, weighted by lawnWeight,
@@ -149,7 +151,12 @@ float strip = position.z;
 if (strip > 0.5) {
   seed = fract(seed + strip * 0.3719);
   float a = yaw + strip * 2.39996;
-  root.xz += vec2(cos(a), sin(a)) * (0.015 + 0.03 * grassHash(seed * 2.9));
+  // short mown blades spread wider, so the blades of one instance cover
+  // ground instead of reading as one tuft; tall ones stay a tight tuft
+  float spreadR = (0.015 + 0.03 * grassHash(seed * 2.9)) * (1.0 + 2.5 * (1.0 - smoothstep(0.08, 0.25, h)));
+  root.xz += vec2(cos(a), sin(a)) * spreadR;
+  // sink a little with the offset so a blade on a gentle slope never floats
+  root.y -= spreadR * 0.15;
   yaw = a + (grassHash(seed * 4.3) - 0.5) * 0.8;
   h *= 0.7 + 0.3 * grassHash(seed * 8.1);
 }
@@ -465,7 +472,14 @@ export class Grass implements RealmPart {
     const bias = (x: number, z: number) => {
       const wz = Math.max(-16, Math.min(23, z))
       const d = Math.hypot(x, z - wz)
-      return 1 - (1 - s.focus) * smooth(s.near[0], s.near[1], d)
+      // the pond and the cherry are looked at from the walk across 5 to 9 m,
+      // so their surroundings count as near too
+      const pond = 1 - smooth(3.0, 4.5, pondSdf(x, z))
+      const cherry = 1 - smooth(4.0, 6.0, Math.hypot(x - CHERRY.x, z - CHERRY.z))
+      const far = smooth(s.near[0], s.near[1], d) * (1 - Math.max(pond, cherry))
+      // the far sides and back corners are only ever seen from a distance
+      const remote = Math.max(smooth(9, 12, x), smooth(-11, -14, z) * smooth(7, 10, Math.abs(x)))
+      return (1 - (1 - s.focus) * far) * (1 - remote * (1 - s.focus) * 0.65)
     }
 
     // lawnWeight on a 10 cm grid, and beside it the distance to the nearest
@@ -566,13 +580,14 @@ export class Grass implements RealmPart {
           // mown height drifts a little across the lawn, as real mowing does
           // worn, shorter grass along the path edges and under the trees
           const shade = wornness(px, pz)
-          const wear = Math.max(shade, (1 - smooth(0.0, 1.1, sample(edge, px, pz))) * (1 - long))
+          const kerb = (1 - smooth(0.0, 1.1, sample(edge, px, pz))) * (1 - long)
+          const wear = Math.max(shade, kerb)
           // darker, denser clumps; the rest of the tile gives way to them
           const dark = smooth(0.55, 0.7, fbm2(px * 0.7 - 3.3, pz * 0.7 + 8.8, 2)) * (1 - wear)
-          // only the shade under the trees thins the grass; worn path edges stay full but short
-          if (rand() > (0.75 + 0.25 * dark) * (1 - 0.45 * shade)) continue
+          // the shade under the trees thins the grass a little; worn path edges stay full but short
+          if (rand() > (0.75 + 0.25 * dark) * (1 - 0.1 * shade)) continue
           const patchH = 0.8 + 0.45 * fbm2(px * 0.3 + 12.1, pz * 0.3 - 6.4, 2)
-          const mown = (0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025) * patchH * (1 - 0.45 * wear) * (1 + 0.15 * dark)
+          const mown = (0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025) * patchH * (1 - 0.45 * kerb) * (1 - 0.15 * shade) * (1 + 0.15 * dark) * (1 + (s.cover - 1) * 0.4)
           const tuftHeight = mown + (0.25 + rand() * 0.22 - mown) * loose
           // most blades grow in small tufts that splay outwards; where an
           // instance already draws a tuft, roots spread evenly instead
@@ -596,7 +611,7 @@ export class Grass implements RealmPart {
             const by = groundHeight(bx, bz) - 0.012
             const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
             const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
-            const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen
+            const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen * (s.cover + (1 - s.cover) * loose)
             const head = loose > 0.55 && rand() < 0.07 ? 1 : 0
             const bendAmt = (0.1 + rand() * 0.3 + loose * 0.35) * (head ? 0.45 : 1)
             const i = n * 4
