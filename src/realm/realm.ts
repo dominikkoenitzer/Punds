@@ -141,7 +141,7 @@ export class Realm {
       sunColor: new THREE.Color(),
       focusDistance: 20,
       focusRange: 8,
-      blur: 0.6,
+      blur: 0.4,
       vignette: 0.28,
       saturation: 1.04,
       wake: this.reduced ? 1 : 0,
@@ -263,6 +263,10 @@ export class Realm {
 
   skipWake(): void {
     this.wakeT = 10
+  }
+
+  get skyInfo(): SkyResult | null {
+    return this.sky
   }
 
   get isReady(): boolean {

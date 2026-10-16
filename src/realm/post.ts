@@ -71,7 +71,10 @@ void main() {
     float sun = pow(max(dot(rd, uSunDir), 0.0), 6.0);
     vec3 fogCol = mix(uFogColor, uSunFogColor, sun);
     float haze = 1.0 - exp(-dist * uHaze);
-    col = mix(col, fogCol, clamp(max(heightFog(uCamPos, rd, dist), haze), 0.0, 1.0));
+    // far things (the cloud sea, the distant islands) fade into the sky by
+    // their own haze; the fog here is for the island and its surroundings
+    float near = 1.0 - smoothstep(140.0, 260.0, dist);
+    col = mix(col, fogCol, clamp(max(heightFog(uCamPos, rd, dist), haze), 0.0, 1.0) * near);
   }
   gl_FragColor = vec4(col, 1.0);
 }

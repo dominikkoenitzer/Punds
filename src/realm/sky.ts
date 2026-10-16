@@ -61,6 +61,11 @@ void main() {
 export interface SkyResult {
   mesh: THREE.Mesh
   environment: THREE.Texture
+  // the background panorama, its encoding constant and the turn applied to
+  // it, for parts that sample the sky themselves
+  panorama: THREE.Texture
+  k: number
+  shift: number
   dispose(): void
 }
 
@@ -158,6 +163,9 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   return {
     mesh,
     environment,
+    panorama: bg,
+    k: info.k,
+    shift,
     dispose() {
       mesh.geometry.dispose()
       mat.dispose()
