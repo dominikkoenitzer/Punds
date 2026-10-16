@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
-import { realmUniforms, WIND_GLSL } from './atmosphere'
+import { realmUniforms, SUN_DIRECTION, WIND_GLSL } from './atmosphere'
 import { loadPbr } from './assets'
 import { CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
 
@@ -267,6 +267,7 @@ uniform float uBranchAmp;
 uniform float uCardAmp;
 attribute vec3 aAnchor;
 attribute vec3 aCentre;
+attribute vec3 aFaceN;
 attribute float aSway;
 uniform vec2 uFar;
 attribute float aPhase;
@@ -282,7 +283,7 @@ uniform vec3 uTransTint;
 void RE_Direct_Foliage( const in IncidentLight directLight, const in vec3 geometryPosition, const in vec3 geometryNormal, const in vec3 geometryViewDir, const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material, inout ReflectedLight reflectedLight ) {
   RE_Direct_Physical( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
   float back = saturate( dot( -geometryNormal, directLight.direction ) * 0.7 + 0.3 );
-  float scatter = pow( saturate( dot( geometryViewDir, -directLight.direction ) ), 5.0 );
+  float scatter = pow( saturate( dot( geometryViewDir, -directLight.direction ) ), 6.0 );
   reflectedLight.directDiffuse += directLight.color * material.diffuseColor * uTransTint * uTrans * ( back * 0.35 + scatter * 1.6 );
 }
 #undef RE_Direct
@@ -336,6 +337,15 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
     shader.uniforms.uGust = realmUniforms.uGust
     Object.assign(shader.uniforms, uniforms)
     if (!o.instanced) {
+      // Cards of one cluster sit a few centimetres apart and would shadow each other
+      // in a fine stipple, worst with the smaller phone shadow map. The lookup moves
+      // towards the sun by about a cluster's depth, so only the crown shades the crown.
+      const sd = SUN_DIRECTION
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <shadowmap_vertex>',
+        `worldPosition.xyz += vec3(${sd.x.toFixed(4)}, ${sd.y.toFixed(4)}, ${sd.z.toFixed(4)}) * 0.35;
+        #include <shadowmap_vertex>`,
+      )
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${FOLIAGE_HEAD}`)
         .replace(
@@ -347,9 +357,14 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
           // the masses stay soft instead of breaking into single sparkling cards.
           float far = smoothstep(uFar.x, uFar.y, distance(cameraPosition, anchorW));
           float h = fract(sin(aPhase * 12.9898) * 43758.5453);
-          float cut = far * 0.45;
+          float cut = far * 0.3;
           float keep = smoothstep(cut - 0.08, cut + 0.08, h);
-          transformed = aCentre + (transformed - aCentre) * keep * (1.0 + far * 0.95);
+          // a card turning edge-on shrinks away instead of fading, so no part of it is
+          // ever drawn at partial coverage
+          vec3 faceW = normalize(mat3(modelMatrix) * aFaceN);
+          vec3 toCam = normalize(cameraPosition - (modelMatrix * vec4(aCentre, 1.0)).xyz);
+          float facing = smoothstep(0.08, 0.3, abs(dot(faceW, toCam)));
+          transformed = aCentre + (transformed - aCentre) * keep * facing * (1.0 + far * 0.55);
           float flex = pow(clamp(aSway / ${o.swayNorm.toFixed(3)}, 0.0, 1.0), 2.2);
           transformed += windSway(anchorW, flex * uBranchAmp);
           float st = length(uWind) * (0.5 + 0.8 * realmGust(anchorW.xz) * (0.6 + 0.4 * uGust));
@@ -363,19 +378,14 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
       `#include <lights_physical_pars_fragment>\n${TRANSLUCENCY}`,
     )
     if (o.volumeNormals) {
-      // cards seen edge-on would read as streaks; they fade out through coverage instead
+      // A ramp about a pixel wide around the cutoff: with the multisampled target
+      // the coverage then antialiases the true cutout edges only, and no area of a
+      // card sits at partial coverage (which would dither into a checker).
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <alphatest_fragment>',
-        `vec3 cardN = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));
-        diffuseColor.a *= smoothstep(0.06, 0.3, abs(dot(cardN, normalize(vViewPosition))));
-        ${o.softEdge
-          ? `// a narrow ramp around the cutoff, under a pixel wide, so the multisampled
-        // coverage smooths edges without a visible screen-door pattern
-        float aw = max(fwidth(diffuseColor.a) * 0.7, 0.015);
+        `float aw = max(fwidth(diffuseColor.a) * 0.5, 0.004);
         diffuseColor.a = smoothstep(alphaTest - aw, alphaTest + aw, diffuseColor.a);
-        if (diffuseColor.a < 0.02) discard;`
-          : // few samples on phones would dither partial coverage into a checker: a hard cut
-            'if (diffuseColor.a < alphaTest) discard; diffuseColor.a = 1.0;'}`,
+        if (diffuseColor.a < 0.02) discard;`,
       )
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <normal_fragment_begin>',
@@ -460,7 +470,27 @@ function paintAtlas(size: number, seed: number, cell: (ctx: CanvasRenderingConte
     }
   }
   const nor = new Uint8Array(col.length)
-  const h = (x: number, y: number) => hgt[(Math.min(size - 1, Math.max(0, y)) * size + Math.min(size - 1, Math.max(0, x))) * 4]! / 255
+  // The canvas dithers its gradients by one level per texel; differentiated, that
+  // dither becomes a fine grid of normals that glitters in back light. A small
+  // separable blur removes it while keeping the shape of each petal.
+  const hf = new Float32Array(size * size)
+  const tmpRow = new Float32Array(size * size)
+  const rad = Math.max(1, Math.round(size / 1024))
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0
+      for (let d = -rad; d <= rad; d++) sum += hgt[(y * size + Math.min(size - 1, Math.max(0, x + d))) * 4]!
+      tmpRow[y * size + x] = sum / (2 * rad + 1) / 255
+    }
+  }
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0
+      for (let d = -rad; d <= rad; d++) sum += tmpRow[Math.min(size - 1, Math.max(0, y + d)) * size + x]!
+      hf[y * size + x] = sum / (2 * rad + 1)
+    }
+  }
+  const h = (x: number, y: number) => hf[Math.min(size - 1, Math.max(0, y)) * size + Math.min(size - 1, Math.max(0, x))]!
   const k = bump * (size / 1024)
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -622,7 +652,7 @@ function drawBlossom(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: numb
   for (let k = 0; k < 5; k++) {
     ctx.save()
     ctx.rotate((k / 5) * Math.PI * 2 + jit[k * 2]!)
-    const pr = R * jit[k * 2 + 1]!
+    const pr = R * jit[k * 2 + 1]! * 0.94
     petalPath(ctx, pr)
     if (pass === 'color') {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, pr)
@@ -631,8 +661,10 @@ function drawBlossom(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: numb
       g.addColorStop(1, rgbStr(1.0 * shade, (0.96 - 0.03 * pink) * shade, 0.96 * shade))
       ctx.fillStyle = g
       ctx.fill()
-      ctx.lineWidth = Math.max(0.6, R * 0.035)
-      ctx.strokeStyle = rgbStr(0.86 * shade, 0.66 * shade, 0.72 * shade, 0.5)
+      // a fine darker rim parts each petal from the next, so the five-petal shape
+      // still reads when a flower is only a few pixels across
+      ctx.lineWidth = Math.max(0.8, R * 0.05)
+      ctx.strokeStyle = rgbStr(0.74 * shade, 0.5 * shade, 0.58 * shade, 0.75)
       ctx.stroke()
     } else {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, pr)
@@ -930,6 +962,7 @@ function buildCards(o: CardOpts): THREE.BufferGeometry {
   const col: number[] = []
   const anchor: number[] = []
   const centre: number[] = []
+  const faceN: number[] = []
   const sway: number[] = []
   const phase: number[] = []
   const idx: number[] = []
@@ -1008,6 +1041,7 @@ function buildCards(o: CardOpts): THREE.BufferGeometry {
       col.push(ao, ao * (0.985 + 0.03 * r()), ao)
       anchor.push(seat.p.x, seat.p.y, seat.p.z)
       centre.push(c.x, c.y, c.z)
+      faceN.push(n.x, n.y, n.z)
       sway.push(seat.sway)
       phase.push(ph)
     }
@@ -1021,6 +1055,7 @@ function buildCards(o: CardOpts): THREE.BufferGeometry {
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
   g.setAttribute('aAnchor', new THREE.Float32BufferAttribute(anchor, 3))
   g.setAttribute('aCentre', new THREE.Float32BufferAttribute(centre, 3))
+  g.setAttribute('aFaceN', new THREE.Float32BufferAttribute(faceN, 3))
   g.setAttribute('aSway', new THREE.Float32BufferAttribute(sway, 1))
   g.setAttribute('aPhase', new THREE.Float32BufferAttribute(phase, 1))
   g.setIndex(idx)
@@ -1076,6 +1111,25 @@ class Tree implements RealmPart {
     if (!this.materials.includes(m)) this.materials.push(m)
     this.object.add(mesh)
     return mesh
+  }
+
+  // Foliage casts from a blurred level of its painting: the shadow of a cluster is
+  // a solid soft mass. Cast from every flower hole, the shadow map's texel grid
+  // shows on the cards behind as a regular stipple, worst with the phone map size.
+  protected addFoliage(g: THREE.BufferGeometry, m: THREE.Material): void {
+    const mesh = this.addMesh(g, m, true)
+    const depth = new THREE.MeshDepthMaterial()
+    depth.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+        diffuseColor *= texture2D( map, vMapUv, 4.5 );
+        #endif`,
+      )
+    }
+    depth.customProgramCacheKey = () => 'realm-foliage-depth'
+    mesh.customDepthMaterial = depth
+    this.materials.push(depth)
   }
 
   protected place(x: number, z: number): void {
@@ -1165,7 +1219,8 @@ export class CherryTree extends Tree {
         dir,
         length,
         r0,
-        r1: Math.max(0.004, r0 * (depth >= maxDepth ? 0.15 : 0.12)),
+        // fine twigs end at about 1 cm so they still draw as dark lines between clusters
+        r1: Math.max(depth >= maxDepth ? 0.006 : 0.01, r0 * (depth >= maxDepth ? 0.15 : 0.12)),
         depth,
         sway0,
         segLen: depth < 2 ? segLen : segLen * 1.3,
@@ -1203,7 +1258,7 @@ export class CherryTree extends Tree {
         const e = crownOutward(crown, tmp, new THREE.Vector3())
         if (e > 1.05) L *= Math.max(0.35, 1.05 / e)
         // the child starts on the parent's axis so its base ring is buried in the parent
-        branch(p.clone(), cd, L, info.r * (0.55 + r() * 0.15), depth + 1, info.sway, weep)
+        branch(p.clone(), cd, L, Math.max(0.014, info.r * (0.55 + r() * 0.15)), depth + 1, info.sway, weep)
       }
     }
 
@@ -1270,7 +1325,7 @@ export class CherryTree extends Tree {
       key: 'blossom',
       map: atlas.map,
       normalMap: atlas.normalMap,
-      trans: 1.05,
+      trans: 0.95,
       transTint: new THREE.Color(1.0, 0.86, 0.88),
       roughness: 0.8,
       branchAmp: 0.11,
@@ -1278,10 +1333,10 @@ export class CherryTree extends Tree {
       swayNorm,
       volumeNormals: true,
       instanced: false,
-      farStart: 9,
-      softEdge: opts.tier !== 'phone',
+      farStart: 14,
+      softEdge: true,
     })
-    this.addMesh(cards, mat, true)
+    this.addFoliage(cards, mat)
     this.place(opts.x, opts.z)
   }
 
@@ -1432,10 +1487,10 @@ export class MapleTree extends Tree {
       swayNorm,
       volumeNormals: true,
       instanced: false,
-      farStart: 10,
-      softEdge: opts.tier !== 'phone',
+      farStart: 14,
+      softEdge: true,
     })
-    this.addMesh(cards, mat, true)
+    this.addFoliage(cards, mat)
     this.place(opts.x, opts.z)
   }
 
