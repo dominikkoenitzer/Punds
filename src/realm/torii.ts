@@ -114,7 +114,7 @@ export class Torii implements RealmPart {
     const black: THREE.BufferGeometry[] = []
 
     // round pillars take their grain around and along them
-    const pillars = [-1, 1].map((side) => cylinderUv(pillar(side as -1 | 1, pillarTop), 1.6, (side * TORII_SPAN) / 2, TORII_Z))
+    const pillars = [-1, 1].map((side) => cylinderUv(pillar(side as -1 | 1, pillarTop), 3.4, (side * TORII_SPAN) / 2, TORII_Z))
 
     const shimaki = curvedBeam(TORII_SPAN + 1.75, shimakiH, 0.3, 0.12, 0.05, 0.012)
     red.push(transformed(shimaki, 0, shimakiY, TORII_Z))
@@ -146,7 +146,9 @@ export class Torii implements RealmPart {
 
     const redGeo = merge([...red.map((g) => worldUv(g, 1.6)), ...pillars])
     const vermilion = new THREE.Color('#c9462a').convertSRGBToLinear()
-    const redMat = paintedMaterial(paint, vermilion, { roughness: 0.82, metalness: 0 })
+    // the scan is of planks; on round lacquered posts its seams must not
+    // read as joints, so its relief stays faint
+    const redMat = paintedMaterial(paint, vermilion, { roughness: 0.82, metalness: 0, normalScale: new THREE.Vector2(0.3, 0.3) })
     redMat.metalnessMap = null
     const redMesh = new THREE.Mesh(redGeo, redMat)
 
