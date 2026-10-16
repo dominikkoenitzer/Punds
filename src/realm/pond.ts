@@ -239,7 +239,8 @@ void main() {
     if (kd < 4.0) column = min(column, kd);
   }
   float path = column / cosT;
-  float T = exp(-path * 4.6);
+  // silt hangs in the water, so even the shallows veil the pebble bed
+  float T = exp(-path * 4.6) * mix(1.0, 0.5, smoothstep(0.02, 0.14, bed));
 
   // in-scattered light: clear green in the shallows, deep jade further in
   vec3 albedo = mix(uDeep, uShallow, exp(-bed * 3.5));
