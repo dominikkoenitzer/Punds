@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf } from './layout'
-import type { RealmPart } from './types'
+import type { RealmPart, Tier } from './types'
 
 // Scanned rocks: groups set a third into the ground at the pond's shore and
 // by the landing, and boulders that break the island's rim. Each scan is one
@@ -150,11 +150,16 @@ export class Rocks implements RealmPart {
   readonly object = new THREE.Group()
   private disposables: { dispose(): void }[] = []
 
-  static async create(): Promise<Rocks> {
-    const names = ['rock_07', 'rock_09', 'boulder_01', 'stone_01']
+  static async create(tier: Tier): Promise<Rocks> {
+    // phones load the two lightest scans and let them stand in for the others
+    const names = tier === 'phone' ? ['rock_07', 'rock_09'] : ['rock_07', 'rock_09', 'boulder_01', 'stone_01']
     const scans = await Promise.all(names.map(loadScan))
     const map = new Map<string, Scan>()
     names.forEach((n, i) => map.set(n, scans[i]))
+    if (tier === 'phone') {
+      map.set('boulder_01', map.get('rock_07')!)
+      map.set('stone_01', map.get('rock_09')!)
+    }
     return new Rocks(map)
   }
 
@@ -194,7 +199,7 @@ export class Rocks implements RealmPart {
       this.object.add(mesh)
       this.disposables.push(mesh)
     }
-    for (const scan of scans.values()) this.disposables.push(scan.geometry, scan.material)
+    for (const scan of new Set(scans.values())) this.disposables.push(scan.geometry, scan.material)
   }
 
   update(): void {}

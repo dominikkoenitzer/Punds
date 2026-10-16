@@ -129,7 +129,7 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Lanterns.create(tier),
     () => Shrine.create(tier),
     () => EmaRack.create(tier),
-    () => Rocks.create(),
+    () => Rocks.create(tier),
     () => Roots.create(tier),
     () => Plants.create(tier),
     () => new CherryTree({ tier, x: CHERRY.x, z: CHERRY.z, height: CHERRY.height, spread: CHERRY.spread, lean: CHERRY.lean, seed: 11 }),
