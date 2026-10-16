@@ -1,5 +1,5 @@
-import CoplandOS from './pages/CoplandOS'
+import Sando from './pages/Sando'
 
 export default function App() {
-  return <CoplandOS />
+  return <Sando />
 }

@@ -1,0 +1,74 @@
+.sando-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.sando-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* readable by assistive tech, out of sight; a link that gets keyboard focus
+   shows itself in the corner */
+.sando-sr {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sando-sr h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sando-sr a {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  opacity: 0;
+  pointer-events: none;
+  color: #f4ede2;
+  font: 15px/1.2 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.sando-sr a:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  outline: 1px solid rgba(244, 237, 226, 0.6);
+  outline-offset: 6px;
+}
+
+.sando-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 18px;
+  text-align: center;
+  color: #f4ede2;
+  font: 18px/1.4 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+
+.sando-fallback h1 {
+  font: inherit;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+
+.sando-fallback nav {
+  display: grid;
+  gap: 10px;
+}
+
+.sando-fallback a {
+  color: inherit;
+}
