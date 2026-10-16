@@ -163,6 +163,8 @@ export const MAPLES: readonly { x: number; z: number; height: number; spread: nu
   { x: 6.2, z: -6.4, height: 5.2, spread: 3.6 },
   { x: 10.4, z: 6.8, height: 4.6, spread: 3.2 },
   { x: -6.8, z: -14.8, height: 4.9, spread: 3.3 },
+  // behind the plaque rack, so the last view has a crown over it
+  { x: 7.9, z: -16.2, height: 4.4, spread: 3.0 },
 ]
 
 // clipped azalea mounds: centre, radius, height
