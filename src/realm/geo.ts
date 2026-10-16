@@ -76,9 +76,13 @@ export function cylinderUv(geo: THREE.BufferGeometry, scale: number, cx: number,
   const uv = new Float32Array(pos.count * 2)
   let r = 0
   for (let i = 0; i < pos.count; i++) r = Math.max(r, Math.hypot(pos.getX(i) - cx, pos.getZ(i) - cz))
+  // the around coordinate comes from the cylinder's own u, which has its seam
+  // vertices doubled; an angle from the position would wrap mid-face and
+  // smear the texture across one strip of quads
+  const own = geo.getAttribute('uv')
   for (let i = 0; i < pos.count; i++) {
-    const a = Math.atan2(pos.getZ(i) - cz, pos.getX(i) - cx)
-    uv[i * 2] = (a * r) / scale
+    const around = own ? own.getX(i) * Math.PI * 2 : Math.atan2(pos.getZ(i) - cz, pos.getX(i) - cx)
+    uv[i * 2] = (around * r) / scale
     uv[i * 2 + 1] = pos.getY(i) / scale
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
