@@ -85,6 +85,10 @@ export class Realm {
   private frameTimes: number[] = []
   private ambience = new Ambience()
   private debugView: { from: THREE.Vector3; to: THREE.Vector3 } | null = null
+  // milliseconds per build step, for headless checks
+  readonly buildTimes: [string, number][] = []
+  private compiling: Promise<unknown>[] = []
+  private warming = false
   private down: { x: number; y: number; t: number } | null = null
   private mouse = false
 
@@ -224,11 +228,17 @@ export class Realm {
     this.parts.push(part)
     this.scene.add(part.object)
     this.renderer.shadowMap.needsUpdate = true
+    // compile its programs now, in parallel where the browser allows, so the
+    // driver works while the next part is being built
+    this.compiling.push(this.renderer.compileAsync(part.object, this.camera, this.scene).catch(() => {}))
   }
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
     this.sunColor.copy(SUN_EARLY)
+    const ts = performance.now()
+    this.buildTimes.push(['start at', Math.round(ts)])
     this.sky = await buildSky(this.renderer, this.tier, this.sunColor)
+    this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
     if (this.disposed) return
     this.scene.add(this.sky.mesh)
     this.scene.environment = this.sky.environment
@@ -238,18 +248,27 @@ export class Realm {
     this.raf = requestAnimationFrame(this.tick)
     await build(this)
     if (this.disposed) return
-    this.renderer.compile(this.scene, this.camera)
+    let t0 = performance.now()
+    await Promise.all(this.compiling)
+    if (this.disposed) return
+    this.buildTimes.push(['compile', Math.round(performance.now() - t0)])
+    t0 = performance.now()
     // The passes that draw the scene again (reflection, cloud depth) compile
     // their programs on first use, and the walk's later views show things the
     // first view does not. Run a few frames at those views while the eyes are
     // still closed, so the hitches happen in the dark.
     const keep = this.walk.target
+    this.warming = true
     for (const p of [0, 0.5, 1, keep]) {
       this.setProgress(p, true)
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       if (this.disposed) return
     }
+    this.warming = false
+    this.buildTimes.push(['warm-up', Math.round(performance.now() - t0)])
+    this.buildTimes.push(['programs', this.renderer.info.programs?.length ?? 0])
+    this.buildTimes.push(['ready at', Math.round(performance.now())])
     this.ready = true
     this.opts.onReady?.()
   }
@@ -347,6 +366,16 @@ export class Realm {
     const t = this.clock.getElapsed()
     this.sampleFps(raw)
 
+    // Until the island is built and its programs compiled the eyes are shut:
+    // draw only the warm dark of closed lids. Drawing the scene now would
+    // make the driver compile each program the moment it is first used, on
+    // this thread, and stall the build for seconds.
+    if (!this.ready && !this.warming) {
+      this.renderer.setRenderTarget(null)
+      this.renderer.setClearColor(0x0d0503, 1)
+      this.renderer.clear()
+      return
+    }
     const pose = this.walk.update(dt)
     const wake = this.wake(dt)
     const p = this.walk.progress
