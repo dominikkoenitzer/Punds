@@ -398,7 +398,7 @@ export class Realm {
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
     // on a tall screen the opening looks further down, so the rim and the
     // cloud sea fill the frame instead of plain sky
-    const tall = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 0.22 * (1 - THREE.MathUtils.smoothstep(p, 0.04, 0.2)) : 0
+    const tall = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 0.03 * (1 - THREE.MathUtils.smoothstep(p, 0.04, 0.2)) : 0
     const pitch = pose.pitch - tall + this.parallax.y * 0.015 + sleep * 0.22 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
     // a tall screen sees less across: near the end, where the plaques must
