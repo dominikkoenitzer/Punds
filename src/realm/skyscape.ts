@@ -325,7 +325,7 @@ ${SKY_GLSL}
 const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
 const float SLAB_BOTTOM = -105.0;
-const float SIGMA = 0.17;
+const float SIGMA = 0.21;
 const float HAZE_DIST = 2600.0;
 
 float hash12(vec2 p) {
@@ -389,16 +389,19 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
   float l = max(0.0, lod - log2(big));
   vec3 s1 = q * (1.0 / (210.0 * big));
   vec3 s2 = vec3(q.x * 0.8 + q.z * 0.6, q.y, q.z * 0.8 - q.x * 0.6) * (1.0 / (530.0 * big)) + vec3(0.31, uTime * 0.0004, 0.77);
-  float shape = textureLod(uNoise, s1, l).r * 0.62 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.38;
+  // a third, smaller octave gives the tops their cauliflower turrets
+  vec3 sm = vec3(q.z * 0.6 - q.x * 0.8, q.y * 1.3, q.x * 0.6 + q.z * 0.8) * (1.0 / (88.0 * big)) + vec3(0.53, 0.0, 0.19);
+  float shape = textureLod(uNoise, s1, l).r * 0.5 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.3
+              + textureLod(uNoise, sm, l + 1.25).r * 0.2;
   float fade = clamp(dTop / mix(26.0 + wander * 34.0, 120.0, tower), 0.0, 1.0);
   float d = shape * 1.0 + fade * 0.95 - 0.87;
   if (d <= 0.0) return 0.0;
   if (detail > 0.0) {
     vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.0035, 0.0);
     float det = textureLod(uNoise, s3, l + 2.13).g;
-    d -= (1.0 - det) * 0.16 * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.75);
+    d -= (1.0 - det) * 0.22 * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.75);
   }
-  return clamp(d * 6.0, 0.0, 1.0);
+  return clamp(d * 9.0, 0.0, 1.0);
 }
 
 float phaseHG(float c, float g) {
@@ -433,9 +436,12 @@ void marchStep(vec3 p, float t, float dt, float phase, vec3 haze, vec3 skyUp, ve
   // a cheap stand in for multiple scattering: a softer second lobe
   float ms = exp(-od * SIGMA * 0.12) * 0.07;
   float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
-  vec3 amb = mix(shadowC * 0.6, skyUp * 0.08 + shadowC * 0.75, lift * lift);
+  // the hollows between billows sink into a deeper blue shade
+  vec3 amb = mix(shadowC * 0.42, skyUp * 0.08 + shadowC * 0.75, lift * lift);
   float powder = 1.0 - exp(-dens * 2.5);
-  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms) + amb;
+  // thin sunlit edges glow gold: the rims of the billows on the sun side
+  float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * 0.55;
+  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) + ms + rim * vec3(1.0, 0.78, 0.45)) + amb;
   float fog = 1.0 - exp(-t / HAZE_DIST);
   lit = mix(lit, haze, fog * fog * 0.92 + fog * 0.08);
   float stepT = exp(-dens * SIGMA * dt);
@@ -1365,10 +1371,15 @@ export class Skyscape implements RealmPart {
       } else if (isl.crown === 'torii') {
         // a leaning pine near the edge, a gate and two cedars behind
         plant(buildPine(rand, isl.r * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
-        const gate = buildTorii(isl.r * 0.32)
+        const gate = buildTorii(isl.r * 0.45)
         gate.rotateY(-0.5)
         gate.translate(isl.x + isl.r * 0.25, ground, isl.z - isl.r * 0.1)
-        parts[4]?.push(gate)
+        // its own vermilion, carried with the grass, which keeps vertex colours
+        const red = new THREE.Color(0xb23a22)
+        const gc = new Float32Array(gate.attributes.position!.count * 3)
+        for (let k = 0; k < gc.length; k += 3) gc.set([red.r, red.g, red.b], k)
+        gate.setAttribute('color', new THREE.BufferAttribute(gc, 3))
+        parts[1]?.push(gate)
         plant(buildCedar(rand, isl.r * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
         plant(buildCedar(rand, isl.r * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
       } else if (isl.crown === 'pine') {
