@@ -64,6 +64,12 @@ const MASSIFS: readonly [number, number, number, number, number][] = [
   [1361, -1238, 760, 270, -95], // the end view, right of the rack
   [1744, 356, 820, 230, -95], // left of the opening view, mostly out of frame
   [-1717, -813, 700, 240, -95], // under the sun, a backlit silhouette
+  // ridgelines further back, so the ranges recede in layers into the haze
+  [-180, -2150, 420, 330, -110],
+  [800, -1900, 460, 290, -110],
+  [1560, -1520, 420, 300, -110],
+  [2050, 420, 450, 260, -110],
+  [-1920, -980, 420, 270, -110],
 ]
 
 // Distant islands: position of the top centre, top radius.
@@ -333,9 +339,9 @@ ${SKY_GLSL}
 const float SEA_BASE = -55.0;
 const float SLAB_TOP = -22.0;
 const float SLAB_BOTTOM = -105.0;
-const float SIGMA = 0.21;
-const float HAZE_DIST = 1700.0;
-const float CLEAR_DIST = 900.0;
+const float SIGMA = 0.13;
+const float HAZE_DIST = 1400.0;
+const float CLEAR_DIST = 550.0;
 
 float hash12(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -414,17 +420,18 @@ float density(vec3 p, float detail, float lod, out float dTopOut, out float towe
   // a third, smaller octave gives the tops their cauliflower turrets
   vec3 sm = vec3(q.z * 0.6 - q.x * 0.8, q.y * 1.3, q.x * 0.6 + q.z * 0.8) * (1.0 / (88.0 * big)) + vec3(0.53, 0.0, 0.19);
   float shape = textureLod(uNoise, s1, l).r * 0.5 + textureLod(uNoise, s2, max(0.0, l - 1.34)).r * 0.3
-              + textureLod(uNoise, sm, l + 1.25).r * 0.2;
+              + mix(textureLod(uNoise, sm, l + 1.25).r, 0.5, tower) * 0.2;
   float fade = clamp(dTop / mix(26.0 + wander * 34.0, 75.0, tower), 0.0, 1.0);
   float d = shape * 1.0 + fade * 0.95 - 0.87 - (1.0 - far) * 0.025;
   if (d <= 0.0) return 0.0;
   if (detail > 0.0) {
     vec3 s3 = q * (1.0 / (48.0 * big)) + vec3(0.0, uTime * 0.008, 0.0);
     float det = textureLod(uNoise, s3, l + 2.13).g;
-    d -= (1.0 - det) * mix(0.3, 0.2, far) * detail * (1.0 - fade * 0.6) * (1.0 - tower * 0.6);
+    d -= (1.0 - det) * mix(0.26, 0.16, far) * detail * (1.0 - fade * 0.6) * (1.0 - tower);
   }
   // a hard surface near the island, softer far out where it only blurs
-  return clamp(d * mix(20.0, 10.0, far), 0.0, 1.0);
+  // soft, translucent edges: the density ramps in over a few metres
+  return clamp(d * mix(7.0, 4.5, far), 0.0, 1.0);
 }
 
 float phaseHG(float c, float g) {
@@ -456,12 +463,13 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
     ls *= 2.3;
   }
   // light is shadowed harder than the eye sees through: deep valleys
-  float tl = exp(-od * SIGMA * mix(2.4, 1.6, clamp(t / 1500.0, 0.0, 1.0)));
+  float tl = exp(-od * SIGMA * mix(1.7, 1.3, clamp(t / 1500.0, 0.0, 1.0)));
   // a cheap stand in for multiple scattering: a softer second lobe
-  float ms = exp(-od * SIGMA * 0.12) * 0.035;
+  // light scattered many times inside the cloud lifts the shaded sides
+  float ms = exp(-od * SIGMA * 0.07) * 0.16;
   float lift = clamp(1.0 - dTop / mix(55.0, 220.0, tower), 0.0, 1.0);
   // the hollows between billows sink into a deeper blue shade
-  vec3 amb = mix(shadowC * 0.2, skyUp * 0.08 + shadowC * 0.75, lift * lift);
+  vec3 amb = mix(shadowC * 0.62 + skyUp * 0.1, skyUp * 0.3 + shadowC * 0.8, lift * lift);
   float powder = 1.0 - exp(-dens * 2.5);
   // thin sunlit edges glow gold: the rims of the billows on the sun side
   // the sea carries a gradient toward the sun: brighter and warmer on the
@@ -469,7 +477,7 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
   // edges seen against the light
   float sunward = pow(warm, 0.4);
   float rim = tl * (1.0 - smoothstep(0.0, 0.45, dens)) * (0.35 + sunward * 1.1);
-  vec3 lit = sunC * (tl * phase * mix(0.55, 1.0, powder) * (0.8 + sunward * 0.45) + ms + rim * mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward))
+  vec3 lit = sunC * (tl * phase * mix(0.8, 1.0, powder) * (0.8 + sunward * 0.45) + ms + rim * mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward))
            + amb * mix(vec3(0.86, 0.96, 1.12), vec3(1.0), sunward);
   // clear air for the first kilometre, haze building only towards the horizon
   float fog = 1.0 - exp(-max(t - CLEAR_DIST, 0.0) / HAZE_DIST);
@@ -603,7 +611,7 @@ void main() {
     float dl = log2(max(1.0, s1 * uPixelAngle * (64.0 / 900.0)));
     float deck = textureLod(uNoise, sp * (1.0 / 900.0), dl).r * 0.6 + textureLod(uNoise, sp * (1.0 / 260.0), dl + 1.8).r * 0.4;
     // the gaps look down into deep shade between the billows, not onto a floor
-    vec3 deep = mix(mix(shadowC * 0.5, shadowC * 0.95 + sunC * 0.05, smoothstep(0.2, 0.8, deck)), haze, fog * sqrt(fog));
+    vec3 deep = mix(mix(shadowC * 1.0 + skyUp * 0.12, shadowC * 1.3 + skyUp * 0.2 + sunC * 0.06, smoothstep(0.2, 0.8, deck)), haze, fog * sqrt(fog));
     col += trans * deep;
     if (front > 1e4) front = s1;
     trans = 0.0;
@@ -824,22 +832,50 @@ function displaceUnderside(geo: THREE.BufferGeometry, r: number, depth: number, 
     const ca = Math.cos(a)
     const sa = Math.sin(a)
     const rim = rimAt(a, seed)
-    // ridged noise for buttresses and gullies, stepped strata down the face
+    // ridged noise for buttresses and gullies
     const n = fbm2(ca * 2.4 + k * 3.0 + seed * 3.1, sa * 2.4 + k * 6.0 + seed, 4)
     const ridge = 1 - Math.abs(n * 2 - 1)
-    const strata = Math.sin(k * 26 + fbm2(ca * 3 + seed, sa * 3, 2) * 6) * 0.035
+    // irregular ledges rather than even bands
+    const strata = Math.sin(k * (14 + fbm2(ca + seed, sa, 2) * 12) + fbm2(ca * 3 + seed, sa * 3, 2) * 9) * 0.014
     const kk = Math.min(1, Math.max(0, k + strata))
-    const bulge = 1 + Math.sin(Math.min(1, k / 0.18) * Math.PI) * 0.1
-    const profile = Math.pow(Math.max(0, 1 - kk), shape) * bulge
-    const crag = 1 + (ridge - 0.5) * 0.55 * Math.min(1, k * 2.5)
+    // overhangs: the face swells out again below the rim, more on some sides
+    const swell = Math.sin(Math.min(1, k / 0.45) * Math.PI) * (0.08 + fbm2(ca * 1.3 - seed, sa * 1.3, 2) * 0.28)
+    const profile = Math.pow(Math.max(0, 1 - kk), shape) * (1 + swell)
+    const crag = 1 + (ridge - 0.5) * 0.8 * Math.min(1, k * 2.5)
+    // the keel wanders off centre so the tip is never on the axis
     const radial = r * rim * crag * profile
-    const lean = (fbm2(seed * 0.7, k * 2.0, 2) - 0.5) * r * 0.5 * k
+    const lean = (fbm2(seed * 0.7, k * 2.0, 2) - 0.5) * r * 0.9 * k
+    const lean2 = (fbm2(seed * 1.9, k * 1.6, 2) - 0.5) * r * 0.7 * k
     v.x = ca * radial + lean
-    v.z = sa * radial
-    v.y = -k * depth * (1 + (fbm2(ca * 3 + seed, sa * 3, 2) - 0.5) * 0.3 * k)
+    v.z = sa * radial + lean2
+    v.y = -k * depth * (1 + (fbm2(ca * 3 + seed, sa * 3, 2) - 0.5) * 0.45 * k)
     pos.setXYZ(i, v.x, v.y, v.z)
   }
   geo.computeVertexNormals()
+}
+
+// Roots and strands hanging from under a far island's rim.
+function buildHangingRoots(rand: () => number, r: number, seed: number, count: number, size: number): THREE.BufferGeometry {
+  const list: THREE.BufferGeometry[] = []
+  for (let i = 0; i < count; i++) {
+    const a = rand() * Math.PI * 2
+    const d = r * rimAt(a, seed) * (0.86 + rand() * 0.08)
+    const len = size * (0.6 + rand() * 1.6)
+    const g = new THREE.CylinderGeometry(size * 0.035, size * 0.012, len, 3, 3)
+    const gp = g.attributes.position as THREE.BufferAttribute
+    const sway = (rand() - 0.5) * size * 0.4
+    for (let k = 0; k < gp.count; k++) {
+      const t = 0.5 - gp.getY(k) / len
+      gp.setX(k, gp.getX(k) + sway * t * t)
+    }
+    g.translate(0, -len / 2, 0)
+    g.rotateY(-a)
+    g.translate(Math.cos(a) * d, -size * 0.1, Math.sin(a) * d)
+    list.push(g)
+  }
+  const merged = mergeGeometries(list)
+  list.forEach((g) => g.dispose())
+  return merged
 }
 
 function buildTop(r: number, seed: number): THREE.BufferGeometry {
@@ -1010,9 +1046,10 @@ function buildMassif(r: number, h: number, seed: number, seg: number): THREE.Buf
     const ny = nor.getY(i)
     const n = fbm2(pos.getX(i) * 0.01 + seed, pos.getZ(i) * 0.01, 2)
     const strata = 0.82 + 0.2 * Math.sin(y * 26 + n * 5)
-    let cr = 0.3 * strata
-    let cg = 0.3 * strata
-    let cb = 0.33 * strata
+    // sunlit faces read as warm grey rock, the rest stays cool
+    let cr = 0.4 * strata
+    let cg = 0.39 * strata
+    let cb = 0.4 * strata
     const forest = 1 - Math.min(1, Math.max(0, (y - 0.12) / 0.18))
     cr += (0.09 - cr) * forest
     cg += (0.12 - cg) * forest
@@ -1106,7 +1143,10 @@ ${SKY_GLSL}`)
         float aerialDist = length(aerialRay);
         // clear near air, the haze builds past a few hundred metres
         float aerial = 1.0 - exp(-max(aerialDist - 300.0, 0.0) / vAerialLength);
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor(aerialRay / aerialDist), aerial);`,
+        // the further the air, the bluer it reads
+        vec3 aerialHaze = hazeColor(aerialRay / aerialDist);
+        aerialHaze = mix(aerialHaze, aerialHaze * vec3(0.84, 0.95, 1.14), smoothstep(800.0, 2600.0, aerialDist));
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, aerialHaze, aerial);`,
       )
   }
   mat.customProgramCacheKey = () => key
@@ -1216,8 +1256,8 @@ export class Skyscape implements RealmPart {
       front.magFilter = THREE.NearestFilter
     }
 
-    const sunColor = new THREE.Color(1.0, 0.62, 0.24).multiplyScalar(3.6)
-    const shadowColor = new THREE.Color(0.3, 0.42, 0.74).multiplyScalar(0.74)
+    const sunColor = new THREE.Color(1.0, 0.8, 0.56).multiplyScalar(3.3)
+    const shadowColor = new THREE.Color(0.42, 0.52, 0.74).multiplyScalar(0.8)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1401,7 +1441,7 @@ export class Skyscape implements RealmPart {
     }
     const arm = texel(255, 242, 0, false)
     this.cliffMaterial = new THREE.MeshStandardMaterial({
-      color: 0x6d6258,
+      color: 0x6a6866,
       roughness: 1,
       map: texel(255, 255, 255, true),
       normalMap: texel(128, 128, 255, false),
@@ -1438,7 +1478,9 @@ export class Skyscape implements RealmPart {
       const uv = under.attributes.uv as THREE.BufferAttribute
       for (let i = 0; i < pos.count; i++) {
         const a = Math.atan2(pos.getZ(i), pos.getX(i))
-        uv.setXY(i, (a / (Math.PI * 2)) * isl.r * 0.6, pos.getY(i) * 0.1)
+        // the scan runs a little across the face so its layers never line up into stripes
+        const u = (a / (Math.PI * 2)) * isl.r * 0.6
+        uv.setXY(i, u, pos.getY(i) * 0.07 + Math.sin(u * 0.9) * 0.6)
       }
       // the rock's lip sits just under the turf, which rolls over onto it
       under.translate(isl.x, isl.y - isl.r * 0.045, isl.z)
@@ -1456,6 +1498,9 @@ export class Skyscape implements RealmPart {
         lobe.translate(isl.x + Math.cos(la) * lo, isl.y - depth * 0.04, isl.z + Math.sin(la) * lo)
         parts[0]?.push(lobe)
       }
+      const roots = buildHangingRoots(rand, isl.r, isl.seed, Math.round(isl.r * 0.9), Math.min(isl.r, 13) * 0.6)
+      roots.translate(isl.x, isl.y, isl.z)
+      parts[3]?.push(roots)
       const top = buildTop(isl.r * 1.02, isl.seed)
       top.translate(isl.x, isl.y, isl.z)
       parts[1]?.push(top)
@@ -1577,12 +1622,12 @@ export class Skyscape implements RealmPart {
     loadPbr('cliff', opts.tier)
       .then((set) => {
         if (this.disposed) return
-        const scanned = pbrMaterial(set, { color: 0xa9a39d })
+        const scanned = pbrMaterial(set, { color: 0x8e9195 })
         this.cliffMaterial.map = scanned.map
         this.cliffMaterial.normalMap = scanned.normalMap
         this.cliffMaterial.aoMap = scanned.aoMap
         this.cliffMaterial.roughnessMap = scanned.roughnessMap
-        this.cliffMaterial.color.set(0xa9a39d)
+        this.cliffMaterial.color.set(0x8e9195)
         scanned.dispose()
       })
       .catch(() => {

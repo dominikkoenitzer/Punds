@@ -22,7 +22,7 @@ export interface PostParams {
   blur: number // 0..1 strength of the out-of-focus blur
   vignette: number
   saturation: number
-  wake: number // 0 eyes closed .. 1 fully awake
+  wake: number // 0 dark .. 1 fully faded in
 }
 
 const FULLSCREEN_VERT = /* glsl */ `
@@ -299,8 +299,6 @@ void main() {
   // the sky is soft already, and blurring it would drag dark edges of
   // things in front out over it
   float coc = d >= 1.0 ? 0.0 : clamp(max(far, near) * uBlur, 0.0, 1.0);
-  // waking up: everything starts soft and comes into focus
-  coc = max(coc, 1.0 - smoothstep(0.15, 0.95, uWake));
   vec3 blurA = texture2D(tBlurNear, vUv).rgb;
   vec3 blurB = texture2D(tBlurFar, vUv).rgb;
   vec3 blurred = mix(blurA, blurB, smoothstep(0.45, 1.0, coc));
@@ -324,13 +322,8 @@ void main() {
   float vig = 1.0 - uVignette * smoothstep(0.35, 1.25, length(q));
   col *= vig;
 
-  // eyelids: a soft dark edge that opens from the middle
-  float opening = smoothstep(0.0, 0.7, uWake) * 1.35;
-  float fromMiddle = abs(vUv.y - 0.5) * 2.0;
-  float lids = (1.0 - smoothstep(opening - 0.35, opening, fromMiddle)) * smoothstep(0.0, 0.4, uWake);
-  // closed eyes in daylight are not black: a dim warm glow through the lids
-  vec3 glow = vec3(0.05, 0.018, 0.01) * (0.85 + 0.15 * sin(uTime * 1.3)) * (1.0 - length(vUv - 0.5) * 0.9);
-  col = col * lids + glow * (1.0 - lids);
+  // the fade up from dark when the island first shows
+  col *= uWake;
 
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>

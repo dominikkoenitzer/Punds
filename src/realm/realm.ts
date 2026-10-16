@@ -16,6 +16,10 @@ export interface RealmOptions {
   reducedMotion: boolean
   onReady?: () => void
   onProgress?: (p: number) => void
+  onMove?: () => void
+  // the device cannot carry the scene even at the lowest step: the page
+  // should drop it for the still picture and the written links
+  onTooSlow?: () => void
 }
 
 interface Prerenderer {
@@ -33,14 +37,29 @@ function isInteractive(p: RealmPart): p is RealmPart & Interactive {
 export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   const forced = new URLSearchParams(location.search).get('tier')
   if (forced === 'ultra' || forced === 'high' || forced === 'phone') return forced
+  const name = rendererName(renderer)
+  // no graphics chip at all: the scene would run on the processor
+  if (/SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(name)) throw new Error(`software renderer: ${name}`)
   const coarse = window.matchMedia('(pointer: coarse)').matches
   if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
-  const gl = renderer.getContext()
-  const info = gl.getExtension('WEBGL_debug_renderer_info')
-  const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
+  // a visitor saving data, or a small machine, gets the light settings
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number }
+  if (nav.connection?.saveData) return 'phone'
+  if ((nav.deviceMemory ?? 8) <= 4 || (nav.hardwareConcurrency || 8) <= 4) return 'phone'
   if (/RTX|RX [67]\d{3}|Radeon Pro|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra'
   return 'high'
 }
+
+function rendererName(renderer: THREE.WebGLRenderer): string {
+  const gl = renderer.getContext()
+  const info = gl.getExtension('WEBGL_debug_renderer_info')
+  return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
+}
+
+// frames per second when the screen holds still, and always on phones, where
+// the battery and the heat matter more than the last bit of smoothness
+const CALM_FPS = 30
+const IDLE_AFTER_MS = 12000
 
 const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
 
@@ -74,6 +93,15 @@ export class Realm {
   private quality: QualityState = initialQualityState('high')
   private fpsAccum = 0
   private fpsFrames = 0
+  private lastDraw = 0
+  private lastInput = 0
+  private readyAt = 0
+  private shown = true
+  private onScreen = true
+  private soundWhenShown = false
+  private calm = false
+  private tooSlow = 0
+  private visibleObs: IntersectionObserver
   private pointerNdc = new THREE.Vector2()
   private pointerActive = false
   private ray = new THREE.Ray()
@@ -154,10 +182,7 @@ export class Realm {
       wake: this.reduced ? 1 : 0,
     }
 
-    this.walk = new Walk(this.renderer.domElement, this.reduced, () => {
-      // any input skips the waking
-      if (this.wakeT < 4.5) this.wakeT = Math.max(this.wakeT, 4.5)
-    })
+    this.walk = new Walk(this.renderer.domElement, this.reduced, () => this.opts.onMove?.())
 
     const el = this.renderer.domElement
     el.addEventListener('pointermove', this.onPointerMove)
@@ -168,6 +193,32 @@ export class Realm {
     this.resizeObs = new ResizeObserver(() => this.resize())
     this.resizeObs.observe(container)
     this.resize()
+    // nothing is drawn while the tab is hidden or the canvas off screen
+    document.addEventListener('visibilitychange', this.onVisibility)
+    this.visibleObs = new IntersectionObserver((entries) => {
+      this.onScreen = entries.some((e) => e.isIntersecting)
+      this.onVisibility()
+    })
+    this.visibleObs.observe(container)
+    for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) window.addEventListener(type, this.onInput, { passive: true })
+  }
+
+  private onInput = () => {
+    this.lastInput = performance.now()
+  }
+
+  private onVisibility = () => {
+    const show = !document.hidden && this.onScreen
+    if (show === this.shown) return
+    this.shown = show
+    if (!show) {
+      cancelAnimationFrame(this.raf)
+      this.soundWhenShown = this.ambience.on
+      if (this.soundWhenShown) this.ambience.setEnabled(false)
+    } else if (!this.disposed) {
+      this.raf = requestAnimationFrame(this.tick)
+      if (this.soundWhenShown) this.ambience.setEnabled(true)
+    }
   }
 
   private onContextLost = (e: Event) => e.preventDefault()
@@ -241,7 +292,7 @@ export class Realm {
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
     this.sunColor.copy(SUN_EARLY)
-    // the closed lids show from the first frame, while everything loads
+    // the warm dark shows from the first frame, while everything loads
     this.raf = requestAnimationFrame(this.tick)
     const ts = performance.now()
     this.buildTimes.push(['start at', Math.round(ts)])
@@ -276,6 +327,7 @@ export class Realm {
     this.buildTimes.push(['programs', this.renderer.info.programs?.length ?? 0])
     this.buildTimes.push(['ready at', Math.round(performance.now())])
     this.ready = true
+    this.readyAt = performance.now()
     this.opts.onReady?.()
   }
 
@@ -349,36 +401,36 @@ export class Realm {
     return { avg, p95: a[Math.floor(a.length * 0.95)] ?? 0, count: a.length }
   }
 
+  // a short fade up from dark once the island is there to see
   private wake(dt: number): number {
     if (this.reduced) return 1
-    // the eyes stay closed until the island is there to see
     if (!this.ready) return 0
     this.wakeT += dt
-    const t = this.wakeT
-    // eyes open part way, close once, then open for good
-    if (t < 0.4) return 0
-    if (t < 1.4) return THREE.MathUtils.smootherstep(t, 0.4, 1.4) * 0.42
-    if (t < 1.75) return 0.42 - THREE.MathUtils.smoothstep(t, 1.4, 1.75) * 0.3
-    if (t < 4.5) return 0.12 + THREE.MathUtils.smootherstep(t, 1.75, 4.5) * 0.88
-    return 1
+    return THREE.MathUtils.smoothstep(this.wakeT, 0, 0.7)
   }
 
   private tick = () => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.tick)
+    // a calm frame rate on phones and whenever nothing moves
+    const now = performance.now()
+    const settled = now - this.lastInput > IDLE_AFTER_MS && Math.abs(this.walk.target - this.walk.progress) < 1e-3
+    const calm = this.ready && (this.tier === 'phone' || settled)
+    if (calm && now - this.lastDraw < 1000 / CALM_FPS - 2) return
+    this.lastDraw = now
+    this.calm = calm
     this.clock.update()
     const raw = this.clock.getDelta()
     const dt = Math.min(raw, 1 / 20)
     const t = this.clock.getElapsed()
     this.sampleFps(raw)
 
-    // Until the island is built and its programs compiled the eyes are shut:
-    // draw only the warm dark of closed lids. Drawing the scene now would
+    // Until the island is built and its programs compiled draw only a warm
+    // dark. Drawing the scene now would
     // make the driver compile each program the moment it is first used, on
     // this thread, and stall the build for seconds.
     if (!this.ready && !this.warming) {
-      // a slow breath of warm light through the lids, so a long load never
-      // looks frozen
+      // a slow breath of warm light, so a long load never looks frozen
       const breath = this.reduced ? 0.5 : 0.5 + 0.5 * Math.sin(this.clock.getElapsed() * 1.1)
       this.lidColor.setRGB(0.032 + breath * 0.022, 0.012 + breath * 0.008, 0.007 + breath * 0.004, THREE.SRGBColorSpace)
       this.renderer.setRenderTarget(null)
@@ -390,21 +442,15 @@ export class Realm {
     const wake = this.wake(dt)
     const p = this.walk.progress
 
-    // the first breath: lying a little lower, head tilted, rising and
-    // levelling as the eyes open
-    const sleep = 1 - THREE.MathUtils.smootherstep(wake, 0, 1)
     const breathe = this.reduced ? 0 : 1
     const sway = Math.sin(t * 0.55) * 0.004 + Math.sin(t * 0.31 + 1.3) * 0.003
     if (this.pointerActive && !this.reduced) this.parallax.lerp(this.pointerNdc, 1 - Math.exp(-dt * 2))
     else this.parallax.multiplyScalar(Math.exp(-dt * 1.5))
 
     this.camera.position.copy(pose.position)
-    this.camera.position.y += -sleep * 0.55 + Math.sin(t * 0.9) * 0.006 * breathe
+    this.camera.position.y += Math.sin(t * 0.9) * 0.006 * breathe
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
-    // on a tall screen the opening looks further down, so the rim and the
-    // cloud sea fill the frame instead of plain sky
-    const tall = this.camera.aspect < 1 ? (1 - this.camera.aspect) * 0.03 * (1 - THREE.MathUtils.smoothstep(p, 0.04, 0.2)) : 0
-    const pitch = pose.pitch - tall + this.parallax.y * 0.015 + sleep * 0.22 + Math.sin(t * 0.43) * 0.003 * breathe
+    const pitch = pose.pitch + this.parallax.y * 0.015 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
     // a tall screen sees less across: near the end, where the plaques must
     // all be in frame, step back along the view to make room
@@ -413,7 +459,7 @@ export class Realm {
       this.camera.position.addScaledVector(this.dir, -back)
     }
     this.look.copy(this.camera.position).add(this.dir)
-    this.camera.up.set(Math.sin(sleep * 0.12), 1, 0).normalize()
+    this.camera.up.set(0, 1, 0)
     this.camera.lookAt(this.look)
     if (this.debugView) {
       this.camera.position.copy(this.debugView.from)
@@ -455,7 +501,7 @@ export class Realm {
 
     const pp = this.post
     pp.wake = wake
-    pp.exposure = (0.68 + p * 0.05) * (0.35 + 0.65 * THREE.MathUtils.smoothstep(wake, 0, 0.8))
+    pp.exposure = 0.68 + p * 0.05
     pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
     pp.sunFogColor.setRGB(1.0, 0.78, 0.55).multiplyScalar(1.6)
     pp.sunColor.copy(this.sunColor).multiplyScalar(0.9)
@@ -466,6 +512,8 @@ export class Realm {
   }
 
   private sampleFps(raw: number): void {
+    // a stall from a hidden tab or a background hitch says nothing about the GPU
+    if (raw > 0.25) return
     this.frameTimes.push(raw * 1000)
     if (this.frameTimes.length > 240) this.frameTimes.shift()
     this.fpsAccum += raw
@@ -475,7 +523,15 @@ export class Realm {
     this.fpsAccum = 0
     this.fpsFrames = 0
     if (!this.ready) return
-    const next = stepQuality(this.quality, fps)
+    // at the calm rate a frame that keeps up is neither slow nor spare
+    const rate = this.calm ? (fps >= CALM_FPS * 0.9 ? 45 : fps) : fps
+    const next = stepQuality(this.quality, rate)
+    // still far too slow at the lowest step in the first half minute: this
+    // device should not be asked to carry the scene at all
+    if (next.tier === 'low' && this.quality.tier === 'low' && fps < 14 && performance.now() - this.readyAt < 30000) {
+      this.tooSlow++
+      if (this.tooSlow >= 2) this.opts.onTooSlow?.()
+    }
     if (next.tier !== this.quality.tier) {
       // the tiers here only scale the resolution; the look stays the same
       this.dprScale = next.tier === 'low' ? 0.72 : next.tier === 'high' ? 1 : 1
@@ -488,6 +544,9 @@ export class Realm {
     this.disposed = true
     cancelAnimationFrame(this.raf)
     this.resizeObs.disconnect()
+    this.visibleObs.disconnect()
+    document.removeEventListener('visibilitychange', this.onVisibility)
+    for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) window.removeEventListener(type, this.onInput)
     this.walk.dispose()
     this.ambience.dispose()
     const el = this.renderer.domElement

@@ -3,10 +3,11 @@ import type { Realm } from '../realm/realm'
 import { LINKS } from '../links'
 import './Sando.css'
 
-// The page is the realm: a full-screen canvas the visitor wakes up in. The
-// three.js layer loads through a dynamic import so this shell paints first.
-// The links are written out for real below the canvas for screen readers,
-// keyboards and browsers without WebGL.
+// The page is the realm: a full-screen canvas that fades straight into the
+// garden. The three.js layer loads through a dynamic import so this shell
+// paints first. The links are written out for real below the canvas for
+// screen readers and keyboards; without WebGL, or on a device too weak to
+// carry the scene, they show over a still picture of the garden.
 
 function supportsWebGL2(): boolean {
   try {
@@ -58,6 +59,9 @@ export default function Sando() {
         if (cancelled) return
         realm = new Realm(container, {
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+          onTooSlow: () => {
+            if (!cancelled) setNoScene(true)
+          },
         })
         realmRef.current = realm
         if (new URLSearchParams(location.search).has('debug')) window.__realm = realm

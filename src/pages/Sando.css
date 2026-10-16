@@ -85,6 +85,11 @@
   text-align: center;
   color: #f4ede2;
   font: 18px/1.4 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+  /* the garden as a still, darkened in the middle where the links sit */
+  background:
+    radial-gradient(ellipse at center, rgba(14, 10, 8, 0.55), rgba(14, 10, 8, 0.15) 70%),
+    #1a1410 url('/realm/still.webp') center / cover no-repeat;
 }
 
 .sando-fallback h1 {

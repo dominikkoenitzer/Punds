@@ -6,9 +6,8 @@ import * as THREE from 'three'
 // position, heading and pitch, interpolated with Catmull-Rom so the camera
 // turns and walks in one continuous motion.
 //
-// The walk opens at the island's front landing looking out over the rim at
-// the sea of clouds, turns to face the gate, passes under it and follows the
-// path to the shrine terrace, ending in front of the plaque rack.
+// The walk opens on the path between the lanterns looking up to the shrine
+// and follows it to the terrace, ending in front of the plaque rack.
 
 interface Key {
   x: number
@@ -20,11 +19,7 @@ interface Key {
 }
 
 const KEYS: Key[] = [
-  { x: 1.6, y: 1.55, z: 21.0, yaw: Math.PI + 0.5, pitch: -0.07, focus: 9 },
-  { x: 1.5, y: 1.6, z: 21.2, yaw: 4.25, pitch: -0.1, focus: 40 },
-  { x: 0.55, y: 1.62, z: 20.6, yaw: 6.0, pitch: 0.02, focus: 14 },
-  { x: 0.0, y: 1.62, z: 16.4, yaw: 6.28, pitch: 0.035, focus: 18 },
-  { x: -0.3, y: 1.62, z: 9.0, yaw: 6.3, pitch: 0.035, focus: 20 },
+  { x: -0.3, y: 1.62, z: 9.6, yaw: 6.283, pitch: 0.03, focus: 20 },
   { x: -0.35, y: 1.62, z: 0.8, yaw: 6.24, pitch: 0.06, focus: 16 },
   { x: 0.05, y: 1.66, z: -6.0, yaw: 6.2, pitch: 0.15, focus: 10 },
   { x: 3.73, y: 2.75, z: -12.1, yaw: 5.385, pitch: -0.083, focus: 2.4 },
@@ -115,13 +110,15 @@ export class Walk {
     }
     switch (e.key) {
       case 'ArrowDown':
+      case 'ArrowRight':
       case 'PageDown':
       case ' ':
-        this.nudge(e.key === 'ArrowDown' ? 0.04 : 0.12)
+        this.nudge(e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 0.06 : 0.15)
         break
       case 'ArrowUp':
+      case 'ArrowLeft':
       case 'PageUp':
-        this.nudge(e.key === 'ArrowUp' ? -0.04 : -0.12)
+        this.nudge(e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -0.06 : -0.15)
         break
       case 'Home':
         this.nudge(-1)
