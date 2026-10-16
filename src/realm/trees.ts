@@ -1141,6 +1141,8 @@ export class CherryTree extends Tree {
         // alternate between reaching out and climbing into the crown, so it fills rather than hollows
         if (k % 2 === 0) cd.addScaledVector(out, 0.45).addScaledVector(UP, depth < 2 ? 0.12 : 0.04)
         else cd.addScaledVector(UP, 0.45).addScaledVector(out, 0.05)
+        // on the scaffolds every third child swings sideways, closing the gaps between them
+        if (depth <= 2 && k % 3 === 2) cd.addScaledVector(tmp.crossVectors(UP, out).normalize(), r() < 0.5 ? -0.8 : 0.8)
         cd.normalize()
         let L = length * (0.55 + r() * 0.2) * (1 - t * 0.35)
         // keep tips inside the crown envelope
@@ -1161,6 +1163,8 @@ export class CherryTree extends Tree {
       const elev = k === 5 ? 1.0 : k === 0 && towardPond ? 0.1 : 0.22 + r() * 0.28
       const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
       d.addScaledVector(leanDir, 0.3).normalize()
+      // the climbing limb leans back against the trunk, so the middle of the crown is not a gap
+      if (k === 5) d.set(-opts.lean.x * 0.7 + Math.cos(az) * 0.15, 1, -opts.lean.z * 0.7 + Math.sin(az) * 0.15).normalize()
       // no scaffold climbs steeper than about 50 degrees; the crown spreads
       if (k < 5 && d.y > 0.77) {
         const hz = Math.sqrt(1 - 0.77 * 0.77) / Math.hypot(d.x, d.z)
