@@ -89,6 +89,7 @@ export class Realm {
   readonly buildTimes: [string, number][] = []
   private compiling: Promise<unknown>[] = []
   private warming = false
+  private lidColor = new THREE.Color()
   private down: { x: number; y: number; t: number } | null = null
   private mouse = false
 
@@ -235,6 +236,8 @@ export class Realm {
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
     this.sunColor.copy(SUN_EARLY)
+    // the closed lids show from the first frame, while everything loads
+    this.raf = requestAnimationFrame(this.tick)
     const ts = performance.now()
     this.buildTimes.push(['start at', Math.round(ts)])
     this.sky = await buildSky(this.renderer, this.tier, this.sunColor)
@@ -244,8 +247,6 @@ export class Realm {
     this.scene.environment = this.sky.environment
     this.scene.environmentIntensity = 0.38
     this.placeSun()
-    // the first frame can show while the island is still building
-    this.raf = requestAnimationFrame(this.tick)
     await build(this)
     if (this.disposed) return
     let t0 = performance.now()
@@ -371,8 +372,12 @@ export class Realm {
     // make the driver compile each program the moment it is first used, on
     // this thread, and stall the build for seconds.
     if (!this.ready && !this.warming) {
+      // a slow breath of warm light through the lids, so a long load never
+      // looks frozen
+      const breath = this.reduced ? 0.5 : 0.5 + 0.5 * Math.sin(this.clock.getElapsed() * 1.1)
+      this.lidColor.setRGB(0.032 + breath * 0.022, 0.012 + breath * 0.008, 0.007 + breath * 0.004, THREE.SRGBColorSpace)
       this.renderer.setRenderTarget(null)
-      this.renderer.setClearColor(0x0d0503, 1)
+      this.renderer.setClearColor(this.lidColor, 1)
       this.renderer.clear()
       return
     }
