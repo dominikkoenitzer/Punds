@@ -61,7 +61,8 @@ export function weatheredStone(set: PbrSet, moss: THREE.Color, params: THREE.Mes
         {
           float up = clamp(vStoneNormal.y, 0.0, 1.0);
           float n = sNoise(vStoneWorld * 3.1) * 0.6 + sNoise(vStoneWorld * 9.7) * 0.4;
-          stoneMoss = smoothstep(0.42, 0.75, up * 0.75 + n * 0.55) * up;
+          // moss in patches where water lingers, never a clean ring
+          stoneMoss = smoothstep(0.62, 0.9, up * 0.55 + n * 0.65) * up * up;
           // rain streaks: darker below edges, a vertical smear
           float streak = sNoise(vec3(vStoneWorld.x * 7.0, vStoneWorld.y * 0.6, vStoneWorld.z * 7.0));
           diffuseColor.rgb *= mix(1.0, 0.78, smoothstep(0.55, 0.9, streak) * (1.0 - up));
