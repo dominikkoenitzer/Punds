@@ -92,7 +92,8 @@ function bladeGeometry(segments: number, strips: number): { position: THREE.Buff
 // short; only the margin along the rim, the pond banks and the bases of
 // lanterns and azaleas are let grow.
 function longness(x: number, z: number): number {
-  const rim = 1 - smooth(1.0, 2.6, islandSdf(x, z))
+  const e = islandSdf(x, z)
+  const rim = smooth(0.9, 1.8, e) * (1 - smooth(2.4, 3.8, e))
   const pd = pondSdf(x, z)
   const bank = smooth(0.15, 0.45, pd) * (1 - smooth(1.1, 1.7, pd))
   let near = 0

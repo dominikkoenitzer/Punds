@@ -48,9 +48,11 @@ function mossWeight(x: number, z: number): number {
   let shade = 0
   for (const t of [{ x: CHERRY.x, z: CHERRY.z, r: CHERRY.spread }, ...MAPLES.map((m) => ({ x: m.x, z: m.z, r: m.spread }))]) {
     const d = Math.hypot(x - t.x, z - t.z) / t.r
-    shade = Math.max(shade, 1 - smooth(0.35, 1.05, d))
+    shade = Math.max(shade, 1 - smooth(0.15, 0.85, d))
   }
-  return Math.max(pond * 0.85, wall * 0.9, patches * 0.75, shade * 0.9)
+  // in clumps where the roots keep the ground damp, never a full ring
+  shade *= smooth(0.38, 0.62, fbm2(x * 0.9 + 1.7, z * 0.9 - 4.2, 3))
+  return Math.max(pond * 0.85, wall * 0.9, patches * 0.6, shade * 0.5)
 }
 
 // Gravel: raked in lines along the approach that turn into rings around the
@@ -173,8 +175,8 @@ const SPLAT_MAP = /* glsl */ `
   gravelDetail(xz, d1, n1, a1);
   sampleSet(tMossD, tMossN, tMossA, xz / 2.2, d2, n2, a2);
   // the scan is a forest floor with moss among the leaves: keep its detail
-  // as brightness and colour it the deep green of garden moss
-  d2 = vec3(dot(d2, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.5, 0.82, 0.28) * 2.1;
+  // as brightness and colour it the deep, quiet green of garden moss
+  d2 = vec3(dot(d2, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.4, 0.55, 0.24) * 1.55;
   sampleSet(tPebD, tPebN, tPebA, xz / 1.4, d3, n3, a3);
   vec4 w = vSplat;
   float soil = max(1.0 - w.x - w.y - w.z, 0.0);

@@ -25,6 +25,7 @@ interface Placement {
   tiltX: number
   tiltZ: number
   bury: number // share of the height below ground
+  tone: number // albedo multiplier, for weathering
 }
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
@@ -91,6 +92,7 @@ function shoreRocks(rand: () => number, out: Placement[]): void {
         tiltX: (rand() - 0.5) * 0.2,
         tiltZ: (rand() - 0.5) * 0.2,
         bury: 0.3 + rand() * 0.15,
+        tone: 0.85 + rand() * 0.12,
       })
     }
   }
@@ -119,6 +121,7 @@ function gardenRocks(rand: () => number, out: Placement[]): void {
       tiltX: (rand() - 0.5) * 0.15,
       tiltZ: (rand() - 0.5) * 0.15,
       bury: 0.35,
+      tone: 0.8 + rand() * 0.12,
     })
   }
 }
@@ -144,7 +147,8 @@ function rimRocks(rand: () => number, out: Placement[]): void {
         yaw: rand() * Math.PI * 2,
         tiltX: (rand() - 0.5) * 0.4,
         tiltZ: (rand() - 0.5) * 0.4,
-        bury: 0.4 + rand() * 0.15,
+        bury: 0.18 + rand() * 0.12,
+        tone: 0.58 + rand() * 0.14,
       })
     }
     a += (1.8 + rand() * 2.6) / ((ISLAND_RX + ISLAND_RZ) * 0.5 * k)
@@ -186,6 +190,7 @@ export class Rocks implements RealmPart {
     const e = new THREE.Euler()
     const s = new THREE.Vector3()
     const v = new THREE.Vector3()
+    const tone = new THREE.Color()
     for (const [name, list] of byScan) {
       const scan = scans.get(name)!
       const mesh = new THREE.InstancedMesh(scan.geometry, scan.material, list.length)
@@ -196,7 +201,10 @@ export class Rocks implements RealmPart {
         q.setFromEuler(e.set(p.tiltX, p.yaw, p.tiltZ, 'YXZ'))
         v.set(p.x, p.y - scan.size.y * s.y * p.bury, p.z)
         mesh.setMatrixAt(i, m.compose(v, q, s))
+        // a touch of lichen green in the weathered ones
+        mesh.setColorAt(i, tone.setRGB(p.tone * 0.97, p.tone, p.tone * 0.93))
       })
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
       mesh.instanceMatrix.needsUpdate = true
       mesh.computeBoundingSphere()
       mesh.castShadow = true

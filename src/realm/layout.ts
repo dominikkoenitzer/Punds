@@ -277,7 +277,7 @@ export function gravelWeight(x: number, z: number): number {
 // 0..1: where grass grows. Everything that is not path, gravel, water, a
 // building or too close to the rim.
 export function lawnWeight(x: number, z: number): number {
-  const rim = smooth(-0.3, 0.5, islandSdf(x, z))
+  const rim = smooth(0.2, 1.2, islandSdf(x, z))
   const water = smooth(0.15, 0.9, pondSdf(x, z))
   const hard = 1 - Math.max(pathWeight(x, z), gravelWeight(x, z))
   let w = rim * water * hard

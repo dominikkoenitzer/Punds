@@ -77,25 +77,23 @@ const MASSIFS: readonly [number, number, number, number, number][] = [
 
 // Distant islands: position of the top centre, top radius.
 const FAR_ISLANDS: readonly { x: number; y: number; z: number; r: number; seed: number; crown: 'grove' | 'shrine' | 'pine' | 'torii' | 'blossom'; air?: number; shape?: number; deep?: number }[] = [
-  // the prominent one behind the shrine, slightly left of the path, and a
-  // smaller one to the right
-  { x: -150, y: 135, z: -520, r: 38, seed: 61, crown: 'blossom', air: 650 },
-  { x: -160, y: -20, z: -210, r: 9, seed: 11, crown: 'pine' },
-  { x: 235, y: 10, z: -190, r: 13, seed: 23, crown: 'blossom' },
-  { x: 430, y: -22, z: -390, r: 21, seed: 37, crown: 'shrine' },
-  { x: -360, y: 26, z: 60, r: 12, seed: 41, crown: 'shrine' },
-  { x: 330, y: -4, z: 110, r: 16, seed: 71, crown: 'grove' },
-  // the focal point of the opening view out over the rim, a little right of
-  // centre, lit from the left by the low sun
-  // big rock masses with trees at their true size, so the distance reads:
-  // shape is the underside's taper (low: sheer cliffs then a short keel, high:
-  // a long spire), deep its length in radii
-  { x: 206, y: 18, z: 500, r: 36, seed: 83, crown: 'torii', shape: 0.38, deep: 1.5 },
-  // a loose cluster further out to the left of the opening view
-  { x: 458, y: 66, z: 489, r: 16, seed: 89, crown: 'pine', air: 1600, shape: 0.9, deep: 2.4 },
-  { x: 587, y: 35, z: 536, r: 30, seed: 97, crown: 'blossom', air: 1600, shape: 0.5, deep: 1.2 },
-  { x: 754, y: -8, z: 530, r: 40, seed: 101, crown: 'shrine', air: 1600, shape: 0.3, deep: 0.9 },
-  { x: 120, y: -30, z: -520, r: 16, seed: 53, crown: 'pine' },
+  // the prominent one high behind the shrine, slightly left of the path, and
+  // two lower ones further out at either side
+  { x: -260, y: 170, z: -900, r: 72, seed: 61, crown: 'blossom', air: 1100 },
+  { x: -470, y: 10, z: -620, r: 40, seed: 11, crown: 'grove', air: 1500 },
+  { x: 230, y: 0, z: -980, r: 46, seed: 53, crown: 'pine', air: 1600 },
+  { x: 600, y: 30, z: -500, r: 50, seed: 23, crown: 'blossom', air: 1500 },
+  { x: 900, y: 0, z: -820, r: 66, seed: 37, crown: 'shrine', air: 2000 },
+  { x: -820, y: 50, z: 150, r: 54, seed: 41, crown: 'shrine', air: 1700 },
+  { x: 760, y: 30, z: 280, r: 76, seed: 71, crown: 'grove', air: 1700 },
+  // the one seen out over the landing, a little right of centre, lit from
+  // the left by the low sun; shape is the underside's taper (low: sheer
+  // cliffs then a short keel, high: a long spire), deep its length in radii
+  { x: 340, y: 50, z: 840, r: 84, seed: 83, crown: 'torii', air: 1800, shape: 0.38, deep: 1.5 },
+  // a loose cluster further out to the left of it
+  { x: 760, y: 110, z: 800, r: 34, seed: 89, crown: 'pine', air: 2000, shape: 0.9, deep: 2.4 },
+  { x: 960, y: 60, z: 900, r: 52, seed: 97, crown: 'blossom', air: 2200, shape: 0.5, deep: 1.2 },
+  { x: 1240, y: 10, z: 880, r: 74, seed: 101, crown: 'shrine', air: 2400, shape: 0.3, deep: 0.9 },
 ]
 
 // --- noise volume -------------------------------------------------------------
@@ -908,7 +906,7 @@ function buildHangingRoots(rand: () => number, r: number, seed: number, count: n
 }
 
 function buildTop(r: number, seed: number): THREE.BufferGeometry {
-  const geo = new THREE.CircleGeometry(r, 72, 0, Math.PI * 2)
+  const geo = new THREE.RingGeometry(r * 0.004, r, 96, 14)
   geo.rotateX(-Math.PI / 2)
   const pos = geo.attributes.position as THREE.BufferAttribute
   const colors = new Float32Array(pos.count * 3)
@@ -1563,7 +1561,8 @@ export class Skyscape implements RealmPart {
       const marks = parts.map((l) => l.length)
       const rand = rng(isl.seed)
       const depth = isl.r * (isl.deep ?? 1.5 + rand() * 0.8)
-      const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 32 : 48, lowPoly ? 14 : 24, true)
+      const bigRock = isl.r > 40
+      const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 40 : bigRock ? 112 : 64, lowPoly ? 16 : bigRock ? 44 : 28, true)
       under.translate(0, -depth / 2, 0)
       displaceUnderside(under, isl.r, depth, isl.seed, isl.shape)
       // planar uvs scaled to metres so the rock grain reads at the right size
@@ -1583,7 +1582,7 @@ export class Skyscape implements RealmPart {
       for (let l = 0; l < lobes; l++) {
         const lr = isl.r * (0.4 + rand() * 0.2)
         const ld = depth * (0.45 + rand() * 0.35)
-        const lobe = new THREE.CylinderGeometry(1, 0.02, ld, lowPoly ? 16 : 24, lowPoly ? 8 : 12, true)
+        const lobe = new THREE.CylinderGeometry(1, 0.02, ld, lowPoly ? 20 : bigRock ? 48 : 28, lowPoly ? 8 : bigRock ? 20 : 12, true)
         lobe.translate(0, -ld / 2, 0)
         displaceUnderside(lobe, lr, ld, isl.seed + l * 7 + 3)
         const la = rand() * Math.PI * 2
@@ -1628,7 +1627,7 @@ export class Skyscape implements RealmPart {
         // a leaning pine near the edge and a stand of cedars behind it
         plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
         // the stand grows with the island, so a big rock carries a real wood
-        const cedars = Math.min(24, 6 + Math.round((isl.r * isl.r) / 70))
+        const cedars = Math.min(56, 6 + Math.round((isl.r * isl.r) / 70))
         for (let k = 0; k < cedars; k++) {
           const a = rand() * Math.PI * 2
           const d = isl.r * (0.1 + rand() * 0.45)
@@ -1650,7 +1649,7 @@ export class Skyscape implements RealmPart {
         plant(buildCedar(rand, ts * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
         plant(buildCedar(rand, ts * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
         // a wood of cedars and pines across the back half of a big island
-        const wood = Math.min(14, Math.round((isl.r * isl.r) / 110))
+        const wood = Math.min(36, Math.round((isl.r * isl.r) / 110))
         for (let k = 0; k < wood; k++) {
           const a = Math.PI * (0.15 + rand() * 0.9)
           const d = isl.r * (0.25 + rand() * 0.55)

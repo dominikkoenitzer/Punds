@@ -35,10 +35,11 @@ export const CENTRE = view(-0.3, 1.62, 9.6, Math.PI * 2, 0.03, 20, Infinity, 0.2
 export type Place = 'rack' | 'pond' | 'shrine'
 
 // the close views: the plaque rack as it is framed at the end of the old
-// walk, the pond from its bank, the hall from the foot of the steps
+// walk, the pond from its far bank with the sun behind, the hall from the
+// foot of the steps
 export const PLACES: Record<Place, View> = {
   rack: view(EMA_RACK.x - 1.87, groundHeight(EMA_RACK.x, EMA_RACK.z) + 1.5, EMA_RACK.z + 1.5, 5.385, -0.083, 2.4, 0.3, 0.1),
-  pond: view(-3.2, 1.6, 6.6, 0.94, -0.27, 7, 0.45, 0.14),
+  pond: view(-13.0, 1.5, -2.6, -2.429, -0.231, 7, 0.45, 0.14),
   shrine: view(0, 2.3, -6.0, Math.PI * 2, 0.1, 10, 0.4, 0.14),
 }
 
