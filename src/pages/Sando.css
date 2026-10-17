@@ -45,11 +45,20 @@
   transition-duration: 0.6s;
 }
 
-/* the links, always there: a quiet line of names in the top corner */
+/* the links live on the plaques; this line of names in the top corner is
+   for screen readers, and shows only while the keyboard is on one of them */
 .sando-menu {
   position: absolute;
   top: max(20px, env(safe-area-inset-top));
   left: max(24px, env(safe-area-inset-left));
+}
+
+.sando-menu:not(:focus-within) {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .sando-menu h1 {
@@ -116,24 +125,13 @@
 }
 
 .sando-dot[data-state='point']::before {
-  transform: scale(2.6);
-  background: rgba(250, 244, 234, 0.18);
-  box-shadow: inset 0 0 0 0.6px rgba(250, 244, 234, 0.95), 0 0 8px rgba(0, 0, 0, 0.25);
+  transform: scale(1.9);
+  background: rgba(250, 244, 234, 0.16);
+  box-shadow: inset 0 0 0 0.7px rgba(250, 244, 234, 0.8), 0 0 6px rgba(0, 0, 0, 0.2);
 }
 
 .sando-dot[data-state='grab']::before {
   transform: scale(0.7);
-}
-
-.sando-dot span {
-  position: absolute;
-  left: 20px;
-  top: -8px;
-  white-space: nowrap;
-  color: #f4ede2;
-  font: 14px/1 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
 }
 
 .sando-sound {

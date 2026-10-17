@@ -279,6 +279,7 @@ export class EmaRack implements RealmPart {
   private brushAt = 0
   private brushVel = 0
   private kicks: { p: Plaque; swing: number; side: number; twist: number }[] = []
+  private later: { at: number; kick: { p: Plaque; swing: number; side: number; twist: number } }[] = []
   private euler = new THREE.Euler(0, 0, 0, 'XZY')
   private corner = new THREE.Vector3()
   private plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -LINK_Z)
@@ -534,9 +535,11 @@ export class EmaRack implements RealmPart {
     return this.hovered !== null
   }
 
-  // the name on the plaque under the pointer, if it is a link
-  get hoveredName(): string | null {
-    return this.hovered?.link?.name ?? null
+  // once the garden shows: the three plaques stir one after another, the
+  // first nudging the next, so the rack catches the eye from the path
+  greet(): void {
+    const now = performance.now()
+    this.plaques.forEach((p, i) => this.later.push({ at: now + 1600 + i * 260, kick: { p, swing: 0.55, side: i === 0 ? 0.95 : 0.2, twist: 0.3 } }))
   }
 
   // a mouse hover; touches go through tap(). A hand brushing in from the
@@ -628,6 +631,11 @@ export class EmaRack implements RealmPart {
     // the turn that makes a plaque face the camera, in rack space
     this.camLocal.copy(frame.camera.position)
     this.object.worldToLocal(this.camLocal)
+    if (this.later.length) {
+      const now = performance.now()
+      for (const l of this.later) if (l.at <= now) this.kicks.push(l.kick)
+      this.later = this.later.filter((l) => l.at > now)
+    }
     if (moving) {
       for (const k of this.kicks) {
         k.p.swingVel += k.swing

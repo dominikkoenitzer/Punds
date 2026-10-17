@@ -47,9 +47,10 @@ export default function Sando() {
   // a picture of the start view while the scene loads (see .sando-poster)
   const [poster] = useState(() => (typeof window === 'undefined' ? null : POSTERS.find((p) => window.matchMedia(p.media).matches) ?? null))
   // the page's own cursor over the scene: a small soft dot that opens to a
-  // ring over anything that can be clicked, with the name where one fits
+  // faint ring over anything that can be clicked; the names are on the
+  // plaques themselves
   const dotRef = useRef<HTMLDivElement>(null)
-  const [cursor, setCursor] = useState<{ state: CursorState; label: string | null }>({ state: 'idle', label: null })
+  const [cursor, setCursor] = useState<CursorState>('idle')
 
   useEffect(() => {
     const el = containerRef.current
@@ -110,7 +111,7 @@ export default function Sando() {
           },
           onMove: () => setCue('gone'),
           onLoad: (f) => setLoad(f),
-          onCursor: (state, label) => setCursor({ state, label }),
+          onCursor: (state) => setCursor(state),
         })
         realmRef.current = realm
         if (new URLSearchParams(location.search).has('debug')) window.__realm = realm
@@ -148,9 +149,7 @@ export default function Sando() {
         </button>
       )}
       {!noScene && (
-        <div aria-hidden="true" className="sando-dot" ref={dotRef} data-state={cursor.state} data-on="false">
-          {cursor.label && <span>{cursor.label}</span>}
-        </div>
+        <div aria-hidden="true" className="sando-dot" ref={dotRef} data-state={cursor} data-on="false" />
       )}
       <main className={noScene ? 'sando-fallback' : 'sando-menu'}>
         <h1>Punds</h1>

@@ -4,7 +4,7 @@
 
 ### Everything I do, in one place.
 
-A personal landing page styled as **Copland OS / the NAVI** from *Serial Experiments Lain*: a navigable 3D world you boot into.
+A quiet shrine garden on an island above the clouds, rendered live in the browser. Three plaques on the rack lead to everything else.
 
 [**punds.ch**](https://punds.ch/)
 
@@ -16,8 +16,7 @@ A personal landing page styled as **Copland OS / the NAVI** from *Serial Experim
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Bun](https://img.shields.io/badge/Bun-1.4.2-000000?logo=bun&logoColor=white)](https://bun.sh/)
 
-
-<img src="docs/screenshot.jpg" alt="Punds: the Copland OS NAVI world" width="880" />
+<img src="docs/screenshot.jpg" alt="Punds: a shrine garden on a floating island in the late afternoon sun" width="880" />
 
 </div>
 
@@ -25,148 +24,98 @@ A personal landing page styled as **Copland OS / the NAVI** from *Serial Experim
 
 ## About
 
-**Punds** is a single-page personal landing page and hub, one place that points at everything I do. It is dressed up as **Copland OS**, the NAVI operating system from the anime *Serial Experiments Lain*: a CRT-styled boot sequence powers on, the NAVI greets you with "present day, present time", and you drop into a full-screen, navigable **3D world** rendered with Three.js. Floating holographic link panels orbit a glowing eye/circuit logo inside a fog-bound inner world. **Drag to look around, scroll to fly through.**
+**Punds** is my personal hub: one page that points at everything I build. Instead of a list of links it is a place. You stand on the stone path of a small shrine garden, high above a sea of clouds in the late afternoon, and look around.
 
-It is a fan homage. *Serial Experiments Lain* and the NAVI are the property of their respective rights holders; this project is non-commercial and exists out of affection for the aesthetic.
+- **Look around.** Move the pointer toward an edge of the screen, or drag (on a phone, swipe), and the view turns.
+- **Explore.** Click the plaque rack, the pond or the shrine and you walk up to it. Esc, the browser's back button or a click elsewhere takes you back to the path.
+- **The links** hang on the rack as three wooden plaques: Portfolio, GitHub and Senbon. Point at one and it turns to you on its cord; click it to open it. On a phone the first tap turns it, the second opens it.
+- **Touch things.** The plaques swing and knock into each other, a click on the pond drops a ripple, the koi follow you, the shrine bell rings.
+- **Sound** is generated in the browser (wind, water, the bell, the wood of the plaques) and stays off until you turn it on with the small "sound" switch or M.
 
-> Present day, present time.
+Nothing depends on scrolling. Keyboard and screen-reader visitors get the same three links as a plain list: Tab shows them, and focusing one turns its plaque on the rack.
 
-## Features
+## How it is made
 
-- **3D NAVI world.** A full-screen Three.js scene you navigate: drag to look, scroll to fly and dolly through fog-bound depth.
-- **Boot theatre.** A logo splash, a streaming Copland OS boot log, and a "present day / present time" operator welcome before the desktop settles.
-- **NAVI voice.** Low-pitched Web Speech utterances greet you on boot and whisper intermittently as you sit still.
-- **Floating link panels.** Billboarded holographic cards orbit the central logo. Click one and the camera dives into it and opens the link.
-- **Living scene.** A reflective floor, an inverted mirror-city overhead ("as above, so below"), data rain, drifting koi, a network graph you can jack into, watching eyes, a giant eye, terminal text and more, each a self-contained feature module.
-- **Cinematic post-processing.** Bloom, glitch warps on layer changes, ACES tone mapping, and a phosphor flicker.
-- **Ambient audio.** A low Web Audio drone whose bass level breathes through the visuals. Press **M** to mute.
-- **Idle "dread".** Sit still and the fog, audio and whispers slowly intensify.
-- **Adaptive quality.** An FPS sampler auto-steps quality tiers up and down so it stays smooth.
-- **Accessible fallback.** A screen-reader and no-WebGL layer exposes the real links as plain HTML.
-- **CRT presentation.** Scanline, grain and vignette overlays. No HUD: the desktop is the bare scene.
+Everything you see is built when the page loads, from code and a handful of public-domain scans:
 
-## Tech Stack
+- **Light.** A photographed late-afternoon sky lights the scene, with a low sun, soft shadows, ambient occlusion, haze that thickens with distance, gentle bloom and light shafts, and a filmic tone curve.
+- **Garden.** The ground blends soil, gravel, moss and pebbles. Grass, cherry, maples and cedars, the shrine, the torii, lanterns, the stone wall and the plaque rack are all generated in code. The rocks are scanned models.
+- **Water.** The pond reflects the garden, ripples where you click, and holds a few koi.
+- **Sky.** The cloud sea below is raymarched at half resolution and composed back depth-aware, with distant islands and ranges in the haze.
+- **Fast first view.** A picture of the start view shows within a fraction of a second while the scene builds, then crossfades into the live garden. Textures arrive at 1k first and sharpen to 2k once the garden is showing.
+- **Adaptive quality.** Three tiers (strong desktop, ordinary laptop, phone). A frame-time stepper lowers resolution and effects when a device struggles. Frames are capped at 60, 30 when nothing moves, and none when the tab is hidden. A device that cannot carry the scene gets a still picture with the same links.
 
-| Layer            | Choice                                             |
-| ---------------- | -------------------------------------------------- |
-| Framework        | React 19                                           |
-| 3D / rendering   | Three.js (r186) + EffectComposer post-processing   |
-| Audio / voice    | Web Audio API + Web Speech API                     |
-| Language         | TypeScript (strict mode)                           |
-| Build tool       | Vite 8                                             |
-| Package manager  | Bun 1.4.2                                         |
-| Styling          | Hand-written CSS (no Tailwind, no CSS-in-JS)       |
+## Tech stack
 
-There is **no router, no global state and no data layer**. React state is local `useState`. Runtime dependencies are just `react`, `react-dom`, and `three`.
+| Layer           | Choice                                       |
+| --------------- | -------------------------------------------- |
+| Framework       | React 19                                     |
+| 3D / rendering  | Three.js (r186), custom shaders and passes   |
+| Audio           | Web Audio API, all sounds synthesised        |
+| Language        | TypeScript (strict)                          |
+| Build tool      | Vite 8                                       |
+| Package manager | Bun 1.4.2                                    |
+| Styling         | Hand-written CSS                             |
 
-## Getting Started
+There is no router, no global state and no data layer. The runtime dependencies are `react`, `react-dom` and `three`.
 
-### Prerequisites
+## Getting started
 
-- [Bun](https://bun.sh/) (canonical package manager and runner for this project)
-- A WebGL-capable browser (the scene needs WebGL/WebGL2; without it you get the accessible link fallback)
-
-### Install and run
+You need [Bun](https://bun.sh/) and a browser with WebGL 2.
 
 ```bash
-# install dependencies
 bun install
-
-# start the dev server
 bun run dev
 ```
 
-The dev server runs on **http://localhost:1000** and is exposed on the network (`host: true`), so you can reach it from other devices on your LAN too.
+The dev server runs on **http://localhost:1000** and is reachable from other devices on your network.
 
-## Available Scripts
+| Script            | What it does                                                         |
+| ----------------- | -------------------------------------------------------------------- |
+| `bun run dev`     | Vite dev server on port 1000, exposed on the network.                |
+| `bun run build`   | Type-check all project references (`tsc -b`), then build to `dist/`. |
+| `bun run lint`    | ESLint over the repository.                                          |
+| `bun run test`    | Vitest unit tests (`test:watch` re-runs on change).                  |
+| `bun run preview` | Serve the built `dist/` locally.                                     |
 
-| Script            | What it does                                                              |
-| ----------------- | ------------------------------------------------------------------------ |
-| `bun run dev`     | Start the Vite dev server on port **1000**, exposed on the network.      |
-| `bun run build`   | Type-check all project references (`tsc -b`), then build to `dist/`.      |
-| `bun run lint`    | Run ESLint over the repository.                                          |
-| `bun run test`    | Run the Vitest unit tests once (`test:watch` re-runs on change).         |
-| `bun run preview` | Serve the built `dist/` locally to preview the production bundle.        |
+Add `?debug` to the address to expose the scene for checks in the console, `?tier=ultra|high|phone` to force a quality tier and `?uncapped` to lift the frame caps.
 
-## Project Structure
+## Project structure
 
 ```
-.
-├── index.html                                  # HTML entry: font preload
-├── vite.config.ts                              # Vite config (port 1000, host: true)
-├── package.json                                # scripts and dependencies (Bun)
-├── bun.lock
-├── tsconfig*.json                              # TypeScript project references (strict)
-├── eslint.config.js
-├── public/
-│   ├── fonts/
-│   │   ├── TrixieCyrG-Plain-Regular.woff2      # custom NAVI font, served first
-│   │   └── TrixieCyrG-Plain-Regular.otf        # the same font, fallback for old browsers
-│   └── robots.txt                              # every crawler welcome
-└── src/
-    ├── main.tsx                                # React 19 createRoot entry (StrictMode)
-    ├── App.tsx                                 # renders <CoplandOS />
-    ├── index.css                               # globals, @font-face, base :root vars
-    ├── App.css                                 # #root full-viewport sizing
-    ├── pages/
-    │   ├── CoplandOS.tsx                       # React layer: boot phases + DOM overlays
-    │   └── CoplandOS.css                       # scene palette vars + overlay styling
-    └── scene/                                  # the Three.js engine
-        ├── coplandScene.ts                     # CoplandScene class (renderer, camera, post, loop)
-        ├── audioEngine.ts                      # ambient Web Audio drone + bass analyser
-        ├── naviVoice.ts                        # Web Speech "NAVI" utterances
-        ├── panelData.ts                        # the floating link panels' content
-        └── features/                           # ~15 SceneFeature visual modules
-            ├── types.ts                        # SceneFeature / ScenePalette / FeatureContext
-            ├── innerSky.ts   reflectiveFloor.ts   sidewaysCity.ts
-            ├── cables.ts     dataRain.ts          dataSpires.ts
-            ├── fish.ts       rain.ts              watcher.ts
-            ├── wiredIntercepts.ts   watchingEyes.ts   apparition.ts
-            ├── giantEye.ts   terminalText.ts      networkGraph.ts
-            └── …
+src/
+├── main.tsx, App.tsx         # React entry
+├── links.ts                  # the three links, in the order they hang
+├── pages/Sando.tsx, .css     # the page shell: poster, cursor, sound switch, accessible links
+└── realm/                    # the scene
+    ├── realm.ts              # host: renderer, camera, sun, looking around, picking, frame caps
+    ├── post.ts               # the frame after the scene: AO, haze, bloom, shafts, tone
+    ├── island.ts, layout.ts  # build order and the whole composition
+    ├── look.ts               # the path view, the close views and the walks between them
+    ├── sky.ts, skyscape.ts   # the photographed sky, the cloud sea, far islands and ranges
+    ├── terrain.ts, grass.ts, trees.ts, plants.ts, rocks.ts, roots.ts
+    ├── shrine.ts, torii.ts, lanterns.ts, stonework.ts, ema.ts, pond.ts
+    ├── ambience.ts           # the sounds
+    └── assets.ts             # scanned materials, loaded 1k first, 2k after
+public/realm/                 # textures, models, sky and the start-view posters
 ```
 
-## How It Works / Architecture
-
-The app is a thin **React layer** over a self-contained **Three.js scene engine**.
-
-`main.tsx` is the React 19 `createRoot` entry (in `StrictMode`); it renders `App.tsx`, which renders [`CoplandOS`](src/pages/CoplandOS.tsx). There is no router, no global state, and no data layer.
-
-- **The React layer ([`CoplandOS.tsx`](src/pages/CoplandOS.tsx))** drives a boot **phase machine**: `logo` → `boot` (streaming boot log) → `welcome` ("present day / present time" plus a NAVI voice greeting) → `desktop` (the bare scene, no HUD by design). It constructs and disposes the 3D scene in a `useEffect`, passes it the `onActivate` callback that skips the boot, and renders the crisp **DOM overlays** the canvas sits behind: CRT scan/grain/vignette and the boot/welcome theatre. It also renders an accessible **screen-reader / no-WebGL fallback** containing the real links. The heavy 3D scene is **lazy-loaded** so this boot shell paints first. Tapping during boot skips to the desktop; `M` mutes the audio.
-- **The scene engine ([`coplandScene.ts`](src/scene/coplandScene.ts))** is the `CoplandScene` class: a `WebGLRenderer` + `PerspectiveCamera` and an `EffectComposer` post chain (`RenderPass` → `UnrealBloomPass` → `GlitchPass` → `OutputPass`). It builds the central logo, a drifting particle field, the billboarded link panels, and all feature modules, then runs a `requestAnimationFrame` loop. A **camera rig** lets you drag to look and scroll to fly; a `Raycaster` drives panel hover/click (clicking a link panel dives the camera in and opens the link, clicking a network-graph node "jacks in" a layer deeper). An **idle "dread"** value ramps up while you hold still, and an **FPS-driven auto quality** system steps tiers up and down. The colour palette is read from CSS custom properties, so retuning the CSS retunes the 3D.
-- **Feature modules ([`src/scene/features/`](src/scene/features))** each implement `SceneFeature { group, update(ctx), dispose() }`: `InnerSky`, `ReflectiveFloor`, `SidewaysCity`, `CableTangle`, `DataRain`, `DataSpires`, `HolographicFish` (koi), `InnerRain`, `Watcher`, `WiredIntercepts`, `WatchingEyes`, `Apparition`, `GiantEye`, `TerminalText` and `NetworkGraph`, plus a vertical **mirror twin** of the city overhead. `CoplandScene` adds each group, calls `update` every frame, and `dispose`s on teardown.
-- **Audio & voice.** [`audioEngine.ts`](src/scene/audioEngine.ts) is an ambient Web Audio drone with a bass analyser the scene reads each frame to drive the bloom and particles; [`naviVoice.ts`](src/scene/naviVoice.ts) is a Web Speech wrapper for the NAVI's utterances.
-- **Styling.** Hand-written CSS only. Global resets, the `TrixieCyrG` `@font-face`, and base `:root` vars live in [`src/index.css`](src/index.css); `#root` sizing in [`src/App.css`](src/App.css); the scene colour-palette `:root` variables (read back by the 3D engine) and all overlay and boot styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css).
-
-## Customizing Content
-
-To change the links the floating panels point at, edit [`src/scene/panelData.ts`](src/scene/panelData.ts). Each entry is a `PanelDatum` with a `label`, an `href` and a few display `lines`. To retune the visual palette (and the 3D scene with it), edit the `:root` custom properties at the top of [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css). The boot log lines and the operator name live as constants at the top of [`src/pages/CoplandOS.tsx`](src/pages/CoplandOS.tsx).
+To change where the plaques point, edit [`src/links.ts`](src/links.ts). To move anything in the garden, edit [`src/realm/layout.ts`](src/realm/layout.ts).
 
 ## Deployment
 
-```bash
-bun run build
-```
+`bun run build` produces a static `dist/`. It is deployed on Vercel. [`vercel.json`](vercel.json) sets the security headers, including a content security policy that allows WebAssembly for the mesh decoder of the scanned models, and caches hashed assets for good.
 
-This type-checks and produces a static `dist/` directory containing plain HTML, CSS, JS, and assets. There is no server component, so `dist/` can be deployed to any static host: Vercel, Netlify, GitHub Pages, Cloudflare Pages, an S3 bucket, anything that serves files.
+## Credits
+
+The scanned materials, models and the sky are public domain (CC0); every source is listed in [CREDITS.md](CREDITS.md).
 
 ## License
 
-Licensed under the **Creative Commons Attribution-NonCommercial 4.0 International** license ([CC BY-NC 4.0](./LICENSE)). You are free to share and adapt the material with attribution, but **not** for commercial purposes.
+Licensed under the **Creative Commons Attribution-NonCommercial 4.0 International** license ([CC BY-NC 4.0](./LICENSE)). You are free to share and adapt the material with attribution, but **not** for commercial purposes. The CC0 assets keep their own public-domain terms.
 
-*Serial Experiments Lain* and the NAVI are the property of their respective rights holders. This project is an unaffiliated, non-commercial fan homage and claims no ownership over those works.
-
-## Author & Acknowledgements
+## Author
 
 Built and written by [@dominikkoenitzer](https://github.com/dominikkoenitzer).
 
-
 If this made you smile, you can support my work via [PayPal](https://www.paypal.com/paypalme/dominikkoenitzer).
-
-With gratitude to the creators of *Serial Experiments Lain* for the aesthetic that inspired it all.
-
-<div align="center">
-
-*Close the world, open the nExt.*
-
-</div>

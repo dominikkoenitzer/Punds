@@ -144,6 +144,7 @@ uniform sampler2D tGravelD, tGravelN, tGravelA;
 uniform sampler2D tMossD, tMossN, tMossA;
 uniform sampler2D tPebD, tPebN, tPebA;
 uniform vec3 uLawnFloor;
+uniform float uLawnCover;
 varying vec4 vSplat;
 varying vec3 vWorld;
 varying vec3 vWorldNormal;
@@ -193,6 +194,8 @@ const SPLAT_MAP = /* glsl */ `
   dif *= mix(0.82, 1.12, macro);
   // the floor under the lawn: green-brown, so gaps between blades never read as bare dirt
   dif *= mix(vec3(1.0), uLawnFloor, w.w);
+  // phones draw fewer blades, so their floor is short turf in its own right
+  dif = mix(dif, vec3(0.075, 0.115, 0.035) * mix(0.8, 1.2, macro), w.w * uLawnCover);
   diffuseColor.rgb *= dif;
 }
 `
@@ -207,10 +210,11 @@ const SPLAT_NORMAL = /* glsl */ `
 }
 `
 
-function patchSplat(mat: THREE.MeshStandardMaterial, sets: PbrSet[]): void {
+function patchSplat(mat: THREE.MeshStandardMaterial, sets: PbrSet[], tier: Tier): void {
   const names = ['Soil', 'Gravel', 'Moss', 'Peb']
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uLawnFloor = { value: LAWN_FLOOR_TINT }
+    shader.uniforms.uLawnCover = { value: tier === 'phone' ? 0.7 : 0 }
     sets.forEach((s, i) => {
       shader.uniforms[`t${names[i]}D`] = { value: s.map }
       shader.uniforms[`t${names[i]}N`] = { value: s.normalMap }
@@ -798,7 +802,7 @@ export class Terrain implements RealmPart {
   private constructor(tier: Tier, ground: PbrSet[], cliff: PbrSet, rock: PbrSet) {
     const topGeo = buildTop(tier)
     const topMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
-    patchSplat(topMat, ground)
+    patchSplat(topMat, ground, tier)
     const top = new THREE.Mesh(topGeo, topMat)
     top.receiveShadow = true
     top.castShadow = true

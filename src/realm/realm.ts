@@ -6,7 +6,6 @@ import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
 import { Look, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
-import { LINKS } from '../links'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
@@ -25,7 +24,7 @@ export interface RealmOptions {
   onLoad?: (f: number) => void
   // what the pointer is over: the page draws its own small cursor, which
   // grows over anything that can be clicked and carries a name where one fits
-  onCursor?: (state: CursorState, label: string | null) => void
+  onCursor?: (state: CursorState) => void
   // the device cannot carry the scene even at the lowest step: the page
   // should drop it for the still picture and the written links
   onTooSlow?: () => void
@@ -117,6 +116,8 @@ export class Realm {
   private raf = 0
   private disposed = false
   private ready = false
+  // a tap on the start view's picture while the scene loads
+  private pendingTap: { x: number; y: number; touch: boolean } | null = null
   private resizeObs: ResizeObserver
   private reduced: boolean
   private wakeT = 0
@@ -293,7 +294,11 @@ export class Realm {
   private onPointerUp = (e: PointerEvent) => {
     const d = this.drag
     this.drag = null
-    if (!d || !this.ready || d.moved) return
+    if (!d || d.moved) return
+    if (!this.ready) {
+      this.pendingTap = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' }
+      return
+    }
     this.onPointerMove(e)
     this.raycaster.setFromCamera(this.pointerNdc, this.camera)
     this.click(this.raycaster.ray, e.pointerType !== 'mouse')
@@ -347,11 +352,6 @@ export class Realm {
 
   private onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.look.place) this.leave()
-  }
-
-  // the rack, seen from afar, is where the links are: its label names them
-  private get linkNames(): string {
-    return LINKS.map((l) => l.name).join('  ·  ')
   }
 
   private findPart<T>(name: string): (RealmPart & T) | null {
@@ -508,6 +508,16 @@ export class Realm {
     this.readyAt = performance.now()
     this.opts.onLoad?.(1)
     this.opts.onReady?.()
+    // the plaques sway once, so the eye finds the rack without a word
+    this.findPart<{ greet(): void }>('EmaRack')?.greet()
+    const tap = this.pendingTap
+    this.pendingTap = null
+    if (tap) {
+      const rect = this.renderer.domElement.getBoundingClientRect()
+      this.pointerNdc.set(((tap.x - rect.left) / rect.width) * 2 - 1, -((tap.y - rect.top) / rect.height) * 2 + 1)
+      this.raycaster.setFromCamera(this.pointerNdc, this.camera)
+      this.click(this.raycaster.ray, tap.touch)
+    }
     // the 2k close-up textures, one upload per frame, now that it shows
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     void upgradeTextures(this.tier, frame).then(() => this.buildTimes.push(['2k done at', Math.round(performance.now())]))
@@ -707,13 +717,9 @@ export class Realm {
     // the page draws the cursor over the scene; the system one stays hidden
     this.renderer.domElement.style.cursor = this.mouse ? 'none' : 'default'
     const state: CursorState = this.drag?.moved ? 'grab' : pointing ? 'point' : 'idle'
-    let label: string | null = null
-    if (this.look.place === 'rack') label = this.findPart<{ hoveredName: string | null }>('EmaRack')?.hoveredName ?? null
-    else if (this.hoveredPlace === 'rack') label = this.linkNames
-    const key = state + (label ?? '')
-    if (key !== this.cursorKey) {
-      this.cursorKey = key
-      this.opts.onCursor?.(state, label)
+    if (state !== this.cursorKey) {
+      this.cursorKey = state
+      this.opts.onCursor?.(state)
     }
 
     realmUniforms.uTime.value = t
