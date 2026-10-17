@@ -78,6 +78,11 @@ function azimuthOf(x: number, z: number): number {
   return Math.atan2(z, x)
 }
 
+// resolves once the sun's direction is set, before the sky's images arrive,
+// so the island can be built while they load
+let sunKnownResolve: () => void = () => {}
+export const sunKnown = new Promise<void>((resolve) => (sunKnownResolve = resolve))
+
 export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunColor: THREE.Color): Promise<SkyResult> {
   const base = `/realm/sky/${SKY}`
   const info: SkyInfo = await (await fetch(`${base}/bg.json`)).json()
@@ -87,10 +92,12 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   // keep the photographed sun's height, turn its bearing
   const elevation = Math.asin(Math.max(-1, Math.min(1, sy)))
   SUN_DIRECTION.set(Math.cos(elevation) * Math.cos(SUN_AZIMUTH), Math.sin(elevation), Math.cos(elevation) * Math.sin(SUN_AZIMUTH)).normalize()
+  sunKnownResolve()
 
   const bgUrl = `${base}/bg_${tier === 'phone' ? '4k' : '8k'}.webp`
-  // image lighting needs little resolution; phones take the smallest
-  const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '2k'}.hdr`
+  // image lighting needs little resolution: 1k lights the start view as 2k
+  // does (measured) at a quarter of the download; phones take the smallest
+  const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '1k'}.hdr`
   const [bg, hdr] = await Promise.all([
     new THREE.TextureLoader().loadAsync(bgUrl),
     new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl),

@@ -30,8 +30,28 @@ interface Placement {
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
 
+const files = new Map<string, ReturnType<GLTFLoader['loadAsync']>>()
+
+function fetchScan(name: string): ReturnType<GLTFLoader['loadAsync']> {
+  let p = files.get(name)
+  if (!p) {
+    p = loader.loadAsync(`/realm/models/${name}.glb`)
+    files.set(name, p)
+  }
+  return p
+}
+
+function scanNames(tier: Tier): string[] {
+  return tier === 'phone' ? ['rock_07', 'rock_09'] : ['rock_07', 'rock_09', 'boulder_01', 'stone_01']
+}
+
+// start the scan downloads with the textures; loadScan() takes them from here
+export function prefetchScans(tier: Tier): void {
+  for (const name of scanNames(tier)) void fetchScan(name).catch(() => {})
+}
+
 async function loadScan(name: string): Promise<Scan> {
-  const gltf = await loader.loadAsync(`/realm/models/${name}.glb`)
+  const gltf = await fetchScan(name)
   let found: THREE.Mesh | null = null
   gltf.scene.updateMatrixWorld(true)
   gltf.scene.traverse((o) => {
@@ -161,7 +181,7 @@ export class Rocks implements RealmPart {
 
   static async create(tier: Tier): Promise<Rocks> {
     // phones load the two lightest scans and let them stand in for the others
-    const names = tier === 'phone' ? ['rock_07', 'rock_09'] : ['rock_07', 'rock_09', 'boulder_01', 'stone_01']
+    const names = scanNames(tier)
     const scans = await Promise.all(names.map(loadScan))
     const map = new Map<string, Scan>()
     names.forEach((n, i) => map.set(n, scans[i]))

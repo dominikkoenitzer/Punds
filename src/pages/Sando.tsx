@@ -23,6 +23,18 @@ declare global {
   }
 }
 
+// The start view as pictures, each for the screens whose view it matches by
+// cropping (keep the media and sizes in step with the preloads in
+// index.html). From 17:18 to 12:5, which takes in the 21:9 monitors, the
+// scene keeps a vertical field of 40 degrees, so the wide one fills the
+// height; below it a horizontal field of 38 degrees until the vertical
+// reaches 72 at 0.474, which is the tall one's shape: it fills the width
+// above that and the height below.
+const POSTERS = [
+  { media: '(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)', src: '/realm/poster-wide.webp', srcSet: '/realm/poster-wide.webp 2592w, /realm/poster-wide-4k.webp 5184w', sizes: 'calc(100vh * 12 / 5)' },
+  { media: '(max-aspect-ratio: 17/18)', src: '/realm/poster-tall.webp', srcSet: '/realm/poster-tall.webp 948w', sizes: '100vw' },
+]
+
 export default function Sando() {
   const containerRef = useRef<HTMLDivElement>(null)
   const realmRef = useRef<Realm | null>(null)
@@ -32,6 +44,8 @@ export default function Sando() {
   const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
   const [load, setLoad] = useState(0)
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  // a picture of the start view while the scene loads (see .sando-poster)
+  const [poster] = useState(() => (typeof window === 'undefined' ? null : POSTERS.find((p) => window.matchMedia(p.media).matches) ?? null))
   // the page's own cursor over the scene: a small soft dot that opens to a
   // ring over anything that can be clicked, with the name where one fits
   const dotRef = useRef<HTMLDivElement>(null)
@@ -86,6 +100,7 @@ export default function Sando() {
         const [{ Realm }, { buildIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island')])
         if (cancelled) return
         realm = new Realm(container, {
+          instant: poster !== null,
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           onTooSlow: () => {
             if (!cancelled) setNoScene(true)
@@ -111,11 +126,12 @@ export default function Sando() {
       realm?.dispose()
       realmRef.current = null
     }
-  }, [noScene])
+  }, [noScene, poster])
 
   return (
     <div className="sando-root">
       <div aria-hidden="true" className="sando-canvas" ref={containerRef} />
+      {!noScene && poster && <img aria-hidden="true" className="sando-poster" data-done={load >= 1} src={poster.src} srcSet={poster.srcSet} sizes={poster.sizes} alt="" fetchPriority="high" />}
       {!noScene && (
         <div aria-hidden="true" className="sando-load" data-done={load >= 1}>
           <i style={{ transform: `scaleX(${Math.max(0.04, load)})` }} />

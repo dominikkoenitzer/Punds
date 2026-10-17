@@ -10,7 +10,6 @@ import { Shrine } from './shrine'
 import { EmaRack } from './ema'
 import { Grass } from './grass'
 import { Skyscape } from './skyscape'
-import { loadPbr } from './assets'
 import { Rocks } from './rocks'
 import { Roots } from './roots'
 import { Pond } from './pond'
@@ -119,18 +118,13 @@ class Sheltered implements RealmPart {
   }
 }
 
-// every scanned set the parts ask for, requested at once so the downloads
-// overlap instead of waiting step by step; the parts get them from the cache
-const SETS = ['soil', 'gravel', 'moss', 'pebbles', 'cliff', 'rock', 'stone', 'wall', 'painted_wood', 'plaster', 'cedar_planks', 'wood_aged', 'copper', 'sakura_bark', 'maple_bark']
-
 export async function buildIsland(realm: Realm): Promise<void> {
   const tier = realm.tier
-  for (const name of SETS) loadPbr(name, tier).catch(() => {})
   const pointer = new PointerGround()
   realm.add(pointer)
   const hiddenFromClouds: THREE.Object3D[] = []
   const hiddenFromPond: THREE.Object3D[] = []
-  const sky = realm.skyInfo
+  let sky = realm.skyInfo
   if (sky) hiddenFromClouds.push(sky.mesh)
   const steps: (() => Promise<RealmPart> | RealmPart)[] = [
     () => Terrain.create(tier),
@@ -153,7 +147,12 @@ export async function buildIsland(realm: Realm): Promise<void> {
       hiddenFromPond.push(grass.object)
       return grass
     },
-    () => {
+    async () => {
+      // the island is built while the sky's images load
+      if (!sky) {
+        sky = await realm.skyReady
+        hiddenFromClouds.push(sky.mesh)
+      }
       const skyscape = new Skyscape({ tier })
       // the cloud shader reads the panorama in its own convention, a quarter
       // turn from three's equirect lookup

@@ -1,8 +1,9 @@
 import * as THREE from 'three'
 import { Pipeline, type PostParams } from './post'
-import { buildSky, type SkyResult } from './sky'
+import { buildSky, sunKnown, type SkyResult } from './sky'
+import { prefetchScans } from './rocks'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
-import { setMaxAnisotropy } from './assets'
+import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
 import { Look, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { LINKS } from '../links'
@@ -28,6 +29,9 @@ export interface RealmOptions {
   // the device cannot carry the scene even at the lowest step: the page
   // should drop it for the still picture and the written links
   onTooSlow?: () => void
+  // the page shows a picture of the start view while the scene loads: no
+  // fade from dark, the picture fades out over the first frames instead
+  instant?: boolean
 }
 
 export type CursorState = 'idle' | 'point' | 'grab'
@@ -144,6 +148,11 @@ export class Realm {
   // milliseconds per build step, for headless checks
   readonly buildTimes: [string, number][] = []
   private compiling: Promise<unknown>[] = []
+  // parts are built while the sky loads; their programs compile once its
+  // environment is set, so each is built for it only once
+  private pendingCompile: THREE.Object3D[] | null = null
+  private skyResolve: (sky: SkyResult) => void = () => {}
+  readonly skyReady = new Promise<SkyResult>((resolve) => (this.skyResolve = resolve))
   private warming = false
   private lidColor = new THREE.Color()
   private mouse = false
@@ -434,9 +443,14 @@ export class Realm {
     // driver works while the next part is being built
     // with the HDR target bound, as when it is drawn, or every program
     // would be built once for the screen and again for the target
+    if (this.pendingCompile) this.pendingCompile.push(part.object)
+    else this.compile(part.object)
+  }
+
+  private compile(object: THREE.Object3D): void {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
-    this.compiling.push(this.renderer.compileAsync(part.object, this.camera, this.scene).catch(() => {}))
+    this.compiling.push(this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {}))
     this.renderer.setRenderTarget(before)
   }
 
@@ -446,14 +460,29 @@ export class Realm {
     this.raf = requestAnimationFrame(this.tick)
     const ts = performance.now()
     this.buildTimes.push(['start at', Math.round(ts)])
-    this.sky = await buildSky(this.renderer, this.tier, this.sunColor)
-    this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
+    prefetchSets(this.tier)
+    prefetchScans(this.tier)
+    // the sky loads while the island is built; the build only needs the
+    // sun's direction, which comes before the sky's images
+    this.pendingCompile = []
+    const sky = buildSky(this.renderer, this.tier, this.sunColor).then((s) => {
+      if (this.disposed) return
+      this.sky = s
+      this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
+      this.scene.add(s.mesh)
+      this.scene.environment = s.environment
+      this.scene.environmentIntensity = 0.38
+      this.placeSun()
+      this.skyResolve(s)
+      const pending = this.pendingCompile ?? []
+      this.pendingCompile = null
+      for (const o of pending) this.compile(o)
+    })
+    await Promise.race([sunKnown, sky])
     if (this.disposed) return
-    this.scene.add(this.sky.mesh)
-    this.scene.environment = this.sky.environment
-    this.scene.environmentIntensity = 0.38
     this.placeSun()
     await build(this)
+    await sky
     if (this.disposed) return
     let t0 = performance.now()
     await Promise.all(this.compiling)
@@ -479,6 +508,9 @@ export class Realm {
     this.readyAt = performance.now()
     this.opts.onLoad?.(1)
     this.opts.onReady?.()
+    // the 2k close-up textures, one upload per frame, now that it shows
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    void upgradeTextures(this.tier, frame).then(() => this.buildTimes.push(['2k done at', Math.round(performance.now())]))
   }
 
   private placeSun(): void {
@@ -575,7 +607,7 @@ export class Realm {
 
   // a short fade up from dark once the island is there to see
   private wake(dt: number): number {
-    if (this.reduced) return 1
+    if (this.reduced || this.opts.instant) return this.ready ? 1 : 0
     if (!this.ready) return 0
     this.wakeT += dt
     return THREE.MathUtils.smoothstep(this.wakeT, 0, 0.7)
