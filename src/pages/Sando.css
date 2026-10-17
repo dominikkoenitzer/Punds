@@ -1,0 +1,247 @@
+.sando-root {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.sando-canvas {
+  position: absolute;
+  inset: 0;
+  /* a finger on the garden turns the head, it never scrolls the page */
+  touch-action: none;
+}
+
+.sando-cue {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  margin: 0;
+  text-align: center;
+  color: #f4ede2;
+  font: 14px/1 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.14em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+/* on a narrow screen the hint sits a line above the sound switch */
+@media (max-width: 600px) {
+  .sando-cue {
+    bottom: calc(max(18px, env(safe-area-inset-bottom)) + 34px);
+  }
+}
+
+.sando-cue[data-state='shown'] {
+  opacity: 0.7;
+}
+
+.sando-cue[data-state='gone'] {
+  opacity: 0;
+  transition-duration: 0.6s;
+}
+
+/* the links live on the plaques; this line of names in the top corner is
+   for screen readers, and shows only while the keyboard is on one of them */
+.sando-menu {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  left: max(24px, env(safe-area-inset-left));
+}
+
+.sando-menu:not(:focus-within) {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sando-menu h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sando-menu nav {
+  display: flex;
+  gap: 22px;
+}
+
+.sando-menu a {
+  padding: 6px 0;
+  color: #f4ede2;
+  font: 15px/1.2 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+  opacity: 0.72;
+  transition: opacity 0.3s ease;
+}
+
+.sando-menu a:hover,
+.sando-menu a:focus-visible {
+  opacity: 1;
+}
+
+.sando-menu a:focus-visible {
+  outline: 1px solid rgba(244, 237, 226, 0.6);
+  outline-offset: 5px;
+}
+
+/* the page's cursor over the scene */
+.sando-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.sando-dot[data-on='true'] {
+  opacity: 1;
+}
+
+.sando-dot::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(250, 244, 234, 0.92);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+}
+
+.sando-dot[data-state='point']::before {
+  transform: scale(1.9);
+  background: rgba(250, 244, 234, 0.16);
+  box-shadow: inset 0 0 0 0.7px rgba(250, 244, 234, 0.8), 0 0 6px rgba(0, 0, 0, 0.2);
+}
+
+.sando-dot[data-state='grab']::before {
+  transform: scale(0.7);
+}
+
+.sando-sound {
+  position: absolute;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  padding: 10px 6px;
+  border: 0;
+  background: none;
+  color: #f4ede2;
+  font: 13px/1 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  letter-spacing: 0.14em;
+  opacity: 0.42;
+  cursor: pointer;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.4s ease;
+}
+
+.sando-sound[aria-pressed='true'] {
+  opacity: 0.9;
+}
+
+.sando-sound:hover {
+  opacity: 0.75;
+}
+
+.sando-sound:focus-visible {
+  outline: 1px solid rgba(244, 237, 226, 0.6);
+  outline-offset: 2px;
+}
+
+.sando-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 18px;
+  text-align: center;
+  color: #f4ede2;
+  font: 18px/1.4 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+  /* the garden as a still, darkened in the middle where the links sit */
+  background:
+    radial-gradient(ellipse at center, rgba(14, 10, 8, 0.55), rgba(14, 10, 8, 0.15) 70%),
+    #1a1410 url('/realm/still.webp') center / cover no-repeat;
+}
+
+.sando-fallback h1 {
+  font: inherit;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+
+.sando-fallback nav {
+  display: grid;
+  gap: 10px;
+}
+
+.sando-fallback a {
+  color: inherit;
+}
+
+/* while the garden builds: a thin warm line that fills, then fades */
+.sando-load {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 140px;
+  height: 1px;
+  margin-left: -70px;
+  background: rgba(244, 237, 226, 0.12);
+  transition: opacity 0.8s ease;
+}
+
+.sando-load i {
+  position: absolute;
+  inset: 0;
+  background: rgba(244, 237, 226, 0.7);
+  transform-origin: left;
+  transition: transform 0.4s ease;
+}
+
+.sando-load[data-done='true'] {
+  opacity: 0;
+}
+
+/* the one sentence for screen readers */
+.sando-menu .sando-about {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* the start view as a picture until the scene is ready, then it fades over
+   the live frame; each is rendered at the widest shape whose field it shares,
+   so cover crops it exactly as the scene frames a narrower screen (see
+   POSTERS in Sando.tsx) */
+.sando-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+
+.sando-poster[data-done='true'] {
+  opacity: 0;
+}

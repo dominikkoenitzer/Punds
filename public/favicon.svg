@@ -1,8 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Copland OS">
-  <!-- A terminal prompt in the scene's own palette (--copland-void / --phosphor).
-       Chevron plus block cursor: pure geometry, still readable at 16px. -->
-  <rect width="32" height="32" rx="6" fill="#04101c"/>
-  <path d="M8 10.5 L13.5 16 L8 21.5" fill="none" stroke="#76e4ff"
-        stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="17.5" y="10" width="6.5" height="12" rx="1.25" fill="#76e4ff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <path d="M2.5 6.2 Q16 8.6 29.5 6.2 L29 9.4 Q16 11.4 3 9.4 Z" fill="#c8402a"/>
+  <rect x="5" y="9.6" width="22" height="2.1" fill="#1f1a17"/>
+  <rect x="4.6" y="13.4" width="22.8" height="2.4" rx="0.3" fill="#c8402a"/>
+  <path d="M7.6 9.8 h3 l0.5 19.4 h-4 Z" fill="#c8402a"/>
+  <path d="M21.4 9.8 h3 l0.5 19.4 h-4 Z" fill="#c8402a"/>
+  <rect x="14.8" y="10.8" width="2.4" height="2.8" fill="#c8402a"/>
+  <rect x="6.6" y="28.2" width="5" height="1.6" fill="#1f1a17"/>
+  <rect x="20.4" y="28.2" width="5" height="1.6" fill="#1f1a17"/>
 </svg>

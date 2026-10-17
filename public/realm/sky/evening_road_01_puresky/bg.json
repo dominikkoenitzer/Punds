@@ -1,0 +1,29 @@
+{
+  "k": 0.15205,
+  "elevationTop": 90,
+  "elevationBottom": -25,
+  "sunDirection": [
+    0.56087,
+    0.17271,
+    -0.80969
+  ],
+  "mapping": "image u in [0,1] left to right over 360 deg, v in [0,1] top to bottom over the full source sphere; azimuth a=(u-0.5)*2*pi, elevation e=(0.5-v)*pi; direction=[sin(a)cos(e), sin(e), -cos(a)cos(e)], so u=0.5 looks down -z, u=0.75 looks down +x, +y up. The webp holds only elevations +90 to -25 (its rows cover v from 0 to 0.6389 of the source).",
+  "encoding": "v = clamp((L*k)^(1/2.2), 0, 1), L linear radiance, 8-bit RGB",
+  "percentile": "99.5th percentile of Rec.709 luminance over the cropped pixels, sun disc (5 deg) excluded, unweighted; maps to 0.96",
+  "sunDirectionThreeEquirectUv": [
+    0.80969,
+    0.17271,
+    0.56087
+  ],
+  "sunDirectionThreeEquirectUvNote": "same sun expressed for three.js equirectUv (u=atan(z,x)/2pi+0.5, which puts u=0.5 at +x); use this one if the image is fed to three.js as an equirect texture unchanged",
+  "sunUV": [
+    0.59642,
+    0.44475
+  ],
+  "source": "evening_road_01_puresky_8k.hdr",
+  "sourceSize": [
+    8192,
+    4096
+  ],
+  "luminanceP995": 6.011868476867676
+}

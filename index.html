@@ -2,36 +2,55 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
-    <title>Copland OS Enterprise</title>
+    <title>Punds</title>
 
     <!-- Crawler metadata only. Everything below lives in <head> and renders
-         nothing: the page the visitor sees is unchanged. No og:image, because
-         there is no logo mark and inventing one would be worse than none. -->
-    <meta name="description" content="Punds is a personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
+         nothing: the page the visitor sees is unchanged. The share image is
+         the garden as the page opens on it. -->
+    <meta name="description" content="Punds is a personal hub: one page linking to everything I build, set in a quiet shrine garden on an island above the clouds." />
     <link rel="canonical" href="https://punds.ch/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Punds" />
     <meta property="og:url" content="https://punds.ch/" />
     <meta property="og:title" content="Punds" />
-    <meta property="og:description" content="A personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:description" content="A personal hub: one page linking to everything I build, set in a quiet shrine garden on an island above the clouds." />
+    <meta property="og:image" content="https://punds.ch/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://punds.ch/og.jpg" />
     <meta name="twitter:title" content="Punds" />
-    <meta name="twitter:description" content="A personal hub: one page linking to everything I build, rendered as a navigable 3D world styled after Copland OS." />
+    <meta name="twitter:description" content="A personal hub: one page linking to everything I build, set in a quiet shrine garden on an island above the clouds." />
     <script type="application/ld+json">
       {"@context":"https://schema.org","@type":"WebSite","name":"Punds","url":"https://punds.ch/","description":"A personal hub linking to a portfolio, source code and projects."}
     </script>
     <!-- Icon: browsers request /favicon.ico unprompted, so ship both rather
          than serve a 404 for it. -->
+    <!-- the start view, shown while the scene loads (see Sando.tsx) -->
+    <link rel="preload" as="image" href="/realm/poster-wide.webp" imagesrcset="/realm/poster-wide.webp 2592w, /realm/poster-wide-4k.webp 5184w" imagesizes="calc(100vh * 12 / 5)" fetchpriority="high" media="(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)" />
+    <link rel="preload" as="image" href="/realm/poster-tall.webp" fetchpriority="high" media="(max-aspect-ratio: 17/18)" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#1c1714" />
 
-    <!-- Font -->
-    <link rel="preload" href="/fonts/TrixieCyrG-Plain-Regular.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>Punds</h1>
+        <p>A quiet shrine garden on an island above the clouds.</p>
+        <nav>
+          <a href="https://dk.punds.ch">Portfolio</a>
+          <a href="https://github.com/dominikkoenitzer">GitHub</a>
+          <a href="https://senbon.vercel.app/">Senbon</a>
+        </nav>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
