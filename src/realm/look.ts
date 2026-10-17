@@ -50,6 +50,23 @@ export const PLACES: Record<Place, View> = {
   shrine: view(0, 2.3, -6.0, Math.PI * 2, 0.1, 10, 0.4, 0.14),
 }
 
+// On a tall screen the rack's view would have to take in the whole rack and
+// leave each link plaque a thumbnail. There the view steps up to the three
+// link plaques instead, a little from the left as the wide view does, so their
+// names fill the screen. In rack space: the plaques hang 0.11 m out from the
+// rails, their middle 1.42 m above the ground.
+export const RACK_TALL: View = (() => {
+  const c = Math.cos(EMA_RACK.rotation)
+  const s = Math.sin(EMA_RACK.rotation)
+  const world = (x: number, z: number) => ({ x: EMA_RACK.x + x * c + z * s, z: EMA_RACK.z - x * s + z * c })
+  const eye = world(-0.42, 0.11 + 1.9)
+  const at = world(0, 0.11)
+  const ground = groundHeight(EMA_RACK.x, EMA_RACK.z)
+  const yaw = Math.atan2(-(at.x - eye.x), -(at.z - eye.z))
+  const dist = Math.hypot(at.x - eye.x, at.z - eye.z)
+  return view(eye.x, ground + 1.5, eye.z, yaw, Math.atan2(1.42 - 1.5, dist), dist, 0.22, 0.08)
+})()
+
 const FLIGHT = 1.4 // seconds
 
 export interface Pose {
@@ -82,6 +99,8 @@ export class Look {
   private reduced: boolean
   // radians the centre view is turned to the right, on tall screens
   centreTurn = 0
+  // a tall screen, which gets the rack's view up close (RACK_TALL)
+  tall = false
 
   constructor(reduced: boolean) {
     this.reduced = reduced
@@ -89,6 +108,7 @@ export class Look {
   }
 
   get view(): View {
+    if (this.place === 'rack' && this.tall) return RACK_TALL
     return this.place ? PLACES[this.place] : CENTRE
   }
 

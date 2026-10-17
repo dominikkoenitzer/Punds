@@ -647,10 +647,13 @@ export class EmaRack implements RealmPart {
     // only the stronger gusts reach in under the little roof
     const gust = realmUniforms.uGust.value as number
     const stir = moving ? THREE.MathUtils.smoothstep(gust, 0.45, 0.9) : 0
+    // from the path the three new plaques catch a little more of the low sun
+    // than the weathered ones, so the eye finds them; up close they are wood
+    const far = THREE.MathUtils.smoothstep(Math.hypot(this.camLocal.x, this.camLocal.z), 3, 12)
     for (const p of this.plaques) {
       const active = p === this.hovered || p === this.armed
       p.focus += ((active ? 1 : 0) - p.focus) * Math.min(1, dt * 6)
-      if (p.glow) p.glow.emissiveIntensity = 0.06 + p.focus * 0.1
+      if (p.glow) p.glow.emissiveIntensity = 0.06 + far * 0.16 + p.focus * 0.1
     }
     // the pendulums in small fixed steps, so a knock is met where it happens
     const steps = Math.min(16, Math.ceil(dt / (1 / 240)))

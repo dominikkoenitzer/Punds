@@ -105,7 +105,6 @@ export class Realm {
   private hoveredPlace: Place | null = null
   private lastX = 0
   private baseFov = 50
-  private rackLens = 0
   private cursorKey = ''
   private lastY = 0
   private placeBoxes: Partial<Record<Place, THREE.Box3>> = {}
@@ -429,6 +428,7 @@ export class Realm {
     this.camera.updateProjectionMatrix()
     // the same screens that get the tall poster (see POSTERS in Sando.tsx)
     this.look.centreTurn = this.camera.aspect < 17 / 18 ? PORTRAIT_TURN : 0
+    this.look.tall = this.camera.aspect < 1
   }
 
   // add a part and refresh the shadow map so it casts
@@ -674,19 +674,6 @@ export class Realm {
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
     const pitch = pose.pitch + this.parallax.y * 0.015 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
-    // a tall screen sees less across: at the rack, where the plaques must
-    // all be in frame, the lens widens instead (stepping back would walk
-    // into the lantern behind)
-    if (this.camera.aspect < 1) {
-      const wide = Math.min(90, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(26)) / this.camera.aspect)))
-      // eased both ways, so flying home narrows the lens as smoothly
-      this.rackLens += ((this.look.place === 'rack' ? 1 : 0) - this.rackLens) * (1 - Math.exp(-dt * 2.5))
-      const fov = THREE.MathUtils.lerp(this.baseFov, Math.max(this.baseFov, wide), this.rackLens)
-      if (Math.abs(fov - this.camera.fov) > 0.01) {
-        this.camera.fov = fov
-        this.camera.updateProjectionMatrix()
-      }
-    }
     this.aimPoint.copy(this.camera.position).add(this.dir)
     this.camera.up.set(0, 1, 0)
     this.camera.lookAt(this.aimPoint)
