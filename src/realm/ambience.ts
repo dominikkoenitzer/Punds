@@ -153,6 +153,43 @@ export class Ambience {
     }
   }
 
+  // two boards of thin hinoki striking: a dry click of filtered noise over a
+  // short hollow tone, quieter for a light touch
+  knock(level: number, pan: number): void {
+    const ctx = this.ctx
+    if (!ctx || !this.master || !this.enabled || level < 0.04) return
+    const now = ctx.currentTime
+    const v = Math.min(1, level)
+    const out = ctx.createStereoPanner()
+    out.pan.value = Math.max(-1, Math.min(1, pan))
+    out.connect(this.master)
+    const len = Math.round(ctx.sampleRate * 0.05)
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.12))
+    const click = ctx.createBufferSource()
+    click.buffer = buf
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 1900 + Math.random() * 500
+    bp.Q.value = 2.2
+    const cg = ctx.createGain()
+    cg.gain.value = 0.11 * v
+    click.connect(bp).connect(cg).connect(out)
+    click.start(now)
+    const o = ctx.createOscillator()
+    const g = ctx.createGain()
+    const f = 720 + Math.random() * 120
+    o.frequency.setValueAtTime(f, now)
+    o.frequency.exponentialRampToValueAtTime(f * 0.92, now + 0.07)
+    g.gain.setValueAtTime(0, now)
+    g.gain.linearRampToValueAtTime(0.045 * v, now + 0.002)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08)
+    o.connect(g).connect(out)
+    o.start(now)
+    o.stop(now + 0.1)
+  }
+
   // a single drop: a short sine that falls in pitch, like water on water
   private drop(level: number): void {
     const ctx = this.ctx

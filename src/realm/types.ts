@@ -20,6 +20,13 @@ export interface Frame {
   progress: number
   // 1, or 0 under prefers-reduced-motion
   motion: number
+  // the garden's sounds, silent until the visitor turns them on
+  sound: RealmSound
+}
+
+export interface RealmSound {
+  // wood on wood: level 0..1 by the speed of the blow, pan -1..1
+  knock(level: number, pan: number): void
 }
 
 // parts the visitor can point at and click

@@ -198,7 +198,7 @@ export class Realm {
     this.sun.shadow.radius = 3
     this.scene.add(this.sun, this.sun.target)
 
-    this.frame = { t: 0, dt: 0, camera: this.camera, pointer: null, progress: 0, motion: this.reduced ? 0 : 1 }
+    this.frame = { t: 0, dt: 0, camera: this.camera, pointer: null, progress: 0, motion: this.reduced ? 0 : 1, sound: this.ambience }
     this.post = {
       exposure: 1,
       fogColor: new THREE.Color(),
