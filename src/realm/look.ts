@@ -32,6 +32,13 @@ const view = (x: number, y: number, z: number, yaw: number, pitch: number, focus
 // at the centre the head turns without end, round and round
 export const CENTRE = view(-0.3, 1.62, 9.6, Math.PI * 2, 0.03, 20, Infinity, 0.24)
 
+// A tall screen sees 38 degrees across, too little for both the hall and the
+// plaque rack 22 degrees to the right of the path, so there the centre view
+// starts turned a little toward the rack: the whole rack is in frame and the
+// hall still is. One turn for every tall screen, so one picture of the start
+// view (the tall poster) matches them all.
+export const PORTRAIT_TURN = 0.18
+
 export type Place = 'rack' | 'pond' | 'shrine'
 
 // the close views: the plaque rack as it is framed at the end of the old
@@ -73,6 +80,8 @@ export class Look {
   private tilt = 0
   private tilted = 0
   private reduced: boolean
+  // radians the centre view is turned to the right, on tall screens
+  centreTurn = 0
 
   constructor(reduced: boolean) {
     this.reduced = reduced
@@ -140,7 +149,7 @@ export class Look {
     this.dragged += (this.drag - this.dragged) * ease
     this.tilted += (this.tilt - this.tilted) * ease
     // and a breath of parallax, small enough that a pointed place stays put
-    const yaw = v.yaw - this.aimed.x * 0.04 - this.dragged
+    const yaw = v.yaw - (this.place ? 0 : this.centreTurn) - this.aimed.x * 0.04 - this.dragged
     const pitch = v.pitch + this.aimed.y * 0.025 + this.tilted
     if (this.flight >= 1) {
       this.pose.position.copy(v.position)

@@ -4,7 +4,7 @@ import { buildSky, sunKnown, type SkyResult } from './sky'
 import { prefetchScans } from './rocks'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
 import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
-import { Look, heading, type Place } from './look'
+import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
@@ -427,6 +427,8 @@ export class Realm {
     this.baseFov = Math.min(v, 72)
     this.camera.fov = this.baseFov
     this.camera.updateProjectionMatrix()
+    // the same screens that get the tall poster (see POSTERS in Sando.tsx)
+    this.look.centreTurn = this.camera.aspect < 17 / 18 ? PORTRAIT_TURN : 0
   }
 
   // add a part and refresh the shadow map so it casts
