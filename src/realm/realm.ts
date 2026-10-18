@@ -3,7 +3,7 @@ import { Pipeline, type PostParams } from './post'
 import { buildSky, sunKnown, type SkyResult } from './sky'
 import { prefetchScans } from './rocks'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
-import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
+import { prefetchSets, setMaxAnisotropy, setUploader, upgradeTextures } from './assets'
 import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
@@ -171,6 +171,9 @@ export class Realm {
     this.renderer.shadowMap.autoUpdate = false
     this.tier = opts.tier ?? detectTier(this.renderer)
     setMaxAnisotropy(Math.min(this.renderer.capabilities.getMaxAnisotropy(), this.tier === 'phone' ? 4 : 16))
+    setUploader((texture) => {
+      if (!this.disposed) this.renderer.initTexture(texture)
+    })
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.display = 'block'
     this.renderer.domElement.style.touchAction = 'none'
@@ -447,6 +450,27 @@ export class Realm {
     // would be built once for the screen and again for the target
     if (this.pendingCompile) this.pendingCompile.push(part.object)
     else this.compile(part.object)
+    this.upload(part.object)
+  }
+
+  // the part's ready textures go to the GPU now, while the load waits for
+  // the rest, instead of in a pile in the first frames
+  private upload(object: THREE.Object3D): void {
+    const seen = new Set<THREE.Texture>()
+    // pictures and data only: render targets and depth have nothing to upload
+    const add = (v: unknown) => {
+      const t = v as (THREE.Texture & { isDepthTexture?: boolean }) | null
+      if (t?.isTexture && t.version > 0 && t.image && !t.isRenderTargetTexture && !t.isDepthTexture) seen.add(t)
+    }
+    object.traverse((o) => {
+      const mats = (o as THREE.Mesh).material
+      if (!mats) return
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        for (const v of Object.values(m)) add(v)
+        for (const u of Object.values((m as THREE.ShaderMaterial).uniforms ?? {})) add((u as THREE.IUniform).value)
+      }
+    })
+    for (const t of seen) this.renderer.initTexture(t)
   }
 
   private compile(object: THREE.Object3D): void {
@@ -781,6 +805,7 @@ export class Realm {
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('popstate', this.onPopState)
     this.ambience.dispose()
+    setUploader(null)
     const el = this.renderer.domElement
     el.removeEventListener('pointermove', this.onPointerMove)
     el.removeEventListener('pointerdown', this.onPointerDown)

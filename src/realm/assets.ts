@@ -14,6 +14,13 @@ export interface PbrSet {
 
 const cache = new Map<string, Promise<THREE.Texture>>()
 let maxAnisotropy = 8
+// hands each image to the GPU as it arrives, while the load waits anyway,
+// rather than all at once in the first frames
+let upload: ((texture: THREE.Texture) => void) | null = null
+
+export function setUploader(f: ((texture: THREE.Texture) => void) | null): void {
+  upload = f
+}
 
 export function setMaxAnisotropy(value: number): void {
   maxAnisotropy = value
@@ -64,6 +71,7 @@ function load(url: string, color: boolean): Promise<THREE.Texture> {
       tex.wrapT = THREE.RepeatWrapping
       tex.anisotropy = maxAnisotropy
       tex.needsUpdate = true
+      upload?.(tex)
       return tex
     })
     cache.set(url, p)
