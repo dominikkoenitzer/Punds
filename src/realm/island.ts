@@ -139,6 +139,21 @@ export async function buildIsland(realm: Realm): Promise<void> {
   let sky = realm.skyInfo
   if (sky) hiddenFromClouds.push(sky.mesh)
   const steps: (() => Promise<RealmPart> | RealmPart)[] = [
+    async () => {
+      // first, so the clouds' programs build and warm up (see Skyscape.warm)
+      // while the ground's textures load; the sky itself arrives first
+      if (!sky) {
+        sky = await realm.skyReady
+        hiddenFromClouds.push(sky.mesh)
+      }
+      const [far, noise] = await Promise.all([baked('far', tier), baked('noise', tier)])
+      const skyscape = new Skyscape({ tier, far: unpackFar(far), noise })
+      // the cloud shader reads the panorama in its own convention, a quarter
+      // turn from three's equirect lookup
+      if (sky) skyscape.setSky(sky.panorama, { k: sky.k, yaw: -2 * Math.PI * sky.shift - Math.PI / 2 })
+      hiddenFromPond.push(skyscape.object)
+      return new Sheltered(skyscape, hiddenFromClouds)
+    },
     () => Terrain.create(tier),
     () => Stonework.create(tier),
     () => Torii.create(tier),
@@ -168,20 +183,6 @@ export async function buildIsland(realm: Realm): Promise<void> {
       hiddenFromClouds.push(grass.object)
       hiddenFromPond.push(grass.object)
       return grass
-    },
-    async () => {
-      // the island is built while the sky's images load
-      if (!sky) {
-        sky = await realm.skyReady
-        hiddenFromClouds.push(sky.mesh)
-      }
-      const [far, noise] = await Promise.all([baked('far', tier), baked('noise', tier)])
-      const skyscape = new Skyscape({ tier, far: unpackFar(far), noise })
-      // the cloud shader reads the panorama in its own convention, a quarter
-      // turn from three's equirect lookup
-      if (sky) skyscape.setSky(sky.panorama, { k: sky.k, yaw: -2 * Math.PI * sky.shift - Math.PI / 2 })
-      hiddenFromPond.push(skyscape.object)
-      return new Sheltered(skyscape, hiddenFromClouds)
     },
     () => {
       const pond = new Pond({ tier })

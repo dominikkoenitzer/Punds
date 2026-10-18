@@ -9,7 +9,7 @@ import type { Tier } from './types'
 // when no worker can start, or when it fails in one; the result is the same
 // either way.
 
-const ORDER: JobName[] = ['atlas-blossom', 'cherry', 'atlas-maple', 'maples', 'atlas-cedar', 'grove', 'grass', 'noise', 'far']
+const ORDER: JobName[] = ['far', 'noise', 'atlas-blossom', 'cherry', 'atlas-maple', 'maples', 'atlas-cedar', 'grove', 'grass']
 
 interface Job {
   name: JobName
