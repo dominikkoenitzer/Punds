@@ -150,7 +150,7 @@ export class Realm {
   private compiling: Promise<unknown>[] = []
   // parts are built while the sky loads; their programs compile once its
   // environment is set, so each is built for it only once
-  private pendingCompile: THREE.Object3D[] | null = null
+  private pendingCompile: RealmPart[] | null = null
   private skyResolve: (sky: SkyResult) => void = () => {}
   readonly skyReady = new Promise<SkyResult>((resolve) => (this.skyResolve = resolve))
   private warming = false
@@ -448,8 +448,8 @@ export class Realm {
     // driver works while the next part is being built
     // with the HDR target bound, as when it is drawn, or every program
     // would be built once for the screen and again for the target
-    if (this.pendingCompile) this.pendingCompile.push(part.object)
-    else this.compile(part.object)
+    if (this.pendingCompile) this.pendingCompile.push(part)
+    else this.prepare(part)
     this.upload(part.object)
   }
 
@@ -473,11 +473,24 @@ export class Realm {
     for (const t of seen) this.renderer.initTexture(t)
   }
 
-  private compile(object: THREE.Object3D): void {
+  private compile(object: THREE.Object3D): Promise<unknown> {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
-    this.compiling.push(this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {}))
+    const done = this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {})
+    this.compiling.push(done)
     this.renderer.setRenderTarget(before)
+    return done
+  }
+
+  // compile a part's programs, then let it warm up (see RealmPart.warm)
+  private prepare(part: RealmPart): void {
+    const compiled = this.compile(part.object)
+    if (!part.warm) return
+    this.compiling.push(
+      compiled.then(() => {
+        if (!this.disposed && !this.ready) part.warm?.(this.renderer)
+      }),
+    )
   }
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
@@ -503,7 +516,7 @@ export class Realm {
       this.skyResolve(s)
       const pending = this.pendingCompile ?? []
       this.pendingCompile = null
-      for (const o of pending) this.compile(o)
+      for (const p of pending) this.prepare(p)
     })
     await Promise.race([sunKnown, sky])
     if (this.disposed) return

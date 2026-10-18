@@ -108,6 +108,10 @@ class Sheltered implements RealmPart {
     this.part.update(frame)
   }
 
+  warm(renderer: THREE.WebGLRenderer): void {
+    this.part.warm?.(renderer)
+  }
+
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const was = this.hidden.map((o) => o.visible)
     for (const o of this.hidden) o.visible = false

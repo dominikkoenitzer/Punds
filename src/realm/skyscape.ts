@@ -1807,6 +1807,18 @@ export class Skyscape implements RealmPart {
     this.drift.y += w.y * frame.dt * 1.2 * frame.motion
   }
 
+  // The cloud march is a large shader, and the first time it draws, the
+  // graphics driver spends well over a second on it (measured: one draw, its
+  // program already built). One draw into the still tiny trace target as soon
+  // as the programs exist does that work while the load waits anyway,
+  // instead of in the first frame. The trace is redrawn whole before it shows.
+  warm(renderer: THREE.WebGLRenderer): void {
+    const prev = renderer.getRenderTarget()
+    renderer.setRenderTarget(this.cloudTarget)
+    renderer.render(this.marchScene, this.marchCamera)
+    renderer.setRenderTarget(prev)
+  }
+
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const bg = scene.background
     if (bg && (bg as THREE.Texture).isTexture && (bg as THREE.Texture).mapping === THREE.EquirectangularReflectionMapping) {
