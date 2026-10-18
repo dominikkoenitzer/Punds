@@ -98,7 +98,7 @@ export default function Sando() {
     let cancelled = false
     void (async () => {
       try {
-        const [{ Realm }, { buildIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island')])
+        const [{ Realm }, { buildIsland, prepareIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island')])
         if (cancelled) return
         realm = new Realm(container, {
           instant: poster !== null,
@@ -115,6 +115,7 @@ export default function Sando() {
         })
         realmRef.current = realm
         if (new URLSearchParams(location.search).has('debug')) window.__realm = realm
+        prepareIsland(realm.tier)
         await realm.start(buildIsland)
       } catch (err) {
         console.error(err)

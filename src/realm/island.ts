@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Realm } from './realm'
 import type { Frame, RealmPart } from './types'
-import { groundHeight, POND_LEVEL, pondSdf, CHERRY, MAPLES } from './layout'
+import { groundHeight, POND_LEVEL, pondSdf, MAPLES } from './layout'
 import { Terrain } from './terrain'
 import { Stonework } from './stonework'
 import { Torii } from './torii'
@@ -14,7 +14,9 @@ import { Rocks } from './rocks'
 import { Roots } from './roots'
 import { Pond } from './pond'
 import { Plants } from './plants'
-import { CedarGrove, CherryTree, MapleTree, Petals } from './trees'
+import { CedarGrove, CherryTree, MapleTree, Petals, provideAtlas } from './trees'
+import { baked, startBakes } from './bake'
+import { cherryOpts, mapleOpts, unpackFar, unpackGrove, unpackTree, type PackedTree } from './bakeJobs'
 
 // What the island is made of, in the order it is built. Each step yields to
 // the browser so the waking view keeps its frame rate while the rest loads.
@@ -118,8 +120,14 @@ class Sheltered implements RealmPart {
   }
 }
 
+// starts the build's background work, as early in the load as the tier is known
+export function prepareIsland(tier: Realm['tier']): void {
+  startBakes(tier)
+}
+
 export async function buildIsland(realm: Realm): Promise<void> {
   const tier = realm.tier
+  let maples: PackedTree[] | null = null
   const pointer = new PointerGround()
   realm.add(pointer)
   const hiddenFromClouds: THREE.Object3D[] = []
@@ -136,12 +144,22 @@ export async function buildIsland(realm: Realm): Promise<void> {
     () => Rocks.create(tier),
     () => Roots.create(tier),
     () => Plants.create(tier),
-    () => new CherryTree({ tier, x: CHERRY.x, z: CHERRY.z, height: CHERRY.height, spread: CHERRY.spread, lean: CHERRY.lean, seed: 11 }),
-    ...MAPLES.map((m, i) => () => new MapleTree({ tier, x: m.x, z: m.z, height: m.height, spread: m.spread, seed: 21 + i })),
-    () => new CedarGrove({ tier }),
+    async () => {
+      provideAtlas('blossom', tier, await baked('atlas-blossom', tier))
+      return new CherryTree(cherryOpts(tier), unpackTree(await baked('cherry', tier)))
+    },
+    ...MAPLES.map((_, i) => async () => {
+      if (i === 0) provideAtlas('maple', tier, await baked('atlas-maple', tier))
+      maples ??= await baked('maples', tier)
+      return new MapleTree(mapleOpts(tier)[i]!, unpackTree(maples[i]!))
+    }),
+    async () => {
+      provideAtlas('cedar', tier, await baked('atlas-cedar', tier))
+      return new CedarGrove({ tier }, unpackGrove(await baked('grove', tier)))
+    },
     () => new Petals({ tier }),
-    () => {
-      const grass = new Grass({ tier })
+    async () => {
+      const grass = new Grass({ tier, tiles: await baked('grass', tier) })
       pointer.listenGround(grass)
       hiddenFromClouds.push(grass.object)
       hiddenFromPond.push(grass.object)
@@ -153,7 +171,8 @@ export async function buildIsland(realm: Realm): Promise<void> {
         sky = await realm.skyReady
         hiddenFromClouds.push(sky.mesh)
       }
-      const skyscape = new Skyscape({ tier })
+      const [far, noise] = await Promise.all([baked('far', tier), baked('noise', tier)])
+      const skyscape = new Skyscape({ tier, far: unpackFar(far), noise })
       // the cloud shader reads the panorama in its own convention, a quarter
       // turn from three's equirect lookup
       if (sky) skyscape.setSky(sky.panorama, { k: sky.k, yaw: -2 * Math.PI * sky.shift - Math.PI / 2 })
