@@ -101,10 +101,22 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '1k'}.hdr`
   // the picture is decoded off the main thread and goes to the GPU at once,
   // not on the first frame
-  const [image, hdr] = await Promise.all([
+  const loading = Promise.all([
     bitmap(bgUrl, 'auto', SKY_RANK),
     inTurn(SKY_RANK, () => new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)),
   ])
+  // The light's prefiltering builds its programs, synchronously, the first
+  // time it runs, and they depend on the panorama's size. Run it once on a
+  // blank panorama of that size while the files download, so the real one
+  // below finds them built.
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const envWidth = tier === 'phone' ? 512 : 1024
+  const blank = new THREE.DataTexture(new Float32Array(envWidth * (envWidth / 2) * 4), envWidth, envWidth / 2, THREE.RGBAFormat, THREE.FloatType)
+  blank.mapping = THREE.EquirectangularReflectionMapping
+  blank.needsUpdate = true
+  pmrem.fromEquirectangular(blank).dispose()
+  blank.dispose()
+  const [image, hdr] = await loading
   const bg = new THREE.Texture(image)
   bg.flipY = !BITMAP
   bg.needsUpdate = true
@@ -148,7 +160,6 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   env.mapping = THREE.EquirectangularReflectionMapping
   env.colorSpace = THREE.LinearSRGBColorSpace
   env.needsUpdate = true
-  const pmrem = new THREE.PMREMGenerator(renderer)
   const environment = pmrem.fromEquirectangular(env).texture
   pmrem.dispose()
   env.dispose()
