@@ -488,6 +488,7 @@ export class Realm {
     this.buildTimes.push(['start at', Math.round(ts)])
     prefetchSets(this.tier)
     prefetchScans(this.tier)
+    this.compiling.push(this.pipeline.precompile().catch(() => {}))
     // the sky loads while the island is built; the build only needs the
     // sun's direction, which comes before the sky's images
     this.pendingCompile = []
