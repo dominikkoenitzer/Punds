@@ -512,6 +512,11 @@ export class Realm {
     await sky
     if (this.disposed) return
     let t0 = performance.now()
+    // materials that changed after their part was added (the barks take
+    // their scanned maps a moment later) need a new program; compile the
+    // whole scene once more, so those build in parallel too instead of on the
+    // first frame. Programs that are current are only looked up.
+    this.compile(this.scene)
     await Promise.all(this.compiling)
     if (this.disposed) return
     this.buildTimes.push(['compile', Math.round(performance.now() - t0)])
