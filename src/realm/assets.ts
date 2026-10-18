@@ -24,8 +24,9 @@ export function getMaxAnisotropy(): number {
 }
 
 // Older Safari and Firefox ignore the options below and would hand the maps
-// over upside down; they decode through an image element as before
-const BITMAP = (() => {
+// over upside down; they decode through an image element as before. Where
+// this is true the decoded image is already flipped for the GPU.
+export const BITMAP = (() => {
   if (typeof createImageBitmap === 'undefined') return false
   const ua = navigator.userAgent
   const safari = /^((?!chrome|android).)*safari/i.test(ua) ? /Version\/(\d+)/.exec(ua) : undefined
@@ -36,8 +37,8 @@ const BITMAP = (() => {
 // Fetched at low priority, so the sky and the page go first, and decoded off
 // the main thread: an image element is decoded on the main thread during the
 // upload, which is where most of the long tasks came from.
-async function bitmap(url: string): Promise<ImageBitmap | HTMLImageElement> {
-  const res = await fetch(url, { priority: 'low' } as RequestInit)
+export async function bitmap(url: string, priority: 'low' | 'auto' = 'low'): Promise<ImageBitmap | HTMLImageElement> {
+  const res = await fetch(url, { priority } as RequestInit)
   if (!res.ok) throw new Error(`${res.status} ${url}`)
   const blob = await res.blob()
   if (BITMAP) return createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' })

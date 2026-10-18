@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { SUN_DIRECTION } from './atmosphere'
+import { BITMAP, bitmap } from './assets'
 import type { Tier } from './types'
 
 // The sky is a photographed panorama. Two versions of it ship: a small HDR
@@ -98,16 +99,19 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   // image lighting needs little resolution: 1k lights the start view as 2k
   // does (measured) at a quarter of the download; phones take the smallest
   const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '1k'}.hdr`
-  const [bg, hdr] = await Promise.all([
-    new THREE.TextureLoader().loadAsync(bgUrl),
-    new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl),
-  ])
+  // the picture is decoded off the main thread and goes to the GPU at once,
+  // not on the first frame
+  const [image, hdr] = await Promise.all([bitmap(bgUrl, 'auto'), new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)])
+  const bg = new THREE.Texture(image)
+  bg.flipY = !BITMAP
+  bg.needsUpdate = true
   bg.colorSpace = THREE.NoColorSpace
   bg.wrapS = THREE.RepeatWrapping
   bg.wrapT = THREE.ClampToEdgeWrapping
   bg.generateMipmaps = true
   bg.minFilter = THREE.LinearMipmapLinearFilter
   bg.anisotropy = renderer.capabilities.getMaxAnisotropy()
+  renderer.initTexture(bg)
 
   // Turn the HDR the same way and clip its sun: the directional light is the
   // sun, and lighting with both would light every shadow from the sun side.
