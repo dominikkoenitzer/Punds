@@ -35,9 +35,20 @@ const POSTERS = [
   { media: '(max-aspect-ratio: 17/18)', src: '/realm/poster-tall.webp', srcSet: '/realm/poster-tall.webp 948w', sizes: '100vw' },
 ]
 
+// resolves once the start picture is on screen (decoded and painted), or at
+// once without one
+function pictureShown(img: HTMLImageElement | null): Promise<void> {
+  if (!img) return Promise.resolve()
+  return img
+    .decode()
+    .catch(() => {})
+    .then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+}
+
 export default function Sando() {
   const containerRef = useRef<HTMLDivElement>(null)
   const realmRef = useRef<Realm | null>(null)
+  const posterRef = useRef<HTMLImageElement>(null)
   const [noScene, setNoScene] = useState(() => !supportsWebGL2())
   const [sound, setSound] = useState(false)
   // the one hint: shown once the garden is there, gone at the first look
@@ -102,6 +113,7 @@ export default function Sando() {
         if (cancelled) return
         realm = new Realm(container, {
           instant: poster !== null,
+          shown: pictureShown(posterRef.current),
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           onTooSlow: () => {
             if (!cancelled) setNoScene(true)
@@ -133,7 +145,7 @@ export default function Sando() {
   return (
     <div className="sando-root">
       <div aria-hidden="true" className="sando-canvas" ref={containerRef} />
-      {!noScene && poster && <img aria-hidden="true" className="sando-poster" data-done={load >= 1} src={poster.src} srcSet={poster.srcSet} sizes={poster.sizes} alt="" fetchPriority="high" />}
+      {!noScene && poster && <img ref={posterRef} aria-hidden="true" className="sando-poster" data-done={load >= 1} src={poster.src} srcSet={poster.srcSet} sizes={poster.sizes} alt="" fetchPriority="high" />}
       {!noScene && (
         <div aria-hidden="true" className="sando-load" data-done={load >= 1}>
           <i style={{ transform: `scaleX(${Math.max(0.04, load)})` }} />

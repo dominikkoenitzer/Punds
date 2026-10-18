@@ -84,7 +84,7 @@ function azimuthOf(x: number, z: number): number {
 let sunKnownResolve: () => void = () => {}
 export const sunKnown = new Promise<void>((resolve) => (sunKnownResolve = resolve))
 
-export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunColor: THREE.Color): Promise<SkyResult> {
+export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunColor: THREE.Color, shown: Promise<void> = Promise.resolve()): Promise<SkyResult> {
   const base = `/realm/sky/${SKY}`
   const info: SkyInfo = await (await fetch(`${base}/bg.json`)).json()
   const [sx, sy, sz] = info.sunDirectionThreeEquirectUv
@@ -106,16 +106,20 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
     inTurn(SKY_RANK, () => new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)),
   ])
   // The light's prefiltering builds its programs, synchronously, the first
-  // time it runs, and they depend on the panorama's size. Run it once on a
-  // blank panorama of that size while the files download, so the real one
-  // below finds them built.
+  // time it runs, and they depend on the panorama's size. Once the start
+  // picture is on screen (the build would hold up its first paint), run it on
+  // a blank panorama of that size while the files download, so the real one
+  // below finds them built. If the files are faster, it just runs once.
   const pmrem = new THREE.PMREMGenerator(renderer)
-  const envWidth = tier === 'phone' ? 512 : 1024
-  const blank = new THREE.DataTexture(new Float32Array(envWidth * (envWidth / 2) * 4), envWidth, envWidth / 2, THREE.RGBAFormat, THREE.FloatType)
-  blank.mapping = THREE.EquirectangularReflectionMapping
-  blank.needsUpdate = true
-  pmrem.fromEquirectangular(blank).dispose()
-  blank.dispose()
+  const first = await Promise.race([shown.then(() => 'shown' as const), loading.then(() => 'loaded' as const)])
+  if (first === 'shown') {
+    const envWidth = tier === 'phone' ? 512 : 1024
+    const blank = new THREE.DataTexture(new Float32Array(envWidth * (envWidth / 2) * 4), envWidth, envWidth / 2, THREE.RGBAFormat, THREE.FloatType)
+    blank.mapping = THREE.EquirectangularReflectionMapping
+    blank.needsUpdate = true
+    pmrem.fromEquirectangular(blank).dispose()
+    blank.dispose()
+  }
   const [image, hdr] = await loading
   const bg = new THREE.Texture(image)
   bg.flipY = !BITMAP

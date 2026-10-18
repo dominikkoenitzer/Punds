@@ -31,6 +31,9 @@ export interface RealmOptions {
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
+  // resolves once that picture is on screen; work that would hold up its
+  // first paint waits for it
+  shown?: Promise<void>
 }
 
 export type CursorState = 'idle' | 'point' | 'grab'
@@ -505,7 +508,7 @@ export class Realm {
     // the sky loads while the island is built; the build only needs the
     // sun's direction, which comes before the sky's images
     this.pendingCompile = []
-    const sky = buildSky(this.renderer, this.tier, this.sunColor).then((s) => {
+    const sky = buildSky(this.renderer, this.tier, this.sunColor, this.opts.shown).then((s) => {
       if (this.disposed) return
       this.sky = s
       this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
