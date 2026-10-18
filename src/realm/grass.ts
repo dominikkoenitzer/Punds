@@ -44,6 +44,19 @@ export const LAWN_FLOOR_TINT = new THREE.Color(0.3, 0.52, 0.16)
 // where the visitor's eyes first open (the wake-up camera on the landing)
 const OPENING = { x: 1.6, z: 21 }
 
+// one tile's blades as plain numbers, so the lawn can be laid out in a
+// worker: per instance root (xyz relative to the tile centre, yaw), shape
+// (height, width, bend, seed) and tone (wear, straw, dark clump, seed head)
+export interface GrassTile {
+  roots: Float32Array
+  shapes: Float32Array
+  tones: Float32Array
+  count: number
+  // the blades' bounds with room for sway, relative to the centre
+  box: [number, number, number, number, number, number]
+  centre: [number, number, number]
+}
+
 interface Tile {
   mesh: THREE.Mesh
   geometry: THREE.InstancedBufferGeometry
@@ -354,13 +367,13 @@ export class Grass implements RealmPart {
   private pointerSeen = false
   private readonly shared: ReturnType<typeof bladeGeometry>
 
-  constructor(opts: { tier: Tier }) {
+  constructor(opts: { tier: Tier; tiles?: GrassTile[] }) {
     this.settings = TIERS[opts.tier]
     this.object.name = 'grass'
     this.fade = { value: new THREE.Vector2(this.settings.fadeStart, this.settings.fadeEnd) }
     this.shared = bladeGeometry(this.settings.segments, this.settings.strips)
     this.material = this.createMaterial(opts.tier === 'phone')
-    this.build()
+    this.build(opts.tiles ?? grassTiles(opts.tier))
   }
 
   // The ground point under the cursor, or null when there is none; blades
@@ -463,206 +476,215 @@ export class Grass implements RealmPart {
     return material
   }
 
-  private build(): void {
-    const s = this.settings
-    const size = s.tile
-    const x0 = -ISLAND_RX * 1.2
-    const z0 = -ISLAND_RZ * 1.2
-    const nx = Math.ceil((ISLAND_RX * 2.4) / size)
-    const nz = Math.ceil((ISLAND_RZ * 2.4) / size)
-
-    // The visitor stays on the path, so the lawn near it gets more of the
-    // budget than the far margins.
-    // density by distance from the walk (the path from the landing up to the
-    // shrine), which is where the camera always is; phones spend nearly all
-    // of their blades in the first metres beside it and thin the rest out
-    const bias = (x: number, z: number) => {
-      const wz = Math.max(-16, Math.min(23, z))
-      const d = Math.hypot(x, z - wz)
-      // the pond and the cherry are looked at from the walk across 5 to 9 m,
-      // so their surroundings count as near too
-      const pond = 1 - smooth(3.0, 4.5, pondSdf(x, z))
-      const cherry = 1 - smooth(4.0, 6.0, Math.hypot(x - CHERRY.x, z - CHERRY.z))
-      const far = smooth(s.near[0], s.near[1], d) * (1 - Math.max(pond, cherry))
-      // the far sides and back corners are only ever seen from a distance
-      const remote = Math.max(smooth(9, 12, x), smooth(-11, -14, z) * smooth(7, 10, Math.abs(x)))
-      const open = 1 - smooth(4.5, 7.5, Math.hypot(x - OPENING.x, z - OPENING.z))
-      return (1 - (1 - s.focus) * far) * (1 - remote * (1 - s.focus) * 0.65) * (1 + (s.landing - 1) * open)
-    }
-
-    // lawnWeight on a 10 cm grid, and beside it the distance to the nearest
-    // ground without grass, so every border (path, gravel, the terrace wall,
-    // the water) can fade the lawn out over the same width
-    const cell = 0.1
-    const gx = Math.ceil((nx * size) / cell) + 2
-    const gz = Math.ceil((nz * size) / cell) + 2
-    const lawn = new Float32Array(gx * gz)
-    const edge = new Float32Array(gx * gz)
-    for (let iz = 0; iz < gz; iz++) {
-      for (let ix = 0; ix < gx; ix++) {
-        const i = iz * gx + ix
-        const w = lawnWeight(x0 + ix * cell, z0 + iz * cell)
-        lawn[i] = w
-        edge[i] = w < 0.35 ? 0 : 1e3
-      }
-    }
-    const diag = cell * Math.SQRT2
-    for (let iz = 1; iz < gz; iz++) {
-      for (let ix = 1; ix < gx - 1; ix++) {
-        const i = iz * gx + ix
-        edge[i] = Math.min(edge[i], edge[i - 1] + cell, edge[i - gx] + cell, edge[i - gx - 1] + diag, edge[i - gx + 1] + diag)
-      }
-    }
-    for (let iz = gz - 2; iz >= 0; iz--) {
-      for (let ix = gx - 2; ix > 0; ix--) {
-        const i = iz * gx + ix
-        edge[i] = Math.min(edge[i], edge[i + 1] + cell, edge[i + gx] + cell, edge[i + gx + 1] + diag, edge[i + gx - 1] + diag)
-      }
-    }
-    const sample = (grid: Float32Array, x: number, z: number) => {
-      const fx = Math.max(0, Math.min(gx - 1.001, (x - x0) / cell))
-      const fz = Math.max(0, Math.min(gz - 1.001, (z - z0) / cell))
-      const ix = Math.floor(fx)
-      const iz = Math.floor(fz)
-      const tx = fx - ix
-      const tz = fz - iz
-      const i = iz * gx + ix
-      const a = grid[i] + (grid[i + 1] - grid[i]) * tx
-      const b = grid[i + gx] + (grid[i + gx + 1] - grid[i + gx]) * tx
-      return a + (b - a) * tz
-    }
-    // 0 at a border, 1 from 0.45 m into the lawn
-    const inset = (x: number, z: number) => smooth(0.0, 0.45, sample(edge, x, z))
-
-    const weights = new Float32Array(nx * nz)
-    let total = 0
-    const step = 0.5
-    for (let iz = 0; iz < nz; iz++) {
-      for (let ix = 0; ix < nx; ix++) {
-        let w = 0
-        for (let sz = step / 2; sz < size; sz += step) {
-          for (let sx = step / 2; sx < size; sx += step) {
-            const x = x0 + ix * size + sx
-            const z = z0 + iz * size + sz
-            w += sample(lawn, x, z) * bias(x, z) * (1 + longness(x, z))
-          }
-        }
-        weights[iz * nx + ix] = w
-        total += w
-      }
-    }
-    if (total <= 0) return
-
-    const rand = rng(0x6a55)
-    const bounds = new THREE.Box3()
-    const sphere = new THREE.Sphere()
-
-    for (let iz = 0; iz < nz; iz++) {
-      for (let ix = 0; ix < nx; ix++) {
-        const tw = weights[iz * nx + ix]
-        if (tw <= 0) continue
-        const target = Math.round((s.blades * tw) / total)
-        if (target < 8) continue
-        const tx = x0 + ix * size
-        const tz = z0 + iz * size
-        const cx = tx + size / 2
-        const cz = tz + size / 2
-        const cy = groundHeight(cx, cz)
-        const roots = new Float32Array(target * 4)
-        const shapes = new Float32Array(target * 4)
-        const tones = new Float32Array(target * 4)
-        let n = 0
-        let tries = 0
-        bounds.makeEmpty()
-        while (n < target && tries < target * 40) {
-          tries++
-          const px = tx + rand() * size
-          const pz = tz + rand() * size
-          const lw = sample(lawn, px, pz)
-          const long = longness(px, pz)
-          // the long margins are let grow full, even where the lawn thins
-          if (lw <= 0.02 || rand() > Math.min(1, lw * (1 + 1.5 * long)) * bias(px, pz)) continue
-          // the rare loose clump left standing in the mown lawn
-          const clump = rand() < 0.006
-          const loose = Math.max(long, clump ? 0.65 + rand() * 0.35 : 0)
-          // mown height drifts a little across the lawn, as real mowing does
-          // worn, shorter grass along the path edges and under the trees
-          const shade = wornness(px, pz)
-          const kerb = (1 - smooth(0.0, 1.1, sample(edge, px, pz))) * (1 - long)
-          const wear = Math.max(shade, kerb)
-          // darker, denser clumps; the rest of the tile gives way to them
-          const dark = smooth(0.55, 0.7, fbm2(px * 0.7 - 3.3, pz * 0.7 + 8.8, 2)) * (1 - wear)
-          // the shade under the trees thins the grass a little; worn path edges stay full but short
-          if (rand() > (0.75 + 0.25 * dark) * (1 - 0.1 * shade)) continue
-          const patchH = 0.8 + 0.45 * fbm2(px * 0.3 + 12.1, pz * 0.3 - 6.4, 2)
-          const mown = (0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025) * patchH * (1 - 0.45 * kerb) * (1 - 0.15 * shade) * (1 + 0.15 * dark) * (1 + (s.cover - 1) * 0.4)
-          const tuftHeight = mown + (0.25 + rand() * 0.22 - mown) * loose
-          // most blades grow in small tufts that splay outwards; where an
-          // instance already draws a tuft, roots spread evenly instead
-          const tufted = s.strips > 1 ? 0.15 : 0.7
-          let tuft = rand() < tufted ? 2 + Math.floor(rand() * (s.strips > 1 ? 2 : 5)) : 1
-          if (clump) tuft = Math.ceil((5 + rand() * 6) / s.strips)
-          else if (loose > 0.4) tuft = Math.max(tuft, Math.ceil((4 + rand() * 4) / s.strips))
-          const spread = (0.025 + rand() * 0.05) * (1 + loose)
-          // a hint of straw in the long fringe, and the odd seed head
-          const dry = loose > 0.4 && rand() < 0.35 ? (0.4 + 0.6 * rand()) * loose : 0
-          for (let b = 0; b < tuft && n < target; b++) {
-            const a = rand() * Math.PI * 2
-            const r = tuft === 1 ? 0 : spread * Math.sqrt(rand())
-            const bx = Math.min(tx + size, Math.max(tx, px + Math.cos(a) * r))
-            const bz = Math.min(tz + size, Math.max(tz, pz + Math.sin(a) * r))
-            const bw = tuft === 1 ? lw : sample(lawn, bx, bz)
-            // towards every border the lawn thins and shortens instead of
-            // stopping at full height
-            const fade = inset(bx, bz)
-            if (bw <= 0.02 || rand() > Math.min(1, bw * (1 + 1.5 * long)) * (0.2 + 0.8 * fade)) continue
-            const by = groundHeight(bx, bz) - 0.012
-            const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
-            const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
-            const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen * (s.cover + (1 - s.cover) * loose)
-            const head = loose > 0.55 && rand() < 0.07 ? 1 : 0
-            const bendAmt = (0.1 + rand() * 0.3 + loose * 0.35) * (head ? 0.45 : 1)
-            const i = n * 4
-            roots[i] = bx - cx
-            roots[i + 1] = by - cy
-            roots[i + 2] = bz - cz
-            roots[i + 3] = yaw
-            shapes[i] = head ? Math.min(0.55, height * 1.15) : height
-            shapes[i + 1] = width
-            shapes[i + 2] = bendAmt
-            shapes[i + 3] = rand()
-            tones[i] = wear
-            tones[i + 1] = dry
-            tones[i + 2] = dark
-            tones[i + 3] = head
-            bounds.expandByPoint(sphere.center.set(roots[i], roots[i + 1], roots[i + 2]))
-            n++
-          }
-        }
-        if (n === 0) continue
-        // room for the tallest blade and its sway in every direction
-        bounds.expandByVector(sphere.center.set(0.6, 0.6, 0.6))
-        const geometry = new THREE.InstancedBufferGeometry()
-        geometry.setIndex(this.shared.index)
-        geometry.setAttribute('position', this.shared.position)
-        geometry.setAttribute('normal', this.shared.normal)
-        geometry.setAttribute('aRoot', new THREE.InstancedBufferAttribute(roots.subarray(0, n * 4), 4))
-        geometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(shapes.subarray(0, n * 4), 4))
-        geometry.setAttribute('aTone', new THREE.InstancedBufferAttribute(tones.subarray(0, n * 4), 4))
-        geometry.instanceCount = n
-        geometry.boundingBox = bounds.clone()
-        geometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere())
-        const mesh = new THREE.Mesh(geometry, this.material)
-        mesh.onBeforeRender = this.readViewHeight
-        mesh.position.set(cx, cy, cz)
-        mesh.castShadow = false
-        mesh.receiveShadow = true
-        mesh.matrixAutoUpdate = false
-        mesh.updateMatrix()
-        this.object.add(mesh)
-        const center = geometry.boundingSphere.center.clone().add(mesh.position)
-        this.tiles.push({ mesh, geometry, center, radius: geometry.boundingSphere.radius })
-      }
+  private build(tiles: GrassTile[]): void {
+    for (const t of tiles) {
+      const geometry = new THREE.InstancedBufferGeometry()
+      geometry.setIndex(this.shared.index)
+      geometry.setAttribute('position', this.shared.position)
+      geometry.setAttribute('normal', this.shared.normal)
+      geometry.setAttribute('aRoot', new THREE.InstancedBufferAttribute(t.roots.subarray(0, t.count * 4), 4))
+      geometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(t.shapes.subarray(0, t.count * 4), 4))
+      geometry.setAttribute('aTone', new THREE.InstancedBufferAttribute(t.tones.subarray(0, t.count * 4), 4))
+      geometry.instanceCount = t.count
+      const bounds = new THREE.Box3(new THREE.Vector3(t.box[0], t.box[1], t.box[2]), new THREE.Vector3(t.box[3], t.box[4], t.box[5]))
+      geometry.boundingBox = bounds
+      geometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere())
+      const mesh = new THREE.Mesh(geometry, this.material)
+      mesh.onBeforeRender = this.readViewHeight
+      mesh.position.set(t.centre[0], t.centre[1], t.centre[2])
+      mesh.castShadow = false
+      mesh.receiveShadow = true
+      mesh.matrixAutoUpdate = false
+      mesh.updateMatrix()
+      this.object.add(mesh)
+      const center = geometry.boundingSphere.center.clone().add(mesh.position)
+      this.tiles.push({ mesh, geometry, center, radius: geometry.boundingSphere.radius })
     }
   }
+}
+
+export function grassTiles(tier: Tier): GrassTile[] {
+  const s = TIERS[tier]
+  const size = s.tile
+  const x0 = -ISLAND_RX * 1.2
+  const z0 = -ISLAND_RZ * 1.2
+  const nx = Math.ceil((ISLAND_RX * 2.4) / size)
+  const nz = Math.ceil((ISLAND_RZ * 2.4) / size)
+
+  // The visitor stays on the path, so the lawn near it gets more of the
+  // budget than the far margins.
+  // density by distance from the walk (the path from the landing up to the
+  // shrine), which is where the camera always is; phones spend nearly all
+  // of their blades in the first metres beside it and thin the rest out
+  const bias = (x: number, z: number) => {
+    const wz = Math.max(-16, Math.min(23, z))
+    const d = Math.hypot(x, z - wz)
+    // the pond and the cherry are looked at from the walk across 5 to 9 m,
+    // so their surroundings count as near too
+    const pond = 1 - smooth(3.0, 4.5, pondSdf(x, z))
+    const cherry = 1 - smooth(4.0, 6.0, Math.hypot(x - CHERRY.x, z - CHERRY.z))
+    const far = smooth(s.near[0], s.near[1], d) * (1 - Math.max(pond, cherry))
+    // the far sides and back corners are only ever seen from a distance
+    const remote = Math.max(smooth(9, 12, x), smooth(-11, -14, z) * smooth(7, 10, Math.abs(x)))
+    const open = 1 - smooth(4.5, 7.5, Math.hypot(x - OPENING.x, z - OPENING.z))
+    return (1 - (1 - s.focus) * far) * (1 - remote * (1 - s.focus) * 0.65) * (1 + (s.landing - 1) * open)
+  }
+
+  // lawnWeight on a 10 cm grid, and beside it the distance to the nearest
+  // ground without grass, so every border (path, gravel, the terrace wall,
+  // the water) can fade the lawn out over the same width
+  const cell = 0.1
+  const gx = Math.ceil((nx * size) / cell) + 2
+  const gz = Math.ceil((nz * size) / cell) + 2
+  const lawn = new Float32Array(gx * gz)
+  const edge = new Float32Array(gx * gz)
+  for (let iz = 0; iz < gz; iz++) {
+    for (let ix = 0; ix < gx; ix++) {
+      const i = iz * gx + ix
+      const w = lawnWeight(x0 + ix * cell, z0 + iz * cell)
+      lawn[i] = w
+      edge[i] = w < 0.35 ? 0 : 1e3
+    }
+  }
+  const diag = cell * Math.SQRT2
+  for (let iz = 1; iz < gz; iz++) {
+    for (let ix = 1; ix < gx - 1; ix++) {
+      const i = iz * gx + ix
+      edge[i] = Math.min(edge[i], edge[i - 1] + cell, edge[i - gx] + cell, edge[i - gx - 1] + diag, edge[i - gx + 1] + diag)
+    }
+  }
+  for (let iz = gz - 2; iz >= 0; iz--) {
+    for (let ix = gx - 2; ix > 0; ix--) {
+      const i = iz * gx + ix
+      edge[i] = Math.min(edge[i], edge[i + 1] + cell, edge[i + gx] + cell, edge[i + gx + 1] + diag, edge[i + gx - 1] + diag)
+    }
+  }
+  const sample = (grid: Float32Array, x: number, z: number) => {
+    const fx = Math.max(0, Math.min(gx - 1.001, (x - x0) / cell))
+    const fz = Math.max(0, Math.min(gz - 1.001, (z - z0) / cell))
+    const ix = Math.floor(fx)
+    const iz = Math.floor(fz)
+    const tx = fx - ix
+    const tz = fz - iz
+    const i = iz * gx + ix
+    const a = grid[i] + (grid[i + 1] - grid[i]) * tx
+    const b = grid[i + gx] + (grid[i + gx + 1] - grid[i + gx]) * tx
+    return a + (b - a) * tz
+  }
+  // 0 at a border, 1 from 0.45 m into the lawn
+  const inset = (x: number, z: number) => smooth(0.0, 0.45, sample(edge, x, z))
+
+  const weights = new Float32Array(nx * nz)
+  let total = 0
+  const step = 0.5
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      let w = 0
+      for (let sz = step / 2; sz < size; sz += step) {
+        for (let sx = step / 2; sx < size; sx += step) {
+          const x = x0 + ix * size + sx
+          const z = z0 + iz * size + sz
+          w += sample(lawn, x, z) * bias(x, z) * (1 + longness(x, z))
+        }
+      }
+      weights[iz * nx + ix] = w
+      total += w
+    }
+  }
+  if (total <= 0) return []
+
+  const rand = rng(0x6a55)
+  const tiles: GrassTile[] = []
+  const bounds = new THREE.Box3()
+  const sphere = new THREE.Sphere()
+
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
+      const tw = weights[iz * nx + ix]
+      if (tw <= 0) continue
+      const target = Math.round((s.blades * tw) / total)
+      if (target < 8) continue
+      const tx = x0 + ix * size
+      const tz = z0 + iz * size
+      const cx = tx + size / 2
+      const cz = tz + size / 2
+      const cy = groundHeight(cx, cz)
+      const roots = new Float32Array(target * 4)
+      const shapes = new Float32Array(target * 4)
+      const tones = new Float32Array(target * 4)
+      let n = 0
+      let tries = 0
+      bounds.makeEmpty()
+      while (n < target && tries < target * 40) {
+        tries++
+        const px = tx + rand() * size
+        const pz = tz + rand() * size
+        const lw = sample(lawn, px, pz)
+        const long = longness(px, pz)
+        // the long margins are let grow full, even where the lawn thins
+        if (lw <= 0.02 || rand() > Math.min(1, lw * (1 + 1.5 * long)) * bias(px, pz)) continue
+        // the rare loose clump left standing in the mown lawn
+        const clump = rand() < 0.006
+        const loose = Math.max(long, clump ? 0.65 + rand() * 0.35 : 0)
+        // mown height drifts a little across the lawn, as real mowing does
+        // worn, shorter grass along the path edges and under the trees
+        const shade = wornness(px, pz)
+        const kerb = (1 - smooth(0.0, 1.1, sample(edge, px, pz))) * (1 - long)
+        const wear = Math.max(shade, kerb)
+        // darker, denser clumps; the rest of the tile gives way to them
+        const dark = smooth(0.55, 0.7, fbm2(px * 0.7 - 3.3, pz * 0.7 + 8.8, 2)) * (1 - wear)
+        // the shade under the trees thins the grass a little; worn path edges stay full but short
+        if (rand() > (0.75 + 0.25 * dark) * (1 - 0.1 * shade)) continue
+        const patchH = 0.8 + 0.45 * fbm2(px * 0.3 + 12.1, pz * 0.3 - 6.4, 2)
+        const mown = (0.06 + 0.045 * fbm2(px * 0.6 + 7.3, pz * 0.6 - 2.1, 2) + rand() * 0.025) * patchH * (1 - 0.45 * kerb) * (1 - 0.15 * shade) * (1 + 0.15 * dark) * (1 + (s.cover - 1) * 0.4)
+        const tuftHeight = mown + (0.25 + rand() * 0.22 - mown) * loose
+        // most blades grow in small tufts that splay outwards; where an
+        // instance already draws a tuft, roots spread evenly instead
+        const tufted = s.strips > 1 ? 0.15 : 0.7
+        let tuft = rand() < tufted ? 2 + Math.floor(rand() * (s.strips > 1 ? 2 : 5)) : 1
+        if (clump) tuft = Math.ceil((5 + rand() * 6) / s.strips)
+        else if (loose > 0.4) tuft = Math.max(tuft, Math.ceil((4 + rand() * 4) / s.strips))
+        const spread = (0.025 + rand() * 0.05) * (1 + loose)
+        // a hint of straw in the long fringe, and the odd seed head
+        const dry = loose > 0.4 && rand() < 0.35 ? (0.4 + 0.6 * rand()) * loose : 0
+        for (let b = 0; b < tuft && n < target; b++) {
+          const a = rand() * Math.PI * 2
+          const r = tuft === 1 ? 0 : spread * Math.sqrt(rand())
+          const bx = Math.min(tx + size, Math.max(tx, px + Math.cos(a) * r))
+          const bz = Math.min(tz + size, Math.max(tz, pz + Math.sin(a) * r))
+          const bw = tuft === 1 ? lw : sample(lawn, bx, bz)
+          // towards every border the lawn thins and shortens instead of
+          // stopping at full height
+          const fade = inset(bx, bz)
+          if (bw <= 0.02 || rand() > Math.min(1, bw * (1 + 1.5 * long)) * (0.2 + 0.8 * fade)) continue
+          const by = groundHeight(bx, bz) - 0.012
+          const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
+          const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
+          const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen * (s.cover + (1 - s.cover) * loose)
+          const head = loose > 0.55 && rand() < 0.07 ? 1 : 0
+          const bendAmt = (0.1 + rand() * 0.3 + loose * 0.35) * (head ? 0.45 : 1)
+          const i = n * 4
+          roots[i] = bx - cx
+          roots[i + 1] = by - cy
+          roots[i + 2] = bz - cz
+          roots[i + 3] = yaw
+          shapes[i] = head ? Math.min(0.55, height * 1.15) : height
+          shapes[i + 1] = width
+          shapes[i + 2] = bendAmt
+          shapes[i + 3] = rand()
+          tones[i] = wear
+          tones[i + 1] = dry
+          tones[i + 2] = dark
+          tones[i + 3] = head
+          bounds.expandByPoint(sphere.center.set(roots[i], roots[i + 1], roots[i + 2]))
+          n++
+        }
+      }
+      if (n === 0) continue
+      // room for the tallest blade and its sway in every direction
+      bounds.expandByVector(sphere.center.set(0.6, 0.6, 0.6))
+      tiles.push({ roots, shapes, tones, count: n, box: [bounds.min.x, bounds.min.y, bounds.min.z, bounds.max.x, bounds.max.y, bounds.max.z], centre: [cx, cy, cz] })
+    }
+  }
+  return tiles
 }
