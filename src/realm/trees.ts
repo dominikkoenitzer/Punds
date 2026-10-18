@@ -438,15 +438,35 @@ interface Atlas {
   normalMap: THREE.DataTexture
 }
 
+// the painted atlas as plain pixels, so it can be made in a worker: the
+// colour chain (level 0 first) and the normal map
+export interface AtlasData {
+  size: number
+  levels: { data: Uint8Array; width: number; height: number }[]
+  normal: Uint8Array
+}
+
+// a page canvas where there is a page, else an offscreen one (in a worker)
+type Paint = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+
+function paintContext(size: number): Paint {
+  if (typeof document !== 'undefined') {
+    const cv = document.createElement('canvas')
+    cv.width = cv.height = size
+    return cv.getContext('2d', { willReadFrequently: true })!
+  }
+  const ctx = new OffscreenCanvas(size, size).getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('no 2d canvas')
+  return ctx
+}
+
 // Paints a 2x2 atlas twice with the same random stream: once in colour, once
 // as a height field that becomes the normal map. Transparent texels take the
 // mean colour so mip levels do not fringe dark.
-function paintAtlas(size: number, seed: number, cell: (ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, s: number) => void, bump: number): Atlas {
+function paintAtlas(size: number, seed: number, cell: (ctx: Paint, pass: Pass, r: Rand, ox: number, oy: number, s: number) => void, bump: number): AtlasData {
   const S = size / 2
   const draw = (pass: Pass) => {
-    const cv = document.createElement('canvas')
-    cv.width = cv.height = size
-    const ctx = cv.getContext('2d', { willReadFrequently: true })!
+    const ctx = paintContext(size)
     if (pass === 'height') {
       ctx.fillStyle = grey(0.3)
       ctx.fillRect(0, 0, size, size)
@@ -527,8 +547,14 @@ function paintAtlas(size: number, seed: number, cell: (ctx: CanvasRenderingConte
       nor[i + 3] = 255
     }
   }
+  // the colour chain is built here so every level keeps the cutout coverage of
+  // the full-size painting; plain box mips thin the crown into grain at range
+  return { size, levels: coverageMips(rgba, size, FOLIAGE_CUTOFF, [mr / mn, mg / mn, mb / mn]), normal: nor }
+}
+
+function atlasTextures(d: AtlasData): Atlas {
   const make = (data: Uint8Array, color: boolean) => {
-    const t = new THREE.DataTexture(data, size, size, THREE.RGBAFormat)
+    const t = new THREE.DataTexture(data, d.size, d.size, THREE.RGBAFormat)
     t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace
     t.generateMipmaps = true
     t.minFilter = THREE.LinearMipmapLinearFilter
@@ -537,12 +563,10 @@ function paintAtlas(size: number, seed: number, cell: (ctx: CanvasRenderingConte
     t.needsUpdate = true
     return t
   }
-  const map = make(rgba, true)
-  // the colour chain is built here so every level keeps the cutout coverage of
-  // the full-size painting; plain box mips thin the crown into grain at range
-  map.mipmaps = coverageMips(rgba, size, FOLIAGE_CUTOFF, [mr / mn, mg / mn, mb / mn])
+  const map = make(d.levels[0]!.data, true)
+  map.mipmaps = d.levels
   map.generateMipmaps = false
-  return { map, normalMap: make(nor, false) }
+  return { map, normalMap: make(d.normal, false) }
 }
 
 const FOLIAGE_CUTOFF = 0.42
@@ -625,7 +649,7 @@ function coverageMips(base: Uint8Array, size: number, cutoff: number, fill: [num
   return levels
 }
 
-function strokePath(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], w0: number, w1: number, style: string): void {
+function strokePath(ctx: Paint, pts: { x: number; y: number }[], w0: number, w1: number, style: string): void {
   ctx.strokeStyle = style
   ctx.lineCap = 'round'
   for (let i = 1; i < pts.length; i++) {
@@ -650,7 +674,7 @@ function wanderTwig(r: Rand, x: number, y: number, ang: number, len: number, n: 
   return pts
 }
 
-function petalPath(ctx: CanvasRenderingContext2D, R: number): void {
+function petalPath(ctx: Paint, R: number): void {
   ctx.beginPath()
   ctx.moveTo(0, 0)
   ctx.bezierCurveTo(-0.5 * R, -0.22 * R, -0.66 * R, -0.82 * R, -0.2 * R, -1.0 * R)
@@ -660,7 +684,7 @@ function petalPath(ctx: CanvasRenderingContext2D, R: number): void {
   ctx.closePath()
 }
 
-function drawBlossom(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: number, y: number, R: number, shade: number): void {
+function drawBlossom(ctx: Paint, pass: Pass, r: Rand, x: number, y: number, R: number, shade: number): void {
   const rot = r() * Math.PI * 2
   const squash = 0.45 + r() * 0.55
   const pink = 0.5 + r() * 0.5
@@ -724,7 +748,7 @@ function drawBlossom(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: numb
   ctx.restore()
 }
 
-function drawYoungLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: number, y: number, L: number, ang: number, shade: number): void {
+function drawYoungLeaf(ctx: Paint, pass: Pass, r: Rand, x: number, y: number, L: number, ang: number, shade: number): void {
   const bronze = r()
   ctx.save()
   ctx.translate(x, y)
@@ -754,7 +778,7 @@ function drawYoungLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: nu
 }
 
 // a closed bud: a deeper pink drop in a dark calyx, pointing away from its stalk
-function drawBud(ctx: CanvasRenderingContext2D, pass: Pass, x: number, y: number, R: number, ang: number, shade: number): void {
+function drawBud(ctx: Paint, pass: Pass, x: number, y: number, R: number, ang: number, shade: number): void {
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(ang)
@@ -776,7 +800,7 @@ function drawBud(ctx: CanvasRenderingContext2D, pass: Pass, x: number, y: number
   ctx.restore()
 }
 
-function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
+function paintBlossomCell(ctx: Paint, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
   const twigCol = pass === 'color' ? rgbStr(0.19, 0.12, 0.11) : grey(0.42)
   const main = wanderTwig(r, ox + S * (0.35 + r() * 0.3), oy + S * 1.02, -Math.PI / 2 + (r() - 0.5) * 0.7, S * 0.85, 16, 0.3)
   const twigs = [main]
@@ -850,7 +874,7 @@ function paintBlossomCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox
   }
 }
 
-function drawMapleLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: number, y: number, R: number, ang: number, shade: number): void {
+function drawMapleLeaf(ctx: Paint, pass: Pass, r: Rand, x: number, y: number, R: number, ang: number, shade: number): void {
   const squash = 0.55 + r() * 0.45
   const hue = r()
   const lobes = [0, 0.52, -0.52, 1.04, -1.04, 1.6, -1.6]
@@ -909,7 +933,7 @@ function drawMapleLeaf(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, x: nu
   ctx.restore()
 }
 
-function paintMapleCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
+function paintMapleCell(ctx: Paint, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
   const twigCol = pass === 'color' ? rgbStr(0.28, 0.12, 0.1) : grey(0.42)
   const startSide = r() < 0.5
   const main = wanderTwig(r, startSide ? ox - S * 0.02 : ox + S * 1.02, oy + S * (0.45 + r() * 0.2), startSide ? (r() - 0.5) * 0.4 : Math.PI + (r() - 0.5) * 0.4, S * 0.9, 8, 0.35)
@@ -955,7 +979,7 @@ function paintMapleCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: 
 
 // A sugi spray: a forking cord of short awl-shaped needles wound round each
 // axis, so it reads as ropy, dense foliage rather than as flat fern fronds.
-function paintCedarCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
+function paintCedarCell(ctx: Paint, pass: Pass, r: Rand, ox: number, oy: number, S: number): void {
   interface Axis {
     pts: { x: number; y: number }[]
     w: number
@@ -1025,21 +1049,32 @@ function paintCedarCell(ctx: CanvasRenderingContext2D, pass: Pass, r: Rand, ox: 
 
 // textures shared by every tree of a kind, released with the last tree
 const atlasCache = new Map<string, { atlas: Atlas; users: number }>()
+// atlases painted ahead of the trees (in a worker), taken by the first tree
+const atlasReady = new Map<string, AtlasData>()
 
-type AtlasKind = 'blossom' | 'maple' | 'cedar'
+export type AtlasKind = 'blossom' | 'maple' | 'cedar'
+
+export function paintAtlasFor(kind: AtlasKind, tier: Tier): AtlasData {
+  const size = tier === 'phone' ? 1024 : 2048
+  return kind === 'blossom'
+    ? paintAtlas(size, 4111, paintBlossomCell, 7)
+    : kind === 'maple'
+      ? paintAtlas(size, 9001, paintMapleCell, 3)
+      : paintAtlas(size, 7307, paintCedarCell, 4)
+}
+
+// hands over an atlas painted elsewhere; the next tree of the kind uses it
+export function provideAtlas(kind: AtlasKind, tier: Tier, data: AtlasData): void {
+  if (!atlasCache.has(`${kind}-${tier}`)) atlasReady.set(`${kind}-${tier}`, data)
+}
 
 function acquireAtlas(kind: AtlasKind, tier: Tier): Atlas {
   const key = `${kind}-${tier}`
   let e = atlasCache.get(key)
   if (!e) {
-    const size = tier === 'phone' ? 1024 : 2048
-    const atlas =
-      kind === 'blossom'
-        ? paintAtlas(size, 4111, paintBlossomCell, 7)
-        : kind === 'maple'
-          ? paintAtlas(size, 9001, paintMapleCell, 3)
-          : paintAtlas(size, 7307, paintCedarCell, 4)
-    e = { atlas, users: 0 }
+    const data = atlasReady.get(key) ?? paintAtlasFor(kind, tier)
+    atlasReady.delete(key)
+    e = { atlas: atlasTextures(data), users: 0 }
     atlasCache.set(key, e)
   }
   e.users++
@@ -1303,178 +1338,28 @@ class Tree implements RealmPart {
   }
 }
 
+// a tree's geometry without its materials, so it can be grown in a worker
+export interface TreeShape {
+  bark: THREE.BufferGeometry
+  cards: THREE.BufferGeometry
+  swayNorm: number
+}
+
+export interface GroveShape {
+  bark: THREE.BufferGeometry
+  cards: THREE.BufferGeometry
+  rope: THREE.BufferGeometry | null
+}
+
 export class CherryTree extends Tree {
   private tier: Tier
 
-  constructor(opts: CherryOpts) {
+  constructor(opts: CherryOpts, shape: TreeShape = cherryShape(opts)) {
     super()
     this.tier = opts.tier
-    const r = rng(opts.seed)
-    const H = opts.height
-    const W = opts.spread
-    const scale = H / 7.4
-    const limbs: Limb[] = []
-    const segLen = opts.tier === 'phone' ? 0.45 : 0.3
-    // the side of the tree that faces water: the crown leans out over it
-    let pondAz = 0
-    let pondBest = Infinity
-    for (let i = 0; i < 48; i++) {
-      const a = (i / 48) * Math.PI * 2
-      const d = pondSdf(opts.x + Math.cos(a) * W * 0.9, opts.z + Math.sin(a) * W * 0.9)
-      if (d < pondBest) {
-        pondBest = d
-        pondAz = a
-      }
-    }
-    const towardPond = pondBest < 1.5
-    const crown: CrownShape = {
-      centre: new THREE.Vector3(
-        opts.lean.x * H * 0.08 + (towardPond ? Math.cos(pondAz) * 0.7 : 0),
-        H * 0.55,
-        opts.lean.z * H * 0.08 + (towardPond ? Math.sin(pondAz) * 0.7 : 0),
-      ),
-      // a broad, flat umbrella: much wider than tall, flat on top, hanging low at the rim
-      radii: new THREE.Vector3(W * 1.12, H * 0.27, W * 1.05),
-      lowY: H * 0.5,
-    }
-    const maxDepth = 4
-
-    // the trunk: short, thick and leaning, splitting low
-    const trunkLen = H * 0.24
-    const leanDir = new THREE.Vector3(opts.lean.x, 1, opts.lean.z).normalize()
-    const trunk = grow({
-      start: new THREE.Vector3(0, -0.25, 0),
-      dir: leanDir,
-      length: trunkLen + 0.25,
-      r0: 0.3 * scale,
-      r1: 0.22 * scale,
-      depth: 0,
-      sway0: 0,
-      segLen: 0.25,
-      bend: (d) => {
-        d.x += (r() - 0.5) * 0.18
-        d.z += (r() - 0.5) * 0.18
-        d.lerp(UP, 0.12)
-      },
-    })
-    // the trunk ends inside the scaffold limbs, so its open end never shows
-    const last = trunk.radii.length - 1
-    trunk.radii[last] = 0.14 * scale
-    limbs.push(trunk)
-    const out = new THREE.Vector3()
-    const tmp = new THREE.Vector3()
-
-    const branch = (start: THREE.Vector3, dir: THREE.Vector3, length: number, r0: number, depth: number, sway0: number, weep: number): void => {
-      const droop = ([0, 0, 0.02, 0.05, 0.09][depth] ?? 0.09) * weep
-      const limb = grow({
-        start,
-        dir,
-        length,
-        r0,
-        // fine twigs end at about 1 cm so they still draw as dark lines between clusters
-        r1: Math.max(depth >= maxDepth ? 0.0025 : 0.01, r0 * (depth >= maxDepth ? 0.1 : 0.12)),
-        depth,
-        sway0,
-        segLen: depth < 2 ? segLen : segLen * 1.3,
-        bend: (d, s, p) => {
-          d.x += (r() - 0.5) * 0.22
-          d.y += (r() - 0.5) * 0.12
-          d.z += (r() - 0.5) * 0.22
-          // tips arch over and droop; inside the crown they reach for light
-          d.y -= droop * Math.pow(s, 1.4) * 2.2
-          out.set(p.x - crown.centre.x, 0, p.z - crown.centre.z)
-          if (out.lengthSq() > 1e-4) d.addScaledVector(out.normalize(), 0.06)
-          if (p.y > crown.centre.y + crown.radii.y * 0.85) d.y -= 0.08
-          // over the walk the limbs lift to clear the visitor's head
-          if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.4) d.y += 0.22
-        },
-      })
-      limbs.push(limb)
-      if (depth >= maxDepth) return
-      const kids = depth === 1 ? 4 + Math.floor(r() * 2) : depth === 2 ? 3 + Math.floor(r() * 2) : 3
-      const p = new THREE.Vector3()
-      for (let k = 0; k < kids; k++) {
-        const t = 0.28 + (0.68 * (k + r() * 0.8)) / kids
-        const info = limbPoint(limb, t, p)
-        const cd = deviate(info.dir, 0.45 + r() * 0.45, r, new THREE.Vector3())
-        out.set(p.x - crown.centre.x, 0, p.z - crown.centre.z).normalize()
-        // alternate between reaching out and climbing into the crown, so it fills rather than hollows
-        if (k % 2 === 0) cd.addScaledVector(out, 0.45).addScaledVector(UP, depth < 2 ? 0.12 : 0.04)
-        else cd.addScaledVector(UP, 0.45).addScaledVector(out, 0.05)
-        // on the scaffolds every third child swings sideways, closing the gaps between them
-        if (depth <= 2 && k % 3 === 2) cd.addScaledVector(tmp.crossVectors(UP, out).normalize(), r() < 0.5 ? -0.8 : 0.8)
-        cd.normalize()
-        let L = length * (0.55 + r() * 0.2) * (1 - t * 0.35)
-        // keep tips inside the crown envelope
-        tmp.copy(p).addScaledVector(cd, L)
-        const e = crownOutward(crown, tmp, new THREE.Vector3())
-        if (e > 1.05) L *= Math.max(0.35, 1.05 / e)
-        // the child starts on the parent's axis so its base ring is buried in the parent
-        branch(p.clone(), cd, L, Math.max(0.014, info.r * (0.55 + r() * 0.15)), depth + 1, info.sway, weep)
-      }
-    }
-
-    const walkDx = -opts.x
-    const walkDz = 1.6
-    const walkAz = Math.atan2(walkDz, walkDx)
-    const walkReach = Math.hypot(walkDx, walkDz) + 1.3
-    const reachesWalk = Math.abs(opts.x) < W * 1.5
-    // five spreading scaffolds and one that climbs, so the crown has a roof
-    const scaffolds = 6
-    const az0 = r() * Math.PI * 2
-    for (let k = 0; k < scaffolds; k++) {
-      // the first scaffold reaches out low over the water and weeps towards it
-      // one scaffold reaches over the walk, a little towards the arrival, so the
-      // visitor passes under blossom
-      const toWalk = k === 2 && reachesWalk
-      let az = (towardPond ? pondAz : az0) + (k / 5) * Math.PI * 2 + (k === 0 ? 0 : (r() - 0.5) * 0.5)
-      if (toWalk) az = walkAz
-      const elev = k === 5 ? 1.0 : k === 0 && towardPond ? 0.1 : toWalk ? 0.3 : 0.22 + r() * 0.28
-      const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
-      d.addScaledVector(leanDir, 0.3).normalize()
-      // the climbing limb leans back against the trunk, so the middle of the crown is not a gap
-      if (k === 5) d.set(-opts.lean.x * 0.7 + Math.cos(az) * 0.15, 1, -opts.lean.z * 0.7 + Math.sin(az) * 0.15).normalize()
-      // no scaffold climbs steeper than about 50 degrees; the crown spreads
-      if (k < 5 && d.y > 0.77) {
-        const hz = Math.sqrt(1 - 0.77 * 0.77) / Math.hypot(d.x, d.z)
-        d.set(d.x * hz, 0.77, d.z * hz)
-      }
-      const start = trunk.pts[trunk.pts.length - 1 - (k % 2)]!.clone()
-      const low = k === 0 && towardPond
-      const len = toWalk ? walkReach : W * (k === 5 ? 0.72 : low ? 1.22 : 0.88 + r() * 0.14)
-      branch(start, d, len, 0.17 * scale * (k === 5 ? 0.75 : low ? 1.05 : 0.85 + r() * 0.25), 1, trunkLen, low ? 2.1 : toWalk ? 0.5 : 1.15)
-    }
-
-    const tubes = new TubeBuilder()
-    for (const l0 of limbs) {
-      if (opts.tier === 'phone' && l0.depth >= maxDepth) continue
-      // the last twigs end inside their blossom rather than poking past it
-      const l = l0.depth >= maxDepth ? trimLimb(l0, 0.62) : l0
-      const r0 = l.radii[0]!
-      tubes.add(l, {
-        radial: radialFor(opts.tier, r0),
-        texWorld: 0.55,
-        gnarl: l.depth === 0 ? 0.22 : l.depth === 1 ? 0.14 : 0.05,
-        flare: l === trunk ? 0.9 : 0,
-        seed: r() * 50,
-      })
-    }
-    const swayNorm = trunkLen + W * 1.6
-    const bark = barkMaterial(opts.tier, 'sakura_bark', 0x3b2c29, 0x8a7e7b, 0.11, swayNorm)
-    this.addMesh(tubes.build(), bark, true)
-
+    const bark = barkMaterial(opts.tier, 'sakura_bark', 0x3b2c29, 0x8a7e7b, 0.11, shape.swayNorm)
+    this.addMesh(shape.bark, bark, true)
     const atlas = acquireAtlas('blossom', opts.tier)
-    // blossom sits on the outer twigs and the scaffold ends; the thick limbs inside
-    // stay bare, so they read dark between the clusters
-    const tips = collectTips(limbs, maxDepth - 1, 0.3, 0.1)
-    tips.push(...collectTips(limbs.filter((l) => l.depth === 1 || l.depth === 2), 1, 0.85, 0.1))
-    const count = opts.tier === 'ultra' ? 6000 : opts.tier === 'high' ? 4400 : 2400
-    const sz: [number, number] = opts.tier === 'phone' ? [0.46, 0.74] : [0.36, 0.6]
-    const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
-    const cards = buildCards({
-      tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.62,
-      clusterRadius: 0.36, perCluster: opts.tier === 'phone' ? 11 : 16, flat: 0.8, reject, ballShade: 0.6,
-    })
     const mat = foliageMaterial({
       key: 'blossom',
       map: atlas.map,
@@ -1484,13 +1369,13 @@ export class CherryTree extends Tree {
       roughness: 0.8,
       branchAmp: 0.11,
       cardAmp: 0.035,
-      swayNorm,
+      swayNorm: shape.swayNorm,
       volumeNormals: true,
       instanced: false,
       farStart: 14,
       softEdge: true,
     })
-    this.addFoliage(cards, mat)
+    this.addFoliage(shape.cards, mat)
     this.place(opts.x, opts.z)
   }
 
@@ -1498,6 +1383,174 @@ export class CherryTree extends Tree {
     super.dispose()
     releaseAtlas('blossom', this.tier)
   }
+}
+
+export function cherryShape(opts: CherryOpts): TreeShape {
+  const r = rng(opts.seed)
+  const H = opts.height
+  const W = opts.spread
+  const scale = H / 7.4
+  const limbs: Limb[] = []
+  const segLen = opts.tier === 'phone' ? 0.45 : 0.3
+  // the side of the tree that faces water: the crown leans out over it
+  let pondAz = 0
+  let pondBest = Infinity
+  for (let i = 0; i < 48; i++) {
+    const a = (i / 48) * Math.PI * 2
+    const d = pondSdf(opts.x + Math.cos(a) * W * 0.9, opts.z + Math.sin(a) * W * 0.9)
+    if (d < pondBest) {
+      pondBest = d
+      pondAz = a
+    }
+  }
+  const towardPond = pondBest < 1.5
+  const crown: CrownShape = {
+    centre: new THREE.Vector3(
+      opts.lean.x * H * 0.08 + (towardPond ? Math.cos(pondAz) * 0.7 : 0),
+      H * 0.55,
+      opts.lean.z * H * 0.08 + (towardPond ? Math.sin(pondAz) * 0.7 : 0),
+    ),
+    // a broad, flat umbrella: much wider than tall, flat on top, hanging low at the rim
+    radii: new THREE.Vector3(W * 1.12, H * 0.27, W * 1.05),
+    lowY: H * 0.5,
+  }
+  const maxDepth = 4
+
+  // the trunk: short, thick and leaning, splitting low
+  const trunkLen = H * 0.24
+  const leanDir = new THREE.Vector3(opts.lean.x, 1, opts.lean.z).normalize()
+  const trunk = grow({
+    start: new THREE.Vector3(0, -0.25, 0),
+    dir: leanDir,
+    length: trunkLen + 0.25,
+    r0: 0.3 * scale,
+    r1: 0.22 * scale,
+    depth: 0,
+    sway0: 0,
+    segLen: 0.25,
+    bend: (d) => {
+      d.x += (r() - 0.5) * 0.18
+      d.z += (r() - 0.5) * 0.18
+      d.lerp(UP, 0.12)
+    },
+  })
+  // the trunk ends inside the scaffold limbs, so its open end never shows
+  const last = trunk.radii.length - 1
+  trunk.radii[last] = 0.14 * scale
+  limbs.push(trunk)
+  const out = new THREE.Vector3()
+  const tmp = new THREE.Vector3()
+
+  const branch = (start: THREE.Vector3, dir: THREE.Vector3, length: number, r0: number, depth: number, sway0: number, weep: number): void => {
+    const droop = ([0, 0, 0.02, 0.05, 0.09][depth] ?? 0.09) * weep
+    const limb = grow({
+      start,
+      dir,
+      length,
+      r0,
+      // fine twigs end at about 1 cm so they still draw as dark lines between clusters
+      r1: Math.max(depth >= maxDepth ? 0.0025 : 0.01, r0 * (depth >= maxDepth ? 0.1 : 0.12)),
+      depth,
+      sway0,
+      segLen: depth < 2 ? segLen : segLen * 1.3,
+      bend: (d, s, p) => {
+        d.x += (r() - 0.5) * 0.22
+        d.y += (r() - 0.5) * 0.12
+        d.z += (r() - 0.5) * 0.22
+        // tips arch over and droop; inside the crown they reach for light
+        d.y -= droop * Math.pow(s, 1.4) * 2.2
+        out.set(p.x - crown.centre.x, 0, p.z - crown.centre.z)
+        if (out.lengthSq() > 1e-4) d.addScaledVector(out.normalize(), 0.06)
+        if (p.y > crown.centre.y + crown.radii.y * 0.85) d.y -= 0.08
+        // over the walk the limbs lift to clear the visitor's head
+        if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.4) d.y += 0.22
+      },
+    })
+    limbs.push(limb)
+    if (depth >= maxDepth) return
+    const kids = depth === 1 ? 4 + Math.floor(r() * 2) : depth === 2 ? 3 + Math.floor(r() * 2) : 3
+    const p = new THREE.Vector3()
+    for (let k = 0; k < kids; k++) {
+      const t = 0.28 + (0.68 * (k + r() * 0.8)) / kids
+      const info = limbPoint(limb, t, p)
+      const cd = deviate(info.dir, 0.45 + r() * 0.45, r, new THREE.Vector3())
+      out.set(p.x - crown.centre.x, 0, p.z - crown.centre.z).normalize()
+      // alternate between reaching out and climbing into the crown, so it fills rather than hollows
+      if (k % 2 === 0) cd.addScaledVector(out, 0.45).addScaledVector(UP, depth < 2 ? 0.12 : 0.04)
+      else cd.addScaledVector(UP, 0.45).addScaledVector(out, 0.05)
+      // on the scaffolds every third child swings sideways, closing the gaps between them
+      if (depth <= 2 && k % 3 === 2) cd.addScaledVector(tmp.crossVectors(UP, out).normalize(), r() < 0.5 ? -0.8 : 0.8)
+      cd.normalize()
+      let L = length * (0.55 + r() * 0.2) * (1 - t * 0.35)
+      // keep tips inside the crown envelope
+      tmp.copy(p).addScaledVector(cd, L)
+      const e = crownOutward(crown, tmp, new THREE.Vector3())
+      if (e > 1.05) L *= Math.max(0.35, 1.05 / e)
+      // the child starts on the parent's axis so its base ring is buried in the parent
+      branch(p.clone(), cd, L, Math.max(0.014, info.r * (0.55 + r() * 0.15)), depth + 1, info.sway, weep)
+    }
+  }
+
+  const walkDx = -opts.x
+  const walkDz = 1.6
+  const walkAz = Math.atan2(walkDz, walkDx)
+  const walkReach = Math.hypot(walkDx, walkDz) + 1.3
+  const reachesWalk = Math.abs(opts.x) < W * 1.5
+  // five spreading scaffolds and one that climbs, so the crown has a roof
+  const scaffolds = 6
+  const az0 = r() * Math.PI * 2
+  for (let k = 0; k < scaffolds; k++) {
+    // the first scaffold reaches out low over the water and weeps towards it
+    // one scaffold reaches over the walk, a little towards the arrival, so the
+    // visitor passes under blossom
+    const toWalk = k === 2 && reachesWalk
+    let az = (towardPond ? pondAz : az0) + (k / 5) * Math.PI * 2 + (k === 0 ? 0 : (r() - 0.5) * 0.5)
+    if (toWalk) az = walkAz
+    const elev = k === 5 ? 1.0 : k === 0 && towardPond ? 0.1 : toWalk ? 0.3 : 0.22 + r() * 0.28
+    const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
+    d.addScaledVector(leanDir, 0.3).normalize()
+    // the climbing limb leans back against the trunk, so the middle of the crown is not a gap
+    if (k === 5) d.set(-opts.lean.x * 0.7 + Math.cos(az) * 0.15, 1, -opts.lean.z * 0.7 + Math.sin(az) * 0.15).normalize()
+    // no scaffold climbs steeper than about 50 degrees; the crown spreads
+    if (k < 5 && d.y > 0.77) {
+      const hz = Math.sqrt(1 - 0.77 * 0.77) / Math.hypot(d.x, d.z)
+      d.set(d.x * hz, 0.77, d.z * hz)
+    }
+    const start = trunk.pts[trunk.pts.length - 1 - (k % 2)]!.clone()
+    const low = k === 0 && towardPond
+    const len = toWalk ? walkReach : W * (k === 5 ? 0.72 : low ? 1.22 : 0.88 + r() * 0.14)
+    branch(start, d, len, 0.17 * scale * (k === 5 ? 0.75 : low ? 1.05 : 0.85 + r() * 0.25), 1, trunkLen, low ? 2.1 : toWalk ? 0.5 : 1.15)
+  }
+
+  const tubes = new TubeBuilder()
+  for (const l0 of limbs) {
+    if (opts.tier === 'phone' && l0.depth >= maxDepth) continue
+    // the last twigs end inside their blossom rather than poking past it
+    const l = l0.depth >= maxDepth ? trimLimb(l0, 0.62) : l0
+    const r0 = l.radii[0]!
+    tubes.add(l, {
+      radial: radialFor(opts.tier, r0),
+      texWorld: 0.55,
+      gnarl: l.depth === 0 ? 0.22 : l.depth === 1 ? 0.14 : 0.05,
+      flare: l === trunk ? 0.9 : 0,
+      seed: r() * 50,
+    })
+  }
+  const swayNorm = trunkLen + W * 1.6
+  const barkGeometry = tubes.build()
+
+  // blossom sits on the outer twigs and the scaffold ends; the thick limbs inside
+  // stay bare, so they read dark between the clusters
+  const tips = collectTips(limbs, maxDepth - 1, 0.3, 0.1)
+  tips.push(...collectTips(limbs.filter((l) => l.depth === 1 || l.depth === 2), 1, 0.85, 0.1))
+  const count = opts.tier === 'ultra' ? 6000 : opts.tier === 'high' ? 4400 : 2400
+  const sz: [number, number] = opts.tier === 'phone' ? [0.46, 0.74] : [0.36, 0.6]
+  const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
+  const cards = buildCards({
+    tips, count, size: sz, crown, rand: r, volume: 0.75, plate: 0, depthShade: 0.62,
+    clusterRadius: 0.36, perCluster: opts.tier === 'phone' ? 11 : 16, flat: 0.8, reject, ballShade: 0.6,
+  })
+  return { bark: barkGeometry, cards, swayNorm }
 }
 
 // --- the maples ---------------------------------------------------------------------
@@ -1514,121 +1567,12 @@ export interface MapleOpts {
 export class MapleTree extends Tree {
   private tier: Tier
 
-  constructor(opts: MapleOpts) {
+  constructor(opts: MapleOpts, shape: TreeShape = mapleShape(opts)) {
     super()
     this.tier = opts.tier
-    const r = rng(opts.seed)
-    const H = opts.height
-    const W = opts.spread
-    const limbs: Limb[] = []
-    const segLen = opts.tier === 'phone' ? 0.4 : 0.26
-    const crown: CrownShape = {
-      centre: new THREE.Vector3(0, H * 0.58, 0),
-      radii: new THREE.Vector3(W, H * 0.45, W),
-      lowY: H * 0.45,
-    }
-    const maxDepth = 3
-
-    const branch = (start: THREE.Vector3, dir: THREE.Vector3, length: number, r0: number, depth: number, sway0: number): void => {
-      const limb = grow({
-        start,
-        dir,
-        length,
-        r0,
-        r1: Math.max(0.003, r0 * 0.25),
-        depth,
-        sway0,
-        segLen,
-        bend: (d, s, p) => {
-          d.x += (r() - 0.5) * 0.26
-          d.z += (r() - 0.5) * 0.26
-          // ease into the horizontal: the layered habit of the tree
-          d.y += (0.03 - d.y) * (0.05 + s * 0.16)
-          if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.3) d.y += 0.22
-        },
-      })
-      limbs.push(limb)
-      if (depth >= maxDepth) return
-      const kids = depth === 1 ? 4 + Math.floor(r() * 2) : 4 + Math.floor(r() * 2)
-      const p = new THREE.Vector3()
-      for (let k = 0; k < kids; k++) {
-        const t = 0.25 + (0.7 * (k + r() * 0.8)) / kids
-        const info = limbPoint(limb, t, p)
-        // fan out sideways in the horizontal plane
-        const side = (k % 2 === 0 ? 1 : -1) * (0.45 + r() * 0.5)
-        const cd = info.dir.clone().applyAxisAngle(UP, side)
-        cd.y = 0.08 + r() * 0.22
-        cd.normalize()
-        const L = length * (0.45 + r() * 0.2)
-        branch(p.clone(), cd, L, info.r * 0.72, depth + 1, info.sway)
-      }
-    }
-
-    const stems = 2 + Math.floor(r() * 2)
-    const az0 = r() * Math.PI * 2
-    const trunks: Limb[] = []
-    for (let s = 0; s < stems; s++) {
-      const az = az0 + (s / stems) * Math.PI * 2 + (r() - 0.5) * 0.6
-      const tilt = 0.18 + r() * 0.2
-      const d = new THREE.Vector3(Math.cos(az) * Math.sin(tilt), Math.cos(tilt), Math.sin(az) * Math.sin(tilt))
-      const trunk = grow({
-        start: new THREE.Vector3(Math.cos(az) * 0.04, -0.15, Math.sin(az) * 0.04),
-        dir: d,
-        length: H * (0.72 + r() * 0.15),
-        r0: 0.085 * (H / 5) * (s === 0 ? 1 : 0.8),
-        r1: 0.02,
-        depth: 0,
-        sway0: 0,
-        segLen,
-        bend: (dd, s) => {
-          // a slow sinuous line: lean out low, recover towards the light higher up
-          dd.x += (r() - 0.5) * 0.42 + Math.cos(az) * 0.09 * (0.5 - s)
-          dd.z += (r() - 0.5) * 0.42 + Math.sin(az) * 0.09 * (0.5 - s)
-        },
-      })
-      limbs.push(trunk)
-      trunks.push(trunk)
-      // tiers: long near-level limbs, wider low down
-      const tiers = 4 + Math.floor(r() * 2)
-      const p = new THREE.Vector3()
-      for (let k = 0; k < tiers; k++) {
-        const t = 0.4 + (k / tiers) * 0.58
-        const info = limbPoint(trunk, t, p)
-        if (p.y < 1.95) continue
-        const per = k === 0 ? 2 : 3
-        for (let j = 0; j < per; j++) {
-          const baz = az + (j * Math.PI * 2) / per + (r() - 0.5) * 1.4 + k * 1.3
-          const cd = new THREE.Vector3(Math.cos(baz), 0.4 + r() * 0.3, Math.sin(baz)).normalize()
-          const reach = W * (1.0 - (k / tiers) * 0.65) * (0.6 + r() * 0.3)
-          branch(p.clone(), cd, reach, info.r * 0.78, 1, info.sway)
-        }
-      }
-    }
-
-    const tubes = new TubeBuilder()
-    for (const l of limbs) {
-      if (opts.tier === 'phone' && l.depth >= maxDepth) continue
-      tubes.add(l, {
-        radial: radialFor(opts.tier, l.radii[0]!),
-        texWorld: 0.4,
-        gnarl: l.depth === 0 ? 0.06 : 0.02,
-        flare: l.depth === 0 && trunks.includes(l) ? 0.35 : 0,
-        seed: r() * 50,
-      })
-    }
-    const swayNorm = H * 0.4 + W * 1.4
-    const bark = barkMaterial(opts.tier, 'maple_bark', 0x5d564f, 0x958b84, 0.14, swayNorm)
-    this.addMesh(tubes.build(), bark, true)
-
+    const bark = barkMaterial(opts.tier, 'maple_bark', 0x5d564f, 0x958b84, 0.14, shape.swayNorm)
+    this.addMesh(shape.bark, bark, true)
     const atlas = acquireAtlas('maple', opts.tier)
-    const tips = collectTips(limbs, 2, 0.15, 0.1)
-    const count = opts.tier === 'ultra' ? 2300 : opts.tier === 'high' ? 1700 : 850
-    const sz: [number, number] = opts.tier === 'phone' ? [0.55, 0.85] : [0.42, 0.7]
-    const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
-    const cards = buildCards({
-      tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.72,
-      clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 9 : 13, flat: 0.45, reject,
-    })
     const mat = foliageMaterial({
       key: 'maple',
       map: atlas.map,
@@ -1638,13 +1582,13 @@ export class MapleTree extends Tree {
       roughness: 0.84,
       branchAmp: 0.14,
       cardAmp: 0.04,
-      swayNorm,
+      swayNorm: shape.swayNorm,
       volumeNormals: true,
       instanced: false,
       farStart: 14,
       softEdge: true,
     })
-    this.addFoliage(cards, mat)
+    this.addFoliage(shape.cards, mat)
     this.place(opts.x, opts.z)
   }
 
@@ -1652,6 +1596,120 @@ export class MapleTree extends Tree {
     super.dispose()
     releaseAtlas('maple', this.tier)
   }
+}
+
+export function mapleShape(opts: MapleOpts): TreeShape {
+  const r = rng(opts.seed)
+  const H = opts.height
+  const W = opts.spread
+  const limbs: Limb[] = []
+  const segLen = opts.tier === 'phone' ? 0.4 : 0.26
+  const crown: CrownShape = {
+    centre: new THREE.Vector3(0, H * 0.58, 0),
+    radii: new THREE.Vector3(W, H * 0.45, W),
+    lowY: H * 0.45,
+  }
+  const maxDepth = 3
+
+  const branch = (start: THREE.Vector3, dir: THREE.Vector3, length: number, r0: number, depth: number, sway0: number): void => {
+    const limb = grow({
+      start,
+      dir,
+      length,
+      r0,
+      r1: Math.max(0.003, r0 * 0.25),
+      depth,
+      sway0,
+      segLen,
+      bend: (d, s, p) => {
+        d.x += (r() - 0.5) * 0.26
+        d.z += (r() - 0.5) * 0.26
+        // ease into the horizontal: the layered habit of the tree
+        d.y += (0.03 - d.y) * (0.05 + s * 0.16)
+        if (overWalk(opts.x + p.x) && p.y < WALK_CLEAR + 0.3) d.y += 0.22
+      },
+    })
+    limbs.push(limb)
+    if (depth >= maxDepth) return
+    const kids = depth === 1 ? 4 + Math.floor(r() * 2) : 4 + Math.floor(r() * 2)
+    const p = new THREE.Vector3()
+    for (let k = 0; k < kids; k++) {
+      const t = 0.25 + (0.7 * (k + r() * 0.8)) / kids
+      const info = limbPoint(limb, t, p)
+      // fan out sideways in the horizontal plane
+      const side = (k % 2 === 0 ? 1 : -1) * (0.45 + r() * 0.5)
+      const cd = info.dir.clone().applyAxisAngle(UP, side)
+      cd.y = 0.08 + r() * 0.22
+      cd.normalize()
+      const L = length * (0.45 + r() * 0.2)
+      branch(p.clone(), cd, L, info.r * 0.72, depth + 1, info.sway)
+    }
+  }
+
+  const stems = 2 + Math.floor(r() * 2)
+  const az0 = r() * Math.PI * 2
+  const trunks: Limb[] = []
+  for (let s = 0; s < stems; s++) {
+    const az = az0 + (s / stems) * Math.PI * 2 + (r() - 0.5) * 0.6
+    const tilt = 0.18 + r() * 0.2
+    const d = new THREE.Vector3(Math.cos(az) * Math.sin(tilt), Math.cos(tilt), Math.sin(az) * Math.sin(tilt))
+    const trunk = grow({
+      start: new THREE.Vector3(Math.cos(az) * 0.04, -0.15, Math.sin(az) * 0.04),
+      dir: d,
+      length: H * (0.72 + r() * 0.15),
+      r0: 0.085 * (H / 5) * (s === 0 ? 1 : 0.8),
+      r1: 0.02,
+      depth: 0,
+      sway0: 0,
+      segLen,
+      bend: (dd, s) => {
+        // a slow sinuous line: lean out low, recover towards the light higher up
+        dd.x += (r() - 0.5) * 0.42 + Math.cos(az) * 0.09 * (0.5 - s)
+        dd.z += (r() - 0.5) * 0.42 + Math.sin(az) * 0.09 * (0.5 - s)
+      },
+    })
+    limbs.push(trunk)
+    trunks.push(trunk)
+    // tiers: long near-level limbs, wider low down
+    const tiers = 4 + Math.floor(r() * 2)
+    const p = new THREE.Vector3()
+    for (let k = 0; k < tiers; k++) {
+      const t = 0.4 + (k / tiers) * 0.58
+      const info = limbPoint(trunk, t, p)
+      if (p.y < 1.95) continue
+      const per = k === 0 ? 2 : 3
+      for (let j = 0; j < per; j++) {
+        const baz = az + (j * Math.PI * 2) / per + (r() - 0.5) * 1.4 + k * 1.3
+        const cd = new THREE.Vector3(Math.cos(baz), 0.4 + r() * 0.3, Math.sin(baz)).normalize()
+        const reach = W * (1.0 - (k / tiers) * 0.65) * (0.6 + r() * 0.3)
+        branch(p.clone(), cd, reach, info.r * 0.78, 1, info.sway)
+      }
+    }
+  }
+
+  const tubes = new TubeBuilder()
+  for (const l of limbs) {
+    if (opts.tier === 'phone' && l.depth >= maxDepth) continue
+    tubes.add(l, {
+      radial: radialFor(opts.tier, l.radii[0]!),
+      texWorld: 0.4,
+      gnarl: l.depth === 0 ? 0.06 : 0.02,
+      flare: l.depth === 0 && trunks.includes(l) ? 0.35 : 0,
+      seed: r() * 50,
+    })
+  }
+  const swayNorm = H * 0.4 + W * 1.4
+  const barkGeometry = tubes.build()
+
+  const tips = collectTips(limbs, 2, 0.15, 0.1)
+  const count = opts.tier === 'ultra' ? 2300 : opts.tier === 'high' ? 1700 : 850
+  const sz: [number, number] = opts.tier === 'phone' ? [0.55, 0.85] : [0.42, 0.7]
+  const reject = (p: THREE.Vector3) => overWalk(opts.x + p.x) && p.y < WALK_CLEAR
+  const cards = buildCards({
+    tips, count, size: sz, crown, rand: r, volume: 0.5, plate: 1, depthShade: 0.72,
+    clusterRadius: 0.42, perCluster: opts.tier === 'phone' ? 9 : 13, flat: 0.45, reject,
+  })
+  return { bark: barkGeometry, cards, swayNorm }
 }
 
 // --- the cedar grove ------------------------------------------------------------------
@@ -1741,147 +1799,20 @@ function strawRope(cx: number, cy: number, cz: number, ringR: number, seed: numb
 // Japanese cedars behind the hall: straight columns, bare below, with narrow
 // irregular crowns of dense sprays in the upper half. All trees share one bark
 // mesh and one foliage mesh, built in world space.
+const SWAY_NORM = 10
+
 export class CedarGrove extends Tree {
   private tier: Tier
 
-  constructor(opts: { tier: Tier }) {
+  constructor(opts: { tier: Tier }, shape: GroveShape = groveShape(opts.tier)) {
     super()
     this.tier = opts.tier
     const tier = opts.tier
-    const r = rng(5501)
-    const tubes = new TubeBuilder()
-    const parts: THREE.BufferGeometry[] = []
     const atlas = acquireAtlas('cedar', tier)
-    const SWAY_NORM = 10
-    const branchesPer = tier === 'ultra' ? 84 : tier === 'high' ? 62 : 34
-    const cardsPer = tier === 'ultra' ? 3600 : tier === 'high' ? 2500 : 800
-    let rope: THREE.BufferGeometry | null = null
-    for (const c of CEDARS) {
-      const H = c.height
-      const gy = groundHeight(c.x, c.z)
-      const base = new THREE.Vector3(c.x, gy, c.z)
-      // the pair that flanks the hall is old and broad; the grove behind is younger
-      const old = !c.back
-      const r0 = c.girth ?? (0.4 + (H - 18) * 0.03) * (c.sacred ? 1.25 : 1)
-      const limbs: Limb[] = []
-      // old trees lean a touch away from the hall, so the pair opens like a gate
-      const out = Math.sign(c.x) * (old ? 0.025 : 0)
-      const lean = new THREE.Vector3(out + (r() - 0.5) * 0.03, 1, (r() - 0.5) * 0.03).normalize()
-      const trunk = grow({
-        start: new THREE.Vector3(0, -0.3, 0),
-        dir: lean,
-        length: H + 0.3,
-        r0,
-        r1: 0.04,
-        depth: 0,
-        sway0: 0,
-        segLen: tier === 'phone' ? 1.6 : 0.9,
-        bend: (d) => {
-          d.x += (r() - 0.5) * 0.012
-          d.z += (r() - 0.5) * 0.012
-        },
-      })
-      // a straight column: the taper is close to linear, not a sapling's
-      for (let i = 0; i < trunk.radii.length; i++) {
-        const s = i / (trunk.radii.length - 1)
-        trunk.radii[i] = 0.04 + (r0 - 0.04) * Math.pow(1 - s, 1.1)
-      }
-      limbs.push(trunk)
-      // The old pair branch from about the eaves upwards, so their lowest limbs
-      // frame the roof; the trees behind keep their crowns lower down too, so no
-      // bare poles stand in a row.
-      const crownBase = H * (old ? 0.22 + r() * 0.03 : 0.3 + r() * 0.08)
-      // narrow: a sugi crown is a spire, a fifth as wide as the tree is tall
-      const crownR = H * (old ? 0.12 + r() * 0.02 : 0.085 + r() * 0.025)
-      const inward = -Math.sign(c.x)
-      const golden = 2.39996
-      const az0 = r() * 6.28
-      const n = Math.round(branchesPer * (H / 22))
-      const p = new THREE.Vector3()
-      for (let k = 0; k < n; k++) {
-        const u = (k + r() * 0.8) / n
-        const h = crownBase + (H * 0.98 - crownBase) * u
-        limbPoint(trunk, (h + 0.3) / (H + 0.3), p)
-        const az = az0 + k * golden + (r() - 0.5) * 0.5
-        // lower branches droop, upper ones climb; a few are short, which breaks the outline
-        const elev = -0.25 + u * 0.75 + (r() - 0.5) * 0.2
-        const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
-        // a third are short or overlong, which breaks the outline into tufts
-        const q = r()
-        const short = q < 0.25 ? 0.45 : q > 0.88 ? 1.35 : 1
-        // the old pair reach further over the hall than away from it
-        const toHall = old ? 1 + 0.35 * Math.max(0, d.x * inward) : 1
-        const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short * toHall)
-        const rr = Math.max(0.025, 0.03 + 0.07 * (1 - u)) * (r0 / 0.55)
-        limbs.push(
-          grow({
-            start: p.clone(),
-            dir: d,
-            length: L,
-            r0: Math.min(rr, r0 * 0.3),
-            r1: 0.012,
-            depth: 1,
-            sway0: h,
-            segLen: tier === 'phone' ? 0.8 : 0.45,
-            bend: (dd, s) => {
-              dd.y += (s > 0.5 ? 0.05 : -0.03) + (r() - 0.5) * 0.06
-              dd.x += (r() - 0.5) * 0.1
-              dd.z += (r() - 0.5) * 0.1
-            },
-          }),
-        )
-      }
-      // sway only in the crown: the flex measure starts where the branches start
-      for (const l of limbs) {
-        for (let i = 0; i < l.sway.length; i++) {
-          l.sway[i] = Math.max(0, Math.min(1, (l.sway[i]! - crownBase) / (H - crownBase))) * SWAY_NORM
-        }
-      }
-      const tips = collectTips(limbs.filter((l) => l.depth === 1), 1, 0.2, 0.35)
-      tips.push(...collectTips([trunk], 0, crownBase / H + (1 - crownBase / H) * 0.55, 0.5))
-      // to world space
-      for (const l of limbs) for (const q of l.pts) q.add(base)
-      for (const t of tips) t.p.add(base)
-      for (const l of limbs) {
-        tubes.add(l, {
-          radial: l.depth === 0 ? (tier === 'phone' ? 12 : 20) : tier === 'phone' ? 3 : 5,
-          texWorld: 0.85,
-          vAspect: 2,
-          gnarl: l.depth === 0 ? 0.03 : 0,
-          flare: l.depth === 0 ? (old ? 0.5 : 0.28) : 0,
-          seed: r() * 50,
-        })
-      }
-      const crown: CrownShape = {
-        centre: new THREE.Vector3(c.x, gy + (crownBase + H) / 2, c.z),
-        radii: new THREE.Vector3(crownR, (H - crownBase) / 2, crownR),
-        lowY: (H - crownBase) / 2,
-      }
-      // many small sprays rather than a few big cards: up close a crown is
-      // built of layered, overlapping tufts, never of flat sheets
-      const sz: [number, number] = tier === 'phone' ? [0.8, 1.4] : [0.42, 0.85]
-      const cards = buildCards({
-        tips, count: Math.round(cardsPer * (H / 22) * (old ? 1.45 : 0.7)), size: sz, crown, rand: r, volume: 0.72, plate: 0, depthShade: 0.85,
-        clusterRadius: 0.75, perCluster: tier === 'phone' ? 8 : 9, flat: 0.55, reject: () => false, ballShade: 0.45,
-      })
-      if (!old) {
-        // the grove behind stands in more air: lighter and bluer, so it falls back
-        const col = cards.getAttribute('color') as THREE.BufferAttribute
-        for (let i = 0; i < col.count; i++) col.setXYZ(i, col.getX(i) * 1.08, col.getY(i) * 1.14, col.getZ(i) * 1.32)
-      }
-      parts.push(cards)
-      if (c.sacred) {
-        // the rope sits at about 2 m, where the trunk is a little thinner than at the flare
-        const at = trunk.radii[Math.min(trunk.radii.length - 1, Math.round((2.3 / (H + 0.3)) * (trunk.radii.length - 1)))]!
-        rope = strawRope(c.x, gy + 2.0, c.z, at + 0.04, 77)
-      }
-    }
     const bark = barkMaterial(tier, 'cedar_bark', 0x4a3026, 0x9a8a82, 0.3, SWAY_NORM, 0.8)
     // the long fibrous strips should catch the low light
     bark.normalScale.set(1.8, 1.8)
-    this.addMesh(tubes.build(), bark, true)
-    const cards = mergeGeometries(parts)
-    for (const g of parts) g.dispose()
+    this.addMesh(shape.bark, bark, true)
     const mat = foliageMaterial({
       key: 'cedar',
       map: atlas.map,
@@ -1899,10 +1830,10 @@ export class CedarGrove extends Tree {
     })
     // sugi foliage is dark and a little blue beside the maples' warm reds
     mat.color.setRGB(0.4, 0.5, 0.66)
-    this.addFoliage(cards, mat)
-    if (rope) {
+    this.addFoliage(shape.cards, mat)
+    if (shape.rope) {
       const ropeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })
-      this.addMesh(rope, ropeMat, true)
+      this.addMesh(shape.rope, ropeMat, true)
     }
     this.object.updateMatrixWorld(true)
   }
@@ -1911,6 +1842,139 @@ export class CedarGrove extends Tree {
     super.dispose()
     releaseAtlas('cedar', this.tier)
   }
+}
+
+export function groveShape(tier: Tier): GroveShape {
+  const r = rng(5501)
+  const tubes = new TubeBuilder()
+  const parts: THREE.BufferGeometry[] = []
+  const branchesPer = tier === 'ultra' ? 84 : tier === 'high' ? 62 : 34
+  const cardsPer = tier === 'ultra' ? 3600 : tier === 'high' ? 2500 : 800
+  let rope: THREE.BufferGeometry | null = null
+  for (const c of CEDARS) {
+    const H = c.height
+    const gy = groundHeight(c.x, c.z)
+    const base = new THREE.Vector3(c.x, gy, c.z)
+    // the pair that flanks the hall is old and broad; the grove behind is younger
+    const old = !c.back
+    const r0 = c.girth ?? (0.4 + (H - 18) * 0.03) * (c.sacred ? 1.25 : 1)
+    const limbs: Limb[] = []
+    // old trees lean a touch away from the hall, so the pair opens like a gate
+    const out = Math.sign(c.x) * (old ? 0.025 : 0)
+    const lean = new THREE.Vector3(out + (r() - 0.5) * 0.03, 1, (r() - 0.5) * 0.03).normalize()
+    const trunk = grow({
+      start: new THREE.Vector3(0, -0.3, 0),
+      dir: lean,
+      length: H + 0.3,
+      r0,
+      r1: 0.04,
+      depth: 0,
+      sway0: 0,
+      segLen: tier === 'phone' ? 1.6 : 0.9,
+      bend: (d) => {
+        d.x += (r() - 0.5) * 0.012
+        d.z += (r() - 0.5) * 0.012
+      },
+    })
+    // a straight column: the taper is close to linear, not a sapling's
+    for (let i = 0; i < trunk.radii.length; i++) {
+      const s = i / (trunk.radii.length - 1)
+      trunk.radii[i] = 0.04 + (r0 - 0.04) * Math.pow(1 - s, 1.1)
+    }
+    limbs.push(trunk)
+    // The old pair branch from about the eaves upwards, so their lowest limbs
+    // frame the roof; the trees behind keep their crowns lower down too, so no
+    // bare poles stand in a row.
+    const crownBase = H * (old ? 0.22 + r() * 0.03 : 0.3 + r() * 0.08)
+    // narrow: a sugi crown is a spire, a fifth as wide as the tree is tall
+    const crownR = H * (old ? 0.12 + r() * 0.02 : 0.085 + r() * 0.025)
+    const inward = -Math.sign(c.x)
+    const golden = 2.39996
+    const az0 = r() * 6.28
+    const n = Math.round(branchesPer * (H / 22))
+    const p = new THREE.Vector3()
+    for (let k = 0; k < n; k++) {
+      const u = (k + r() * 0.8) / n
+      const h = crownBase + (H * 0.98 - crownBase) * u
+      limbPoint(trunk, (h + 0.3) / (H + 0.3), p)
+      const az = az0 + k * golden + (r() - 0.5) * 0.5
+      // lower branches droop, upper ones climb; a few are short, which breaks the outline
+      const elev = -0.25 + u * 0.75 + (r() - 0.5) * 0.2
+      const d = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev))
+      // a third are short or overlong, which breaks the outline into tufts
+      const q = r()
+      const short = q < 0.25 ? 0.45 : q > 0.88 ? 1.35 : 1
+      // the old pair reach further over the hall than away from it
+      const toHall = old ? 1 + 0.35 * Math.max(0, d.x * inward) : 1
+      const L = Math.max(0.35, crownR * Math.pow(1 - u, 1.05) * (0.7 + r() * 0.55) * short * toHall)
+      const rr = Math.max(0.025, 0.03 + 0.07 * (1 - u)) * (r0 / 0.55)
+      limbs.push(
+        grow({
+          start: p.clone(),
+          dir: d,
+          length: L,
+          r0: Math.min(rr, r0 * 0.3),
+          r1: 0.012,
+          depth: 1,
+          sway0: h,
+          segLen: tier === 'phone' ? 0.8 : 0.45,
+          bend: (dd, s) => {
+            dd.y += (s > 0.5 ? 0.05 : -0.03) + (r() - 0.5) * 0.06
+            dd.x += (r() - 0.5) * 0.1
+            dd.z += (r() - 0.5) * 0.1
+          },
+        }),
+      )
+    }
+    // sway only in the crown: the flex measure starts where the branches start
+    for (const l of limbs) {
+      for (let i = 0; i < l.sway.length; i++) {
+        l.sway[i] = Math.max(0, Math.min(1, (l.sway[i]! - crownBase) / (H - crownBase))) * SWAY_NORM
+      }
+    }
+    const tips = collectTips(limbs.filter((l) => l.depth === 1), 1, 0.2, 0.35)
+    tips.push(...collectTips([trunk], 0, crownBase / H + (1 - crownBase / H) * 0.55, 0.5))
+    // to world space
+    for (const l of limbs) for (const q of l.pts) q.add(base)
+    for (const t of tips) t.p.add(base)
+    for (const l of limbs) {
+      tubes.add(l, {
+        radial: l.depth === 0 ? (tier === 'phone' ? 12 : 20) : tier === 'phone' ? 3 : 5,
+        texWorld: 0.85,
+        vAspect: 2,
+        gnarl: l.depth === 0 ? 0.03 : 0,
+        flare: l.depth === 0 ? (old ? 0.5 : 0.28) : 0,
+        seed: r() * 50,
+      })
+    }
+    const crown: CrownShape = {
+      centre: new THREE.Vector3(c.x, gy + (crownBase + H) / 2, c.z),
+      radii: new THREE.Vector3(crownR, (H - crownBase) / 2, crownR),
+      lowY: (H - crownBase) / 2,
+    }
+    // many small sprays rather than a few big cards: up close a crown is
+    // built of layered, overlapping tufts, never of flat sheets
+    const sz: [number, number] = tier === 'phone' ? [0.8, 1.4] : [0.42, 0.85]
+    const cards = buildCards({
+      tips, count: Math.round(cardsPer * (H / 22) * (old ? 1.45 : 0.7)), size: sz, crown, rand: r, volume: 0.72, plate: 0, depthShade: 0.85,
+      clusterRadius: 0.75, perCluster: tier === 'phone' ? 8 : 9, flat: 0.55, reject: () => false, ballShade: 0.45,
+    })
+    if (!old) {
+      // the grove behind stands in more air: lighter and bluer, so it falls back
+      const col = cards.getAttribute('color') as THREE.BufferAttribute
+      for (let i = 0; i < col.count; i++) col.setXYZ(i, col.getX(i) * 1.08, col.getY(i) * 1.14, col.getZ(i) * 1.32)
+    }
+    parts.push(cards)
+    if (c.sacred) {
+      // the rope sits at about 2 m, where the trunk is a little thinner than at the flare
+      const at = trunk.radii[Math.min(trunk.radii.length - 1, Math.round((2.3 / (H + 0.3)) * (trunk.radii.length - 1)))]!
+      rope = strawRope(c.x, gy + 2.0, c.z, at + 0.04, 77)
+    }
+  }
+  const bark = tubes.build()
+  const cards = mergeGeometries(parts)
+  for (const g of parts) g.dispose()
+  return { bark, cards, rope }
 }
 
 // --- falling petals -----------------------------------------------------------------
