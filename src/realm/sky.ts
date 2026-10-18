@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { SUN_DIRECTION } from './atmosphere'
-import { BITMAP, bitmap } from './assets'
+import { BITMAP, SKY_RANK, bitmap, inTurn } from './assets'
 import type { Tier } from './types'
 
 // The sky is a photographed panorama. Two versions of it ship: a small HDR
@@ -101,7 +101,10 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '1k'}.hdr`
   // the picture is decoded off the main thread and goes to the GPU at once,
   // not on the first frame
-  const [image, hdr] = await Promise.all([bitmap(bgUrl, 'auto'), new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)])
+  const [image, hdr] = await Promise.all([
+    bitmap(bgUrl, 'auto', SKY_RANK),
+    inTurn(SKY_RANK, () => new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)),
+  ])
   const bg = new THREE.Texture(image)
   bg.flipY = !BITMAP
   bg.needsUpdate = true

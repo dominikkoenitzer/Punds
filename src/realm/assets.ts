@@ -41,13 +41,46 @@ export const BITMAP = (() => {
   return !(safari !== undefined && (!safari || Number(safari[1]) < 17)) && !(firefox && Number(firefox[1]) < 98)
 })()
 
-// Fetched at low priority, so the sky and the page go first, and decoded off
-// the main thread: an image element is decoded on the main thread during the
-// upload, which is where most of the long tasks came from.
-export async function bitmap(url: string, priority: 'low' | 'auto' = 'low'): Promise<ImageBitmap | HTMLImageElement> {
+// The downloads of the load go a few at a time, in the order the build needs
+// them (lowest rank first). Over HTTP/2 they would all share the line at
+// once, and the first step's ground would land together with the last tree's
+// bark. A finished download hands its lane to the next in line.
+const LANES = 4
+let busy = 0
+const line: { rank: number; go: () => void }[] = []
+
+export async function inTurn<T>(rank: number, job: () => Promise<T>): Promise<T> {
+  if (busy < LANES) busy++
+  else {
+    await new Promise<void>((go) => {
+      const at = line.findIndex((w) => w.rank > rank)
+      line.splice(at < 0 ? line.length : at, 0, { rank, go })
+    })
+  }
+  try {
+    return await job()
+  } finally {
+    const next = line.shift()
+    if (next) next.go()
+    else busy--
+  }
+}
+
+// the sky's files first: every program waits for its light
+export const SKY_RANK = 0
+
+async function download(url: string, priority: 'low' | 'auto'): Promise<Blob> {
   const res = await fetch(url, { priority } as RequestInit)
   if (!res.ok) throw new Error(`${res.status} ${url}`)
-  const blob = await res.blob()
+  return res.blob()
+}
+
+// Fetched at low priority, so the page goes first, in line when a rank is
+// given, and decoded off the main thread: an image element is decoded on the
+// main thread during the upload, which is where most of the long tasks came
+// from.
+export async function bitmap(url: string, priority: 'low' | 'auto' = 'low', rank?: number): Promise<ImageBitmap | HTMLImageElement> {
+  const blob = await (rank === undefined ? download(url, priority) : inTurn(rank, () => download(url, priority)))
   if (BITMAP) return createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
   const src = URL.createObjectURL(blob)
   try {
@@ -60,10 +93,10 @@ export async function bitmap(url: string, priority: 'low' | 'auto' = 'low'): Pro
   }
 }
 
-function load(url: string, color: boolean): Promise<THREE.Texture> {
+function load(url: string, color: boolean, rank: number): Promise<THREE.Texture> {
   let p = cache.get(url)
   if (!p) {
-    p = bitmap(url).then((img) => {
+    p = bitmap(url, 'low', rank).then((img) => {
       const tex = new THREE.Texture(img)
       tex.flipY = !BITMAP
       tex.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace
@@ -93,8 +126,14 @@ export function texSize(tier: Tier, name: string): '1k' | '2k' {
 }
 
 // every scanned set the island asks for, requested together at the start so
-// the downloads overlap the build instead of waiting step by step
-const SETS = ['soil', 'gravel', 'moss', 'pebbles', 'cliff', 'rock', 'stone', 'wall', 'painted_wood', 'plaster', 'cedar_planks', 'wood_aged', 'copper', 'sakura_bark', 'maple_bark', 'cedar_bark']
+// the downloads overlap the build instead of waiting step by step, in the
+// order of the build: ground, paving and walls, the shrine, then the barks
+const SETS = ['soil', 'gravel', 'moss', 'pebbles', 'cliff', 'rock', 'stone', 'wall', 'painted_wood', 'plaster', 'cedar_planks', 'wood_aged', 'copper', 'maple_bark', 'sakura_bark', 'cedar_bark']
+
+const rankOf = (name: string) => 1 + Math.max(0, SETS.indexOf(name))
+
+// the scanned rocks come after the shrine and before the barks
+export const SCANS_RANK = rankOf('copper') + 0.5
 
 export function prefetchSets(tier: Tier): void {
   for (const name of SETS) loadPbr(name, tier).catch(() => {})
@@ -139,10 +178,11 @@ export async function loadPbr(name: string, tier: Tier): Promise<PbrSet> {
   // a phone screen cannot show the fine relief of a 1k normal map, and the
   // download matters more there: relief and roughness come at 512
   const detail = tier === 'phone' ? '512' : size
+  const rank = rankOf(name)
   const [map, normalMap, arm] = await Promise.all([
-    load(`${base}/diff_${size}.webp`, true),
-    load(`${base}/nor_${detail}.webp`, false),
-    load(`${base}/arm_${detail}.webp`, false),
+    load(`${base}/diff_${size}.webp`, true, rank),
+    load(`${base}/nor_${detail}.webp`, false, rank),
+    load(`${base}/arm_${detail}.webp`, false, rank),
   ])
   return { map, normalMap, arm }
 }
