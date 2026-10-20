@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
+import type { Tier } from '../realm/types'
 import { LINKS } from '../links'
 import './Sando.css'
 
@@ -39,6 +40,8 @@ export default function Sando() {
   const containerRef = useRef<HTMLDivElement>(null)
   const realmRef = useRef<Realm | null>(null)
   const [noScene, setNoScene] = useState(() => !supportsWebGL2())
+  // set when this device measured the garden too heavy and builds a lighter one
+  const [level, setLevel] = useState<Tier | undefined>(undefined)
   const [sound, setSound] = useState(false)
   // the one hint: shown once the garden is there, gone at the first look
   const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
@@ -98,13 +101,21 @@ export default function Sando() {
     let cancelled = false
     void (async () => {
       try {
-        const [{ Realm }, { buildIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island')])
+        const [{ Realm }, { buildIsland }, { lighterLevel, rememberLevel }] = await Promise.all([import('../realm/realm'), import('../realm/island'), import('../realm/quality')])
         if (cancelled) return
         realm = new Realm(container, {
+          ...(level ? { tier: level } : {}),
           instant: poster !== null,
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           onTooSlow: () => {
-            if (!cancelled) setNoScene(true)
+            if (cancelled || !realm) return
+            const lighter = lighterLevel(realm.tier)
+            if (lighter && !new URLSearchParams(location.search).has('tier')) {
+              rememberLevel(lighter)
+              setLevel(lighter)
+            } else {
+              setNoScene(true)
+            }
           },
           onReady: () => {
             window.setTimeout(() => setCue((c) => (c === 'waiting' ? 'shown' : c)), 1200)
@@ -127,7 +138,7 @@ export default function Sando() {
       realm?.dispose()
       realmRef.current = null
     }
-  }, [noScene, poster])
+  }, [noScene, poster, level])
 
   return (
     <div className="sando-root">
