@@ -42,7 +42,7 @@ describe('scales', () => {
 
   it('starts lower in proportion to the measured cost', () => {
     // four times the budget: half the side
-    expect(initialScale(BUDGET * 4, BUDGET)).toBeCloseTo(snapScale(Math.sqrt(0.85 / 4)))
+    expect(initialScale(BUDGET * 4, BUDGET)).toBeCloseTo(snapScale(Math.sqrt(0.9 / 4)))
     expect(initialScale(BUDGET * 100, BUDGET)).toBeCloseTo(MIN_SCALE)
   })
 
@@ -105,6 +105,20 @@ describe('stepping up', () => {
   it('does not climb when the GPU has no room for the next step', () => {
     const s = run(initialScaleState(STEP), gpu(BUDGET * 0.8), 30)
     expect(s.scale).toBeCloseTo(STEP)
+  })
+
+  it('climbs when only part of the cost grows with the pixels', () => {
+    // 0.72 of the budget: about 0.85 of it one step up with a quarter fixed
+    const s = run(initialScaleState(STEP), gpu(BUDGET * 0.72), 1 + GOOD_TO_STEP_UP)
+    expect(s.scale).toBe(1)
+  })
+
+  it('backs off after a step up the GPU time proves wrong', () => {
+    let s = run(initialScaleState(STEP), gpu(BUDGET * 0.72), 1 + GOOD_TO_STEP_UP)
+    s = run(s, gpu(BUDGET * 1.3), 2)
+    expect(s.scale).toBeLessThan(1)
+    expect(s.failedAt).toBe(1)
+    expect(s.wait).toBe(FIRST_BACKOFF)
   })
 
   it('without a timer, tries a step up and backs off when it fails', () => {

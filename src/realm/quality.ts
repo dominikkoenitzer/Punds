@@ -21,10 +21,12 @@ export const WINDOW_SECONDS = 2
 /** A window is slow when its 75th percentile frame is this far over the budget. */
 export const SLOW_RATIO = 1.12
 /**
- * With a GPU timer, a window has room for a step up below this share of the
- * budget: the next step draws 1 / 0.81 as many pixels and must stay under 85%.
+ * With a GPU timer, the predicted cost of the next step up must stay under
+ * this share of the budget. Part of a frame does not grow with the pixels
+ * (shadows, the cloud march at its own size), so a quarter is taken as fixed.
  */
-export const ROOM_RATIO = 0.85 * STEP * STEP
+export const ROOM_RATIO = 0.9
+export const PIXEL_SHARE = 0.75
 /** Good windows in a row before a step up is tried (about six seconds). */
 export const GOOD_TO_STEP_UP = 3
 /** Windows to wait after any change, while new targets settle. */
@@ -67,11 +69,12 @@ export function snapScale(s: number): number {
 /**
  * The first scale from a measured frame cost at full resolution. The pixel
  * work scales with the area, so the side scales with the square root; aim a
- * little under the budget so the first seconds are smooth.
+ * little under the budget so the first seconds are smooth. Taking all of
+ * the cost as pixel work errs low; the live steps climb back from there.
  */
 export function initialScale(costMs: number, budgetMs: number): number {
   if (!(costMs > 0)) return 1
-  return snapScale(Math.sqrt((budgetMs * 0.85) / costMs))
+  return snapScale(Math.sqrt((budgetMs * 0.9) / costMs))
 }
 
 export function percentile(values: readonly number[], p: number): number {
@@ -118,14 +121,14 @@ export function stepScale(state: ScaleState, w: Window): ScaleState {
     }
   }
   if (state.scale >= 1) return { ...state, good: 0, wait, probing: false }
-  // one step up costs about 1 / 0.81 more pixels: with the GPU's time that
-  // must still fit; frame gaps cannot show room, only that the frames keep up
-  const roomy = w.timed ? w.p75 < w.budget * ROOM_RATIO : w.p75 <= w.budget * SLOW_RATIO
+  // one step up draws 1 / 0.81 as many pixels: with the GPU's time the cost
+  // there must still fit; frame gaps cannot show room, only that frames keep up
+  const roomy = w.timed ? w.p75 * (1 - PIXEL_SHARE + PIXEL_SHARE / (STEP * STEP)) < w.budget * ROOM_RATIO : w.p75 <= w.budget * SLOW_RATIO
   const good = roomy ? state.good + 1 : 0
   const next = snapScale(state.scale / STEP + 1e-9)
   const blocked = wait > 0 && next >= state.failedAt - 1e-9
   if (good >= GOOD_TO_STEP_UP && !blocked) {
-    return { ...state, scale: next, good: 0, settle: SETTLE_WINDOWS, wait, probing: !w.timed }
+    return { ...state, scale: next, good: 0, settle: SETTLE_WINDOWS, wait, probing: true }
   }
   // a step that held for a full window is no longer on probation
   return { ...state, good, wait, probing: false }
