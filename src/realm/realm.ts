@@ -805,7 +805,7 @@ export class Realm {
     }
     pp.focusDistance = this.debugView ? this.debugView.from.distanceTo(this.debugView.to) : pose.focus
     pp.focusRange = Math.max(1.5, pp.focusDistance * 0.45)
-    this.pipeline.render(this.scene, this.camera, pp, SUN_DIRECTION, t)
+    this.pipeline.render(this.scene, this.camera, pp, light?.glowDirection ?? SUN_DIRECTION, t)
     this.opts.onProgress?.(p)
   }
 

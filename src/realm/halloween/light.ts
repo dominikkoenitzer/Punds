@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { LightDress } from '../season'
 import type { Frame } from '../types'
+import { discDirection } from './sky'
 import { hallow } from './state'
 
 // The blood-moon night: the moon is the key light, red-orange and strong
@@ -25,7 +26,10 @@ export const light: LightDress = {
   fogDensity: 0.012,
   fogHeight: 0,
   fogFalloff: 0.35,
+  // the glow in the air and the shafts come from the moon the sky draws
+  glowDirection: new THREE.Vector3(),
   update(frame: Frame) {
+    this.glowDirection?.copy(discDirection())
     // a far flash lifts the garden's light only a little, and cools it
     const f = hallow.uFlash.value * frame.motion
     this.keyColor.copy(KEY).lerp(FLASH, f * 0.25)

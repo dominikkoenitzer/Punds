@@ -51,6 +51,9 @@ export interface LightDress {
   fogDensity: number
   fogHeight?: number
   fogFalloff?: number
+  // where the frame's glow and light shafts come from, if not the key light's
+  // own direction (a moon drawn off the light's bearing)
+  glowDirection?: THREE.Vector3
   // called each frame before the frame's light is set; may change the values
   // above (a lightning flash lifts the key light for a moment)
   update?(frame: Frame): void
@@ -58,8 +61,9 @@ export interface LightDress {
 
 // The photographed sky, regraded: GLSL that runs after the panorama is
 // decoded to linear radiance, in the sky dome and wherever else a shader looks
-// the sky up (the clouds). `glsl` declares its own uniforms (merge `uniforms`
-// into the material) and defines `vec3 dressSky(vec3 col, vec3 dir)`, col the
+// the sky up (the clouds). `glsl` declares its own uniforms (spread `uniforms`
+// into the material as they are; some are read afresh each frame, so never
+// clone them) and defines `vec3 dressSky(vec3 col, vec3 dir)`, col the
 // linear panorama radiance seen in world direction dir. `domeGlsl` comes after
 // it in the dome only and defines `vec3 dressSkyDisc(vec3 col, vec3 photo,
 // vec3 dir)`, which adds what only the dome draws (the stars, the moon) to the
