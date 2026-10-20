@@ -9,6 +9,7 @@ import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
+import { dress } from './season'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
 // The realm host: renderer, camera, sun, the parts of the island, the look
@@ -514,7 +515,7 @@ export class Realm {
       this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
       this.scene.add(s.mesh)
       this.scene.environment = s.environment
-      this.scene.environmentIntensity = 0.38
+      this.scene.environmentIntensity = dress()?.light?.environmentIntensity ?? 0.38
       this.placeSun()
       this.skyResolve(s)
       const pending = this.pendingCompile ?? []
@@ -760,10 +761,17 @@ export class Realm {
     realmUniforms.uTime.value = t
     realmUniforms.uGust.value = 0.5 + 0.5 * Math.sin(t * 0.13) * Math.sin(t * 0.07 + 2.0)
 
-    // the sun sinks through the walk
-    this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
+    // the sun sinks through the walk; a season may set its own hour
+    const light = dress()?.light
+    if (light) {
+      light.update?.(this.frame)
+      this.sunColor.copy(light.keyColor)
+      this.sun.intensity = light.keyIntensity
+    } else {
+      this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
+      this.sun.intensity = 13 - p * 2.5
+    }
     this.sun.color.copy(this.sunColor)
-    this.sun.intensity = 13 - p * 2.5
 
     this.frame.t = t
     this.frame.dt = dt
@@ -778,10 +786,21 @@ export class Realm {
 
     const pp = this.post
     pp.wake = wake
-    pp.exposure = 0.68 + p * 0.05
-    pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
-    pp.sunFogColor.setRGB(1.0, 0.78, 0.55).multiplyScalar(1.6)
-    pp.sunColor.copy(this.sunColor).multiplyScalar(0.9)
+    if (light) {
+      pp.exposure = light.exposure
+      pp.fogColor.copy(light.fogColor)
+      pp.sunFogColor.copy(light.sunFogColor)
+      pp.sunColor.copy(light.shaftColor)
+      pp.shafts = light.shafts
+      pp.bloom = light.bloom
+      pp.saturation = light.saturation
+      pp.fogDensity = light.fogDensity
+    } else {
+      pp.exposure = 0.68 + p * 0.05
+      pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
+      pp.sunFogColor.setRGB(1.0, 0.78, 0.55).multiplyScalar(1.6)
+      pp.sunColor.copy(this.sunColor).multiplyScalar(0.9)
+    }
     pp.focusDistance = this.debugView ? this.debugView.from.distanceTo(this.debugView.to) : pose.focus
     pp.focusRange = Math.max(1.5, pp.focusDistance * 0.45)
     this.pipeline.render(this.scene, this.camera, pp, SUN_DIRECTION, t)

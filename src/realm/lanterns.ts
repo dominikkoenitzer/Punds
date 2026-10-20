@@ -4,6 +4,7 @@ import { loadPbr } from './assets'
 import { weatheredStone } from './materials'
 import { lathe, merge, transformed, worldUv } from './geo'
 import type { Frame, RealmPart, Tier } from './types'
+import { dress } from './season'
 
 // Kasuga lanterns along the approach, proportioned from a measured shrine
 // lantern: hexagonal from base to roof except the round, banded pillar, each
@@ -235,7 +236,9 @@ export class Lanterns implements RealmPart {
   update(frame: Frame): void {
     // the first lantern catches once the visitor has passed the gate, the
     // last two on the terrace just before the end of the walk
-    this.setLit(THREE.MathUtils.clamp((frame.progress - 0.36) / 0.56, 0, 1) * this.lights.length)
+    // at night (a season's dark hour) they all burn
+    const night = dress()?.light ? 1 : 0
+    this.setLit(Math.max(night, THREE.MathUtils.clamp((frame.progress - 0.36) / 0.56, 0, 1)) * this.lights.length)
     this.lights.forEach((l, i) => {
       // a lantern catches over about a second, then breathes
       l.level += (l.target - l.level) * Math.min(1, frame.dt * 1.6)
