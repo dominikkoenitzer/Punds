@@ -421,13 +421,15 @@ export class Realm {
   private resize(): void {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
-    // the screen's own density, less only what this device measured
-    this.dpr = (window.devicePixelRatio || 1) * this.dprScale
-    this.renderer.setPixelRatio(this.dpr)
+    // the canvas at the screen's own density; the scene at that, less only
+    // what this device measured, scaled up in the last pass
+    const native = window.devicePixelRatio || 1
+    this.dpr = native * this.dprScale
+    this.renderer.setPixelRatio(native)
     this.renderer.setSize(w, h, false)
     this.renderer.domElement.style.width = '100%'
     this.renderer.domElement.style.height = '100%'
-    this.pipeline.setSize(w, h, this.dpr)
+    this.pipeline.setSize(w, h, this.dpr, this.dprScale)
     this.camera.aspect = w / h
     // keep a minimum horizontal field on tall phone screens
     const vMin = 40

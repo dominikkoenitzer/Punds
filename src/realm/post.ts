@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { GpuTimer } from './gpuTimer'
 import type { Tier } from './types'
+import { sceneSize } from './atmosphere'
 
 // The frame after the scene is drawn: height fog and haze from the depth
 // buffer, a mip chain that feeds both the bloom and the depth of field, light
@@ -278,6 +279,7 @@ uniform float uWake;
 uniform float uTime;
 uniform vec2 uResolution;
 uniform float uEdgeAa;
+uniform float uSharpen;
 varying vec2 vUv;
 
 // brightness for finding edges, squeezed so the bright sky and the shade
@@ -312,6 +314,22 @@ vec3 sceneSmoothed(vec2 uv) {
   return lo2 < lo || lo2 > hi ? inner : outer;
 }
 
+// When the scene was drawn smaller than the screen, the stretch to full size
+// softens it: lift the detail back with an unsharp mask from the four
+// neighbouring texels, held inside their range so no edge gets a halo.
+vec3 sceneUpscaled(vec2 uv) {
+  vec3 c = sceneSmoothed(uv);
+  if (uSharpen <= 0.0) return c;
+  vec2 px = 1.0 / uResolution;
+  vec3 n = texture2D(tScene, uv + vec2(0.0, px.y)).rgb;
+  vec3 s = texture2D(tScene, uv - vec2(0.0, px.y)).rgb;
+  vec3 e = texture2D(tScene, uv + vec2(px.x, 0.0)).rgb;
+  vec3 w = texture2D(tScene, uv - vec2(px.x, 0.0)).rgb;
+  vec3 lo = min(c, min(min(n, s), min(e, w)));
+  vec3 hi = max(c, max(max(n, s), max(e, w)));
+  return clamp(c + (c - 0.25 * (n + s + e + w)) * uSharpen, lo, hi);
+}
+
 float linearDepth(float d) {
   float z = d * 2.0 - 1.0;
   return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
@@ -322,7 +340,7 @@ float hash(vec2 p) {
 }
 
 void main() {
-  vec3 col = sceneSmoothed(vUv);
+  vec3 col = sceneUpscaled(vUv);
   float d = texture2D(tDepth, vUv).r;
   float z = d >= 1.0 ? uFar : linearDepth(d);
 
@@ -392,6 +410,8 @@ function makeTarget(w: number, h: number, type: THREE.TextureDataType = THREE.Ha
 }
 
 const MIPS = 6
+// `?sharpen=0` turns the upscale sharpening off, for comparisons
+const SHARPEN = new URLSearchParams(location.search).get('sharpen') !== '0'
 // `?aa=0` or `?aa=1` for comparisons; otherwise chosen by the drawn density
 const EDGE_AA = (() => {
   const v = new URLSearchParams(location.search).get('aa')
@@ -535,14 +555,19 @@ export class Pipeline {
         uTime: { value: 0 },
         uResolution: { value: new THREE.Vector2(1, 1) },
         uEdgeAa: { value: 1 },
+        uSharpen: { value: 0 },
       },
       true,
     )
   }
 
-  setSize(width: number, height: number, dpr: number): void {
+  // `dpr` is the density the scene is drawn at; `scale` how much of the
+  // screen's own that is (the canvas keeps the screen's own)
+  setSize(width: number, height: number, dpr: number, scale = 1): void {
     const w = Math.max(1, Math.round(width * dpr))
     const h = Math.max(1, Math.round(height * dpr))
+    sceneSize.set(w, h)
+    this.finalMat.uniforms.uSharpen.value = SHARPEN ? Math.min(0.8, (1 - scale) * 2.5) : 0
     this.width = w
     this.height = h
     this.main.setSize(w, h)

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { loadPbr, pbrMaterial } from './assets'
-import { SUN_DIRECTION, realmUniforms } from './atmosphere'
+import { SUN_DIRECTION, realmUniforms, sceneSize } from './atmosphere'
 import { fbm2, rng } from './layout'
 import type { Frame, RealmPart, Tier } from './types'
 
@@ -1790,8 +1790,8 @@ export class Skyscape implements RealmPart {
       if (this.skyUniforms.uSkyMode.value === 0) this.setSky(bg as THREE.Texture)
     }
 
-    renderer.getDrawingBufferSize(this.size)
-    // the same texels as the screen alone would get, spread a little wider
+    this.size.copy(sceneSize)
+    // the same texels as the drawn scene alone would get, spread a little wider
     const w = Math.max(16, Math.round(this.size.x * this.settings.scale))
     const h = Math.max(16, Math.round(this.size.y * this.settings.scale))
     if (this.cloudTarget.width !== w || this.cloudTarget.height !== h) {
