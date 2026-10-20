@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { SUN_DIRECTION, realmUniforms } from './atmosphere'
+import { SUN_DIRECTION, realmUniforms, sceneSize } from './atmosphere'
 import { OUTFLOW, POND_BOUNDS, POND_LEVEL, groundHeight, islandSdf, noise2, pondSdf, rng } from './layout'
 import type { Frame, RealmPart, Tier } from './types'
 
@@ -1153,8 +1153,8 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
     renderer.render(this.koiDepthMesh, this.koiDepthCamera)
 
     // planar reflection
-    renderer.getDrawingBufferSize(this.size)
-    // half the drawing buffer, but never so few texels across that the far
+    this.size.copy(sceneSize)
+    // half the drawn scene, but never so few texels across that the far
     // shore turns into blocks when the host renders a phone at a low ratio
     const rs = Math.max(this.reflectionScale, Math.min(1, 360 / Math.max(1, Math.min(this.size.x, this.size.y))))
     const rw = Math.max(16, Math.round(this.size.x * rs))

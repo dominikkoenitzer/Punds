@@ -47,3 +47,8 @@ vec3 windSway(vec3 world, float amount) {
   return vec3(dir.x, 0.0, dir.y) * push * amount;
 }
 `
+
+// the size the scene itself is drawn at, in pixels (set by the post chain):
+// the canvas keeps the screen's own size and the last pass scales the scene
+// up to it, so parts that size their targets by the drawn scene read this
+export const sceneSize = new THREE.Vector2(1, 1)

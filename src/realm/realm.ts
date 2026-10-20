@@ -7,8 +7,8 @@ import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
 import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
-import { GpuTimer } from './gpuTimer'
-import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
+import { FrameTimer, GpuTimer } from './gpuTimer'
+import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, rememberedLevel, stepScale, type ScaleState } from './quality'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
 // The realm host: renderer, camera, sun, the parts of the island, the look
@@ -25,9 +25,11 @@ export interface RealmOptions {
   // what the pointer is over: the page draws its own small cursor, which
   // grows over anything that can be clicked and carries a name where one fits
   onCursor?: (state: CursorState) => void
-  // the device cannot carry the scene even at the lowest step: the page
-  // should drop it for the still picture and the written links
-  onTooSlow?: () => void
+  // the device cannot carry this much garden even at the lowest resolution:
+  // the page builds a lighter one, or shows the still picture and the
+  // written links when it is already the lightest; `over` is how many times
+  // the frame budget the frames took there
+  onTooSlow?: (over: number) => void
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
@@ -47,20 +49,24 @@ function isInteractive(p: RealmPart): p is RealmPart & Interactive {
   return typeof (p as Partial<Interactive>).tap === 'function'
 }
 
+// How much garden to build. Every computer starts with all of it; only what
+// this device has measured (a lighter level it fell back to before, see
+// quality.ts) or the visitor's own wish to save data takes some away. How
+// sharp it is drawn is measured live instead (resize, sampleFrame).
 export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   const forced = new URLSearchParams(location.search).get('tier')
   if (forced === 'ultra' || forced === 'high' || forced === 'phone') return forced
   const name = rendererName(renderer)
   // no graphics chip at all: the scene would run on the processor
   if (/SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(name)) throw new Error(`software renderer: ${name}`)
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean } }
+  if (nav.connection?.saveData) return 'phone'
+  const remembered = rememberedLevel()
+  if (remembered) return remembered
+  // phones: fewer instances and smaller textures for their memory and data
   const coarse = window.matchMedia('(pointer: coarse)').matches
   if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
-  // a visitor saving data, or a small machine, gets the light settings
-  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number }
-  if (nav.connection?.saveData) return 'phone'
-  if ((nav.deviceMemory ?? 8) <= 4 || (nav.hardwareConcurrency || 8) <= 4) return 'phone'
-  if (/RTX|RX [67]\d{3}|Radeon Pro|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra'
-  return 'high'
+  return 'ultra'
 }
 
 function rendererName(renderer: THREE.WebGLRenderer): string {
@@ -79,12 +85,8 @@ const IDLE_AFTER_MS = 12000
 const ASLEEP_AFTER_MS = 60000
 // headless cost checks measure the frame without the caps
 const UNCAPPED = new URLSearchParams(location.search).has('uncapped')
-const NO_BUDGET = new URLSearchParams(location.search).has('nobudget')
-
-const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
-// and a budget of drawn pixels for the lighter tiers; a strong desktop draws
-// at its native resolution, and the frame cap below is what spares its GPU
-const PIXEL_BUDGET: Record<Tier, number> = { ultra: Infinity, high: 2560 * 1440, phone: 1300 * 600 }
+// a fixed share of the screen's resolution, for comparisons and tests
+const FIXED_SCALE = Number(new URLSearchParams(location.search).get('scale')) || 0
 
 // the low afternoon sun
 const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
@@ -121,10 +123,18 @@ export class Realm {
   private reduced: boolean
   private wakeT = 0
   private dpr = 1
-  private dprScale = 1
-  private quality: QualityState = initialQualityState('high')
-  private fpsAccum = 0
-  private fpsFrames = 0
+  private dprScale = FIXED_SCALE ? Math.min(1, Math.max(0.25, FIXED_SCALE)) : 1
+  private quality: ScaleState = initialScaleState(1)
+  private frameTimer: FrameTimer | null = null
+  // per frame: the GPU's time where there is a timer, else the time between frames
+  private costs: number[] = []
+  private windowStart = 0
+  private lastWindow = { p75: 0, budget: 0, timed: false }
+  private calibration = { ms: 0, scale: 1 }
+  private calibrating: number[] | null = null
+  private drawStart = 0
+  private windowCalm = false
+  private pixel = new Uint8Array(4)
   private lastDraw = 0
   private lastInput = 0
   private readyAt = 0
@@ -170,6 +180,7 @@ export class Realm {
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.shadowMap.autoUpdate = false
     this.tier = opts.tier ?? detectTier(this.renderer)
+    this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
     setMaxAnisotropy(Math.min(this.renderer.capabilities.getMaxAnisotropy(), this.tier === 'phone' ? 4 : 16))
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.display = 'block'
@@ -411,13 +422,15 @@ export class Realm {
   private resize(): void {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
-    const budget = NO_BUDGET ? Infinity : Math.sqrt(PIXEL_BUDGET[this.tier] / Math.max(1, w * h))
-    this.dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP[this.tier], budget) * this.dprScale
-    this.renderer.setPixelRatio(this.dpr)
+    // the canvas at the screen's own density; the scene at that, less only
+    // what this device measured, scaled up in the last pass
+    const native = window.devicePixelRatio || 1
+    this.dpr = native * this.dprScale
+    this.renderer.setPixelRatio(native)
     this.renderer.setSize(w, h, false)
     this.renderer.domElement.style.width = '100%'
     this.renderer.domElement.style.height = '100%'
-    this.pipeline.setSize(w, h, this.dpr)
+    this.pipeline.setSize(w, h, this.dpr, this.dprScale)
     this.camera.aspect = w / h
     // keep a minimum horizontal field on tall phone screens
     const vMin = 40
@@ -502,6 +515,8 @@ export class Realm {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       if (this.disposed) return
     }
+    if (!FIXED_SCALE) await this.calibrate()
+    if (this.disposed) return
     this.warming = false
     this.buildTimes.push(['warm-up', Math.round(performance.now() - t0)])
     this.buildTimes.push(['programs', this.renderer.info.programs?.length ?? 0])
@@ -523,6 +538,44 @@ export class Realm {
     // the 2k close-up textures, one upload per frame, now that it shows
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     void upgradeTextures(this.tier, frame).then(() => this.buildTimes.push(['2k done at', Math.round(performance.now())]))
+  }
+
+  // The first number for quality.ts: a few frames of the start view at the
+  // screen's full resolution, each waited for until the GPU is done, while
+  // the screen is still dark. A frame costs the GPU's own time where there is
+  // a timer; else the larger of the processor's part and the wait for the
+  // GPU after it, since the two overlap in a running loop. The first frames
+  // may still carry first-use work.
+  private async calibrate(): Promise<void> {
+    this.calibrating = []
+    for (let i = 0; i < 8; i++) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const ms = this.calibrating.slice(2)
+    this.calibrating = null
+    if (this.disposed || !ms.length) return
+    // the lower quarter: a frame that also waited on a late upload or a
+    // clock still rising says less about this device than the quick ones
+    const cost = percentile(ms, 0.25)
+    const budget = this.frameBudget(true)
+    const scale = initialScale(cost, budget)
+    this.calibration = { ms: Math.round(cost * 10) / 10, scale }
+    this.buildTimes.push(['frame at full resolution', this.calibration.ms], ['scale', Math.round(scale * 1000) / 1000])
+    this.quality = initialScaleState(scale)
+    if (scale !== this.dprScale) {
+      this.dprScale = scale
+      this.resize()
+    }
+  }
+
+  // what one frame may take: phones and a still screen run at the calm rate;
+  // the GPU's own time is held to the full rate on a computer either way,
+  // so it is ready the moment the visitor moves
+  private frameBudget(timed: boolean): number {
+    return 1000 / (this.tier === 'phone' || (this.calm && !timed) ? CALM_FPS : MAX_FPS)
+  }
+
+  // the measured quality, for `?debug` and headless checks
+  get qualityInfo(): { tier: Tier; scale: number; dpr: number; calibration: { ms: number; scale: number }; window: { p75: number; budget: number; timed: boolean }; timer: boolean } {
+    return { tier: this.tier, scale: this.dprScale, dpr: this.dpr, calibration: this.calibration, window: this.lastWindow, timer: !!this.frameTimer?.available }
   }
 
   private placeSun(): void {
@@ -644,7 +697,7 @@ export class Realm {
     const raw = this.clock.getDelta()
     const dt = Math.min(raw, 1 / 20)
     const t = this.clock.getElapsed()
-    this.sampleFps(raw)
+    this.sampleFrame(raw)
 
     // Until the island is built and its programs compiled draw only a warm
     // dark. Drawing the scene now would
@@ -722,8 +775,11 @@ export class Realm {
     this.frame.t = t
     this.frame.dt = dt
     this.frame.progress = p
+    this.drawStart = performance.now()
     for (const part of this.parts) part.update(this.frame)
     this.ambience.update(dt, this.camera.position, realmUniforms.uGust.value)
+    const timer = this.pipeline.timer ? null : this.frameTimer
+    timer?.begin()
     for (const part of this.parts) {
       if (!hasPrerender(part)) continue
       this.pipeline.timer?.begin((part as { label?: string }).label ?? part.constructor.name)
@@ -739,33 +795,51 @@ export class Realm {
     pp.focusDistance = this.debugView ? this.debugView.from.distanceTo(this.debugView.to) : pose.focus
     pp.focusRange = Math.max(1.5, pp.focusDistance * 0.45)
     this.pipeline.render(this.scene, this.camera, pp, SUN_DIRECTION, t)
+    timer?.end()
+    if (this.calibrating) {
+      const cpu = performance.now() - this.drawStart
+      const gl = this.renderer.getContext()
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pixel)
+      const total = performance.now() - this.drawStart
+      const gpu: number[] = []
+      timer?.collect(gpu)
+      this.calibrating.push(gpu.length ? Math.max(cpu, gpu[gpu.length - 1]!) : Math.max(cpu, total - cpu))
+    }
     this.opts.onProgress?.(p)
   }
 
-  private sampleFps(raw: number): void {
+  private sampleFrame(raw: number): void {
     // a stall from a hidden tab or a background hitch says nothing about the GPU
     if (raw > 0.25) return
     this.frameTimes.push(raw * 1000)
     if (this.frameTimes.length > 240) this.frameTimes.shift()
-    this.fpsAccum += raw
-    this.fpsFrames++
-    if (this.fpsAccum < 1.5) return
-    const fps = this.fpsFrames / this.fpsAccum
-    this.fpsAccum = 0
-    this.fpsFrames = 0
-    if (!this.ready) return
-    // at the calm rate a frame that keeps up is neither slow nor spare
-    const rate = this.calm ? (fps >= CALM_FPS * 0.9 ? 45 : fps) : fps
-    const next = stepQuality(this.quality, rate)
-    // still far too slow at the lowest step in the first half minute: this
-    // device should not be asked to carry the scene at all
-    if (next.tier === 'low' && this.quality.tier === 'low' && fps < 14 && performance.now() - this.readyAt < 30000) {
+    if (!this.ready || FIXED_SCALE || UNCAPPED) return
+    const timed = !!this.frameTimer?.available && !this.pipeline.timer
+    if (timed) this.frameTimer!.collect(this.costs)
+    else this.costs.push(raw * 1000)
+    // frame gaps at the calm rate say nothing about the full rate
+    if (!timed && this.calm && this.tier !== 'phone') this.windowCalm = true
+    const now = performance.now()
+    if (now - this.windowStart < WINDOW_SECONDS * 1000) return
+    this.windowStart = now
+    const costs = this.costs
+    const calm = this.windowCalm
+    this.costs = []
+    this.windowCalm = false
+    if (costs.length < 8 || calm) return
+    const budget = this.frameBudget(timed)
+    const p75 = percentile(costs, 0.75)
+    this.lastWindow = { p75: Math.round(p75 * 100) / 100, budget: Math.round(budget * 100) / 100, timed }
+    const next = stepScale(this.quality, this.lastWindow)
+    // still far too slow at the lowest resolution in the first minute
+    if (next.scale <= MIN_SCALE + 1e-9 && p75 > budget * 2 && now - this.readyAt < 60000) {
       this.tooSlow++
-      if (this.tooSlow >= 2) this.opts.onTooSlow?.()
+      if (this.tooSlow >= 2) this.opts.onTooSlow?.(p75 / budget)
+    } else {
+      this.tooSlow = 0
     }
-    if (next.tier !== this.quality.tier) {
-      // the tiers here only scale the resolution; the look stays the same
-      this.dprScale = next.tier === 'low' ? 0.72 : next.tier === 'high' ? 1 : 1
+    if (next.scale !== this.quality.scale) {
+      this.dprScale = next.scale
       this.resize()
     }
     this.quality = next
@@ -789,6 +863,7 @@ export class Realm {
     el.removeEventListener('webglcontextlost', this.onContextLost)
     for (const part of this.parts) part.dispose()
     this.sky?.dispose()
+    this.frameTimer?.dispose()
     this.pipeline.dispose()
     this.renderer.dispose()
     this.renderer.forceContextLoss()

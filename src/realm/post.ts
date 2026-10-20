@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { GpuTimer } from './gpuTimer'
 import type { Tier } from './types'
+import { sceneSize } from './atmosphere'
 
 // The frame after the scene is drawn: height fog and haze from the depth
 // buffer, a mip chain that feeds both the bloom and the depth of field, light
@@ -277,7 +278,58 @@ uniform vec3 uTint;
 uniform float uWake;
 uniform float uTime;
 uniform vec2 uResolution;
+uniform float uEdgeAa;
+uniform float uSharpen;
 varying vec2 vUv;
+
+// brightness for finding edges, squeezed so the bright sky and the shade
+// under the trees count alike
+float edgeLuma(vec3 c) {
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  return l / (1.0 + l);
+}
+
+// Smooth the stair steps along edges where a pixel is still big enough to
+// see them: four bilinear taps between the pixels find the local contrast
+// and the direction of the edge, then the image is averaged along it (and
+// never across), wider only while that stays within the local range.
+vec3 sceneSmoothed(vec2 uv) {
+  vec3 c = texture2D(tScene, uv).rgb;
+  if (uEdgeAa < 0.5) return c;
+  vec2 px = 1.0 / uResolution;
+  float lc = edgeLuma(c);
+  float nw = edgeLuma(texture2D(tScene, uv + vec2(-0.5, 0.5) * px).rgb);
+  float ne = edgeLuma(texture2D(tScene, uv + vec2(0.5, 0.5) * px).rgb);
+  float sw = edgeLuma(texture2D(tScene, uv + vec2(-0.5, -0.5) * px).rgb);
+  float se = edgeLuma(texture2D(tScene, uv + vec2(0.5, -0.5) * px).rgb);
+  float lo = min(lc, min(min(nw, ne), min(sw, se)));
+  float hi = max(lc, max(max(nw, ne), max(sw, se)));
+  // only real edges: texture detail below this contrast stays untouched
+  if (hi - lo < max(0.0625, hi * 0.166)) return c;
+  vec2 dir = vec2((sw + se) - (nw + ne), (nw + sw) - (ne + se));
+  float damp = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + damp), -8.0, 8.0) * px;
+  vec3 inner = 0.5 * (texture2D(tScene, uv - dir / 6.0).rgb + texture2D(tScene, uv + dir / 6.0).rgb);
+  vec3 outer = 0.5 * inner + 0.25 * (texture2D(tScene, uv - dir * 0.5).rgb + texture2D(tScene, uv + dir * 0.5).rgb);
+  float lo2 = edgeLuma(outer);
+  return lo2 < lo || lo2 > hi ? inner : outer;
+}
+
+// When the scene was drawn smaller than the screen, the stretch to full size
+// softens it: lift the detail back with an unsharp mask from the four
+// neighbouring texels, held inside their range so no edge gets a halo.
+vec3 sceneUpscaled(vec2 uv) {
+  vec3 c = sceneSmoothed(uv);
+  if (uSharpen <= 0.0) return c;
+  vec2 px = 1.0 / uResolution;
+  vec3 n = texture2D(tScene, uv + vec2(0.0, px.y)).rgb;
+  vec3 s = texture2D(tScene, uv - vec2(0.0, px.y)).rgb;
+  vec3 e = texture2D(tScene, uv + vec2(px.x, 0.0)).rgb;
+  vec3 w = texture2D(tScene, uv - vec2(px.x, 0.0)).rgb;
+  vec3 lo = min(c, min(min(n, s), min(e, w)));
+  vec3 hi = max(c, max(max(n, s), max(e, w)));
+  return clamp(c + (c - 0.25 * (n + s + e + w)) * uSharpen, lo, hi);
+}
 
 float linearDepth(float d) {
   float z = d * 2.0 - 1.0;
@@ -289,7 +341,7 @@ float hash(vec2 p) {
 }
 
 void main() {
-  vec3 col = texture2D(tScene, vUv).rgb;
+  vec3 col = sceneUpscaled(vUv);
   float d = texture2D(tDepth, vUv).r;
   float z = d >= 1.0 ? uFar : linearDepth(d);
 
@@ -359,6 +411,13 @@ function makeTarget(w: number, h: number, type: THREE.TextureDataType = THREE.Ha
 }
 
 const MIPS = 6
+// `?sharpen=0` turns the upscale sharpening off, for comparisons
+const SHARPEN = new URLSearchParams(location.search).get('sharpen') !== '0'
+// `?aa=0` or `?aa=1` for comparisons; otherwise chosen by the drawn density
+const EDGE_AA = (() => {
+  const v = new URLSearchParams(location.search).get('aa')
+  return v === '0' ? 0 : v === '1' ? 1 : null
+})()
 
 export class Pipeline {
   // headless cost checks only
@@ -496,14 +555,20 @@ export class Pipeline {
         uWake: { value: 1 },
         uTime: { value: 0 },
         uResolution: { value: new THREE.Vector2(1, 1) },
+        uEdgeAa: { value: 1 },
+        uSharpen: { value: 0 },
       },
       true,
     )
   }
 
-  setSize(width: number, height: number, dpr: number): void {
+  // `dpr` is the density the scene is drawn at; `scale` how much of the
+  // screen's own that is (the canvas keeps the screen's own)
+  setSize(width: number, height: number, dpr: number, scale = 1): void {
     const w = Math.max(1, Math.round(width * dpr))
     const h = Math.max(1, Math.round(height * dpr))
+    sceneSize.set(w, h)
+    this.finalMat.uniforms.uSharpen.value = SHARPEN ? Math.min(0.8, (1 - scale) * 2.5) : 0
     this.width = w
     this.height = h
     this.main.setSize(w, h)
@@ -530,6 +595,9 @@ export class Pipeline {
     this.shaftA.setSize(sw, sh)
     this.shaftB.setSize(sw, sh)
     this.finalMat.uniforms.uResolution.value.set(w, h)
+    // from about one and a half drawn pixels per screen point the steps are
+    // too small to see, and the smoothing would only soften the textures
+    this.finalMat.uniforms.uEdgeAa.value = EDGE_AA ?? (dpr < 1.4 ? 1 : 0)
     this.maskMat.uniforms.uAspect.value = w / h
   }
 
