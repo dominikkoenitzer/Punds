@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
 import { LINKS } from '../links'
-import { loadDress } from '../realm/season'
+import { SEASON, loadDress } from '../realm/season'
 import './Sando.css'
 
 // The page is the realm: a full-screen canvas that fades straight into the
@@ -31,9 +31,11 @@ declare global {
 // height; below it a horizontal field of 38 degrees until the vertical
 // reaches 72 at 0.474, which is the tall one's shape: it fills the width
 // above that and the height below.
+// A season has its own pair, in its own folder.
+const PICTURES = SEASON ? `/realm/${SEASON}` : '/realm'
 const POSTERS = [
-  { media: '(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)', src: '/realm/poster-wide.webp', srcSet: '/realm/poster-wide.webp 2592w, /realm/poster-wide-4k.webp 5184w', sizes: 'calc(100vh * 12 / 5)' },
-  { media: '(max-aspect-ratio: 17/18)', src: '/realm/poster-tall.webp', srcSet: '/realm/poster-tall.webp 948w', sizes: '100vw' },
+  { media: '(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)', src: `${PICTURES}/poster-wide.webp`, srcSet: `${PICTURES}/poster-wide.webp 2592w, ${PICTURES}/poster-wide-4k.webp 5184w`, sizes: 'calc(100vh * 12 / 5)' },
+  { media: '(max-aspect-ratio: 17/18)', src: `${PICTURES}/poster-tall.webp`, srcSet: `${PICTURES}/poster-tall.webp 948w`, sizes: '100vw' },
 ]
 
 // resolves once the start picture is on screen (decoded and painted), or at

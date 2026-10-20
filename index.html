@@ -28,9 +28,33 @@
     </script>
     <!-- Icon: browsers request /favicon.ico unprompted, so ship both rather
          than serve a 404 for it. -->
-    <!-- the start view, shown while the scene loads (see Sando.tsx) -->
-    <link rel="preload" as="image" href="/realm/poster-wide.webp" imagesrcset="/realm/poster-wide.webp 2592w, /realm/poster-wide-4k.webp 5184w" imagesizes="calc(100vh * 12 / 5)" fetchpriority="high" media="(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)" />
-    <link rel="preload" as="image" href="/realm/poster-tall.webp" fetchpriority="high" media="(max-aspect-ratio: 17/18)" />
+    <!-- the start view, shown while the scene loads (see Sando.tsx), in the
+         season's dress: the same choice as src/realm/season.ts, made before
+         the first paint so the preload matches the picture that follows (its
+         hash is allowed in vercel.json's script-src) -->
+    <script>
+      (function () {
+        var asked = new URLSearchParams(location.search).get('season')
+        var now = new Date()
+        var halloween = asked === 'halloween' || (asked !== 'none' && now.getMonth() === 9 && now.getDate() >= 24)
+        var dir = halloween ? '/realm/halloween/' : '/realm/'
+        var wide = document.createElement('link')
+        wide.rel = 'preload'
+        wide.as = 'image'
+        wide.href = dir + 'poster-wide.webp'
+        wide.setAttribute('imagesrcset', dir + 'poster-wide.webp 2592w, ' + dir + 'poster-wide-4k.webp 5184w')
+        wide.setAttribute('imagesizes', 'calc(100vh * 12 / 5)')
+        wide.setAttribute('fetchpriority', 'high')
+        wide.media = '(min-aspect-ratio: 17/18) and (max-aspect-ratio: 12/5)'
+        var tall = document.createElement('link')
+        tall.rel = 'preload'
+        tall.as = 'image'
+        tall.href = dir + 'poster-tall.webp'
+        tall.setAttribute('fetchpriority', 'high')
+        tall.media = '(max-aspect-ratio: 17/18)'
+        document.head.append(wide, tall)
+      })()
+    </script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
