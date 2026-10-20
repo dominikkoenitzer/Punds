@@ -1,4 +1,5 @@
 import type { Dress } from '../season'
+import { blossom } from './garden'
 import { light } from './light'
 import { sky } from './sky'
 import { clouds, stormParts } from './storm'
@@ -16,6 +17,7 @@ export const dress: Dress = {
   light,
   ...(sky ? { sky } : {}),
   Skyscape: clouds,
+  Blossom: blossom,
   Pond: pond,
   Ambience: sound,
   parts: [...stormParts, ...propParts, ...rainParts],

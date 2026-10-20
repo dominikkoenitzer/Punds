@@ -4,6 +4,8 @@ import { realmUniforms, WIND_GLSL } from './atmosphere'
 import { loadPbr } from './assets'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { CEDARS, CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
+import { dressFor } from './season'
+import type { BlossomDress } from './halloween/garden'
 
 type Rand = () => number
 
@@ -1360,12 +1362,14 @@ export class CherryTree extends Tree {
     const bark = barkMaterial(opts.tier, 'sakura_bark', 0x3b2c29, 0x8a7e7b, 0.11, shape.swayNorm)
     this.addMesh(shape.bark, bark, true)
     const atlas = acquireAtlas('blossom', opts.tier)
+    // a season may tone the blossom for its light
+    const tone = dressFor<BlossomDress>('Blossom')?.crown
     const mat = foliageMaterial({
       key: 'blossom',
       map: atlas.map,
       normalMap: atlas.normalMap,
-      trans: 0.95,
-      transTint: new THREE.Color(1.0, 0.86, 0.88),
+      trans: tone?.trans ?? 0.95,
+      transTint: tone?.transTint ?? new THREE.Color(1.0, 0.86, 0.88),
       roughness: 0.8,
       branchAmp: 0.11,
       cardAmp: 0.035,
@@ -1375,6 +1379,7 @@ export class CherryTree extends Tree {
       farStart: 14,
       softEdge: true,
     })
+    if (tone) mat.color.copy(tone.color)
     this.addFoliage(shape.cards, mat)
     this.place(opts.x, opts.z)
   }
@@ -2169,12 +2174,13 @@ export class Petals implements RealmPart {
 
     this.texture = petalTexture()
     this.geometry = petalGeometry()
+    const tone = dressFor<BlossomDress>('Blossom')?.petals
     this.material = foliageMaterial({
       key: 'petal',
       map: this.texture,
       normalMap: null,
-      trans: 1.15,
-      transTint: new THREE.Color(1.0, 0.85, 0.88),
+      trans: tone?.trans ?? 1.15,
+      transTint: tone?.transTint ?? new THREE.Color(1.0, 0.85, 0.88),
       roughness: 0.5,
       branchAmp: 0,
       cardAmp: 0,
@@ -2184,6 +2190,7 @@ export class Petals implements RealmPart {
       farStart: 1000,
       softEdge: false,
     })
+    if (tone) this.material.color.copy(tone.color)
     this.object = new THREE.InstancedMesh(this.geometry, this.material, n)
     this.object.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.object.frustumCulled = false
