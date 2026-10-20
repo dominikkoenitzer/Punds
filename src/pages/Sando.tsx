@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
 import { LINKS } from '../links'
+import { loadDress } from '../realm/season'
 import './Sando.css'
 
 // The page is the realm: a full-screen canvas that fades straight into the
@@ -109,7 +110,7 @@ export default function Sando() {
     let cancelled = false
     void (async () => {
       try {
-        const [{ Realm }, { buildIsland, prepareIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island')])
+        const [{ Realm }, { buildIsland, prepareIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island'), loadDress()])
         if (cancelled) return
         realm = new Realm(container, {
           instant: poster !== null,
