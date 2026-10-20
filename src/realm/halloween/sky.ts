@@ -126,7 +126,7 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
   float x = length(o) / ${R};
   // a soft wide halo in the haze, and a faint corona hugging the limb
   float halo = 0.025 / (1.0 + x * x * 0.1) + 0.03 * exp(-x * 0.7);
-  float corona = exp(-max(x - 1.0, 0.0) * 5.0) * 0.14;
+  float corona = exp(-max(x - 1.0, 0.0) * 5.0) * 0.18;
   col += vec3(1.0, 0.16, 0.05) * halo + vec3(1.0, 0.22, 0.07) * corona;
   if (x < 1.1) {
     vec3 right = normalize(cross(uSkyMoonDisc, vec3(0.0, 1.0, 0.0)));
@@ -134,12 +134,12 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
     vec2 p = vec2(dot(o, right), dot(o, upv)) / ${R};
     // the dark seas and the brighter highlands, a broad pattern with fine grain
     float seas = nightNoise(p * 2.2 + 3.1) * 0.62 + nightNoise(p * 5.0 - 1.7) * 0.28 + nightNoise(p * 11.0) * 0.1;
-    float surface = mix(1.0, 0.5, smoothstep(0.4, 0.66, seas));
+    float surface = mix(1.0, 0.6, smoothstep(0.4, 0.66, seas));
     float mu = sqrt(max(1.0 - x * x, 0.0));
     float limb = 0.62 + 0.38 * sqrt(mu);
     // deeper red toward its lower limb, where its light crosses more air
-    vec3 tone = mix(vec3(1.0, 0.07, 0.015), vec3(1.0, 0.16, 0.04), smoothstep(-1.0, 1.0, p.y));
-    vec3 face = tone * 0.8 * surface * limb;
+    vec3 tone = mix(vec3(1.0, 0.05, 0.01), vec3(1.0, 0.13, 0.03), smoothstep(-1.0, 1.0, p.y));
+    vec3 face = tone * 1.05 * surface * limb;
     float edge = px / ${R};
     float inside = 1.0 - smoothstep(1.0 - edge, 1.0 + edge, x);
     col = mix(col, face, inside);

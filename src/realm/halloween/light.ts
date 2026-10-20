@@ -14,7 +14,7 @@ const FLASH = new THREE.Color(0.75, 0.8, 1.0)
 export const light: LightDress = {
   keyColor: KEY.clone(),
   keyIntensity: 6.5,
-  environmentIntensity: 1.9,
+  environmentIntensity: 2.4,
   exposure: 1.05,
   fogColor: new THREE.Color(0.075, 0.045, 0.08),
   sunFogColor: new THREE.Color(0.42, 0.12, 0.06),

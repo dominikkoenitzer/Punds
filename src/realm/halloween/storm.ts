@@ -300,7 +300,7 @@ export const clouds: CloudDress = {
   uniforms: () => ({ ...stormUniforms, ...(dress()?.sky?.uniforms ?? {}) }),
   sunColor: new THREE.Color(1.0, 0.42, 0.24).multiplyScalar(3.4),
   shadowColor: new THREE.Color(0.4, 0.28, 0.68).multiplyScalar(0.9),
-  farLight: 0.32,
+  farLight: 0.26,
 }
 
 // --- the storm --------------------------------------------------------------------

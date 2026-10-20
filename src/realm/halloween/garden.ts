@@ -18,6 +18,6 @@ export interface BlossomDress {
 }
 
 export const blossom: BlossomDress = {
-  crown: { trans: 0.3, transTint: new THREE.Color(1.0, 0.62, 0.66), color: new THREE.Color(0.62, 0.48, 0.52) },
-  petals: { trans: 0.4, transTint: new THREE.Color(1.0, 0.62, 0.66), color: new THREE.Color(0.62, 0.48, 0.52) },
+  crown: { trans: 0.3, transTint: new THREE.Color(1.0, 0.62, 0.66), color: new THREE.Color(0.54, 0.42, 0.46) },
+  petals: { trans: 0.4, transTint: new THREE.Color(1.0, 0.62, 0.66), color: new THREE.Color(0.54, 0.42, 0.46) },
 }
