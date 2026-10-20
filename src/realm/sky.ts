@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { SUN_DIRECTION } from './atmosphere'
 import { BITMAP, SKY_RANK, bitmap, inTurn } from './assets'
+import { dress, type SkyDress } from './season'
 import type { Tier } from './types'
 
 // The sky is a photographed panorama. Two versions of it ship: a small HDR
@@ -63,6 +64,15 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }
 `
+
+// A season's sky replaces the afternoon's gradient and sun with its own grade
+// and disc; the afternoon's program stays as it is.
+const SKY_GRADE = SKY_FRAG.slice(SKY_FRAG.indexOf('  // a richer gradient'), SKY_FRAG.indexOf('  gl_FragColor'))
+function dressedFrag(d: SkyDress): string {
+  if (!SKY_GRADE.includes('uSunSize')) throw new Error('sky dress: the dome shader moved')
+  const head = SKY_FRAG.replace('varying vec3 vDir;', ['varying vec3 vDir;', d.glsl, d.domeGlsl].join('\n'))
+  return head.replace(SKY_GRADE, '  col = dressSkyDisc(dressSky(col, dir), col, dir);\n')
+}
 
 export interface SkyResult {
   mesh: THREE.Mesh
@@ -160,6 +170,8 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
       turned[to + 3] = 1
     }
   }
+  const skyDress = dress()?.sky
+  skyDress?.gradeEnvironment?.(turned, width, height)
   const env = new THREE.DataTexture(turned, width, height, THREE.RGBAFormat, THREE.FloatType)
   env.mapping = THREE.EquirectangularReflectionMapping
   env.colorSpace = THREE.LinearSRGBColorSpace
@@ -171,8 +183,9 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
 
   const mat = new THREE.ShaderMaterial({
     vertexShader: SKY_VERT,
-    fragmentShader: SKY_FRAG,
+    fragmentShader: skyDress ? dressedFrag(skyDress) : SKY_FRAG,
     uniforms: {
+      ...skyDress?.uniforms,
       tSky: { value: bg },
       uK: { value: info.k },
       uTop: { value: info.elevationTop },

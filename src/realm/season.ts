@@ -55,11 +55,15 @@ export interface LightDress {
 
 // The photographed sky, regraded: GLSL that runs after the panorama is
 // decoded to linear radiance, in the sky dome and wherever else a shader looks
-// the sky up (the clouds). `SKY_DRESS_GLSL` defines
-// `vec3 dressSky(vec3 col, vec3 dir)`; the dome also adds `dressSkyDisc` in
-// place of the sun's disc.
+// the sky up (the clouds). `glsl` declares its own uniforms (merge `uniforms`
+// into the material) and defines `vec3 dressSky(vec3 col, vec3 dir)`, col the
+// linear panorama radiance seen in world direction dir. `domeGlsl` comes after
+// it in the dome only and defines `vec3 dressSkyDisc(vec3 col, vec3 photo,
+// vec3 dir)`, which adds what only the dome draws (the stars, the moon) to the
+// graded col, photo being the panorama before the grade.
 export interface SkyDress {
   glsl: string
+  domeGlsl: string
   uniforms: Record<string, THREE.IUniform>
   // the image light, regraded the same way on the CPU (linear RGB in place)
   gradeEnvironment?(data: Float32Array, width: number, height: number): void
