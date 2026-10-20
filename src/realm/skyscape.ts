@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { loadPbr, pbrMaterial } from './assets'
 import { SUN_DIRECTION, realmUniforms } from './atmosphere'
 import { fbm2, rng } from './layout'
+import { dressFor } from './season'
+import type { CloudDress } from './halloween/storm'
 import type { Frame, RealmPart, Tier } from './types'
 
 // The sky world around the island: a raymarched sea of cumulus far below,
@@ -1207,8 +1209,12 @@ function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.Buffe
 // distance: the air's fade length in metres, or omitted to read it per
 // vertex from an `aerial` attribute (one material for near and far things)
 function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>, distance?: number): void {
+  // a season may regrade the sky the haze is read from
+  const cd = dressFor<CloudDress>('Skyscape')
+  const skyGlsl = cd ? cd.sky(SKY_GLSL) : SKY_GLSL
+  if (cd) key += '-dressed'
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, skyUniforms)
+    Object.assign(shader.uniforms, skyUniforms, cd?.uniforms())
     const perVertex = distance === undefined
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
@@ -1225,10 +1231,11 @@ vAerialLength = ${perVertex ? 'aerial' : distance.toFixed(1)};`,
       .replace('#include <common>', `#include <common>
 varying vec3 vAerialWorld;
 varying float vAerialLength;
-${SKY_GLSL}`)
+${skyGlsl}`)
       .replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
+        ${cd ? `gl_FragColor.rgb *= ${cd.farLight.toFixed(3)};` : ''}
         vec3 aerialRay = vAerialWorld - cameraPosition;
         float aerialDist = length(aerialRay);
         // clear near air, the haze builds past a few hundred metres
@@ -1541,8 +1548,11 @@ export class Skyscape implements RealmPart {
 
     // gold-white on the sunlit tops, soft rose and lilac in the shade: a
     // sunset sea that glows rather than a stormy one
-    const sunColor = new THREE.Color(1.0, 0.87, 0.7).multiplyScalar(3.5)
-    const shadowColor = new THREE.Color(0.66, 0.6, 0.76).multiplyScalar(0.95)
+    // a season may dress the sea: its light, its sky and what happens in it
+    const cd = dressFor<CloudDress>('Skyscape')
+    const dressUniforms = cd?.uniforms()
+    const sunColor = cd ? cd.sunColor : new THREE.Color(1.0, 0.87, 0.7).multiplyScalar(3.5)
+    const shadowColor = cd ? cd.shadowColor : new THREE.Color(0.66, 0.6, 0.76).multiplyScalar(0.95)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1553,8 +1563,9 @@ export class Skyscape implements RealmPart {
     this.marchMaterial = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: MARCH_VERT,
-      fragmentShader: MARCH_FRAG,
+      fragmentShader: cd ? cd.march(MARCH_FRAG) : MARCH_FRAG,
       uniforms: {
+        ...dressUniforms,
         ...this.skyUniforms,
         uNoise: { value: this.noise },
         uDepth: { value: this.depthTarget.depthTexture },
@@ -1691,8 +1702,9 @@ export class Skyscape implements RealmPart {
     quads.forEach((g) => g.dispose())
     this.wispMaterial = new THREE.ShaderMaterial({
       vertexShader: WISP_VERT,
-      fragmentShader: WISP_FRAG,
+      fragmentShader: cd ? cd.wisp(WISP_FRAG) : WISP_FRAG,
       uniforms: {
+        ...dressUniforms,
         ...this.skyUniforms,
         uNoise: { value: this.noise },
         uTime: realmUniforms.uTime,
