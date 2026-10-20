@@ -46,8 +46,11 @@ export interface LightDress {
   shafts: number
   bloom: number
   saturation: number
-  // extra ground-hugging fog density, 0 for none
+  // the height fog: its density per metre at fogHeight, and how fast it thins
+  // upwards (a low, quick falloff keeps it as mist on the ground)
   fogDensity: number
+  fogHeight?: number
+  fogFalloff?: number
   // called each frame before the frame's light is set; may change the values
   // above (a lightning flash lifts the key light for a moment)
   update?(frame: Frame): void

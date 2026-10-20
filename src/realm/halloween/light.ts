@@ -12,20 +12,23 @@ const FLASH = new THREE.Color(0.75, 0.8, 1.0)
 
 export const light: LightDress = {
   keyColor: KEY.clone(),
-  keyIntensity: 7.5,
-  environmentIntensity: 0.5,
-  exposure: 0.95,
-  fogColor: new THREE.Color(0.2, 0.12, 0.2),
-  sunFogColor: new THREE.Color(1.0, 0.32, 0.18).multiplyScalar(1.4),
+  keyIntensity: 6.5,
+  environmentIntensity: 1.9,
+  exposure: 1.05,
+  fogColor: new THREE.Color(0.075, 0.045, 0.08),
+  sunFogColor: new THREE.Color(0.42, 0.12, 0.06),
   shaftColor: new THREE.Color(1.0, 0.34, 0.2),
-  shafts: 0.55,
+  shafts: 0.25,
   bloom: 0.2,
   saturation: 1.05,
-  fogDensity: 0.0026,
+  // a low mist that lies on the lawn and the path
+  fogDensity: 0.012,
+  fogHeight: 0,
+  fogFalloff: 0.35,
   update(frame: Frame) {
     // a far flash lifts the garden's light only a little, and cools it
     const f = hallow.uFlash.value * frame.motion
     this.keyColor.copy(KEY).lerp(FLASH, f * 0.25)
-    this.keyIntensity = 7.5 + f * 1.5
+    this.keyIntensity = 6.5 + f * 1.5
   },
 }

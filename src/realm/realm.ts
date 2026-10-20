@@ -795,6 +795,8 @@ export class Realm {
       pp.bloom = light.bloom
       pp.saturation = light.saturation
       pp.fogDensity = light.fogDensity
+      pp.fogHeight = light.fogHeight ?? pp.fogHeight
+      pp.fogFalloff = light.fogFalloff ?? pp.fogFalloff
     } else {
       pp.exposure = 0.68 + p * 0.05
       pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
