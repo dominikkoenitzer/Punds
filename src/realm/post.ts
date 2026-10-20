@@ -304,7 +304,8 @@ vec3 sceneSmoothed(vec2 uv) {
   float se = edgeLuma(texture2D(tScene, uv + vec2(0.5, -0.5) * px).rgb);
   float lo = min(lc, min(min(nw, ne), min(sw, se)));
   float hi = max(lc, max(max(nw, ne), max(sw, se)));
-  if (hi - lo < max(0.03, hi * 0.125)) return c;
+  // only real edges: texture detail below this contrast stays untouched
+  if (hi - lo < max(0.0625, hi * 0.166)) return c;
   vec2 dir = vec2((sw + se) - (nw + ne), (nw + sw) - (ne + se));
   float damp = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);
   dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + damp), -8.0, 8.0) * px;
