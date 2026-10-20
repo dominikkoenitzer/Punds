@@ -72,3 +72,58 @@ export class GpuTimer {
     this.samples.clear()
   }
 }
+
+// The GPU time of whole frames, for the quality steps (see quality.ts): one
+// query per frame, read back a few frames later. Absent where the browser
+// hides the timer; the frame loop then goes by the time between frames.
+export class FrameTimer {
+  private gl: WebGL2RenderingContext
+  private ext: TimerExt | null
+  private open: WebGLQuery | null = null
+  private pending: WebGLQuery[] = []
+
+  constructor(gl: WebGL2RenderingContext) {
+    this.gl = gl
+    this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExt | null
+  }
+
+  get available(): boolean {
+    return !!this.ext
+  }
+
+  begin(): void {
+    if (!this.ext || this.open || this.pending.length > 4) return
+    const q = this.gl.createQuery()
+    if (!q) return
+    this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q)
+    this.open = q
+  }
+
+  end(): void {
+    if (!this.ext || !this.open) return
+    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT)
+    this.pending.push(this.open)
+    this.open = null
+  }
+
+  // milliseconds of the frames finished since the last call
+  collect(into: number[]): void {
+    if (!this.ext) return
+    const gl = this.gl
+    const disjoint = gl.getParameter(this.ext.GPU_DISJOINT_EXT) as boolean
+    while (this.pending.length) {
+      const q = this.pending[0]!
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break
+      this.pending.shift()
+      if (!disjoint) into.push((gl.getQueryParameter(q, gl.QUERY_RESULT) as number) / 1e6)
+      gl.deleteQuery(q)
+    }
+  }
+
+  dispose(): void {
+    if (this.open && this.ext) this.gl.endQuery(this.ext.TIME_ELAPSED_EXT)
+    for (const q of [...this.pending, this.open]) if (q) this.gl.deleteQuery(q)
+    this.pending = []
+    this.open = null
+  }
+}
