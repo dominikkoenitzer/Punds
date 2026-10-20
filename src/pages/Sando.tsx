@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
+import type { Tier } from '../realm/types'
 import { LINKS } from '../links'
 import { SEASON, loadDress } from '../realm/season'
 import { pressSound } from '../realm/soundSwitch'
@@ -54,6 +55,8 @@ export default function Sando() {
   const realmRef = useRef<Realm | null>(null)
   const posterRef = useRef<HTMLImageElement>(null)
   const [noScene, setNoScene] = useState(() => !supportsWebGL2())
+  // set when this device measured the garden too heavy and builds a lighter one
+  const [level, setLevel] = useState<Tier | undefined>(undefined)
   const [sound, setSound] = useState(false)
   // the one hint: shown once the garden is there, gone at the first look
   const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
@@ -109,14 +112,22 @@ export default function Sando() {
     let cancelled = false
     void (async () => {
       try {
-        const [{ Realm }, { buildIsland, prepareIsland }] = await Promise.all([import('../realm/realm'), import('../realm/island'), loadDress()])
+        const [{ Realm }, { buildIsland, prepareIsland }, { lighterLevel, rememberLevel }] = await Promise.all([import('../realm/realm'), import('../realm/island'), import('../realm/quality'), loadDress()])
         if (cancelled) return
         realm = new Realm(container, {
+          ...(level ? { tier: level } : {}),
           instant: poster !== null,
           shown: pictureShown(posterRef.current),
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           onTooSlow: () => {
-            if (!cancelled) setNoScene(true)
+            if (cancelled || !realm) return
+            const lighter = lighterLevel(realm.tier)
+            if (lighter && !new URLSearchParams(location.search).has('tier')) {
+              rememberLevel(lighter)
+              setLevel(lighter)
+            } else {
+              setNoScene(true)
+            }
           },
           onLost: () => {
             if (cancelled) return
@@ -145,7 +156,7 @@ export default function Sando() {
       realm?.dispose()
       realmRef.current = null
     }
-  }, [noScene, poster, rebuilds])
+  }, [noScene, poster, rebuilds, level])
 
   return (
     <div className="sando-root">
