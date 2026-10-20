@@ -595,9 +595,9 @@ export class Pipeline {
     this.shaftA.setSize(sw, sh)
     this.shaftB.setSize(sw, sh)
     this.finalMat.uniforms.uResolution.value.set(w, h)
-    // at about two drawn pixels per screen point and above the steps are
+    // from about one and a half drawn pixels per screen point the steps are
     // too small to see, and the smoothing would only soften the textures
-    this.finalMat.uniforms.uEdgeAa.value = EDGE_AA ?? (dpr < 1.75 ? 1 : 0)
+    this.finalMat.uniforms.uEdgeAa.value = EDGE_AA ?? (dpr < 1.4 ? 1 : 0)
     this.maskMat.uniforms.uAspect.value = w / h
   }
 
