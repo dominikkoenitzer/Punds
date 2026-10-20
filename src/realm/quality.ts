@@ -11,6 +11,8 @@
  * frame trace can drive it in a test.
  */
 
+import type { Tier } from './types'
+
 /** One step is 10% fewer pixels per side. */
 export const STEP = 0.9
 /** The lowest scale: about half the tier's pixels per side. */
@@ -131,4 +133,37 @@ export function stepScale(state: ScaleState, w: Window): ScaleState {
   }
   // a step that held for a full window is no longer on probation
   return { ...state, good, wait, probing: false }
+}
+
+// The amount of garden (instances, texture sizes, passes) is chosen before
+// the build and cannot follow the frames live. When the lowest resolution is
+// still far too slow, the page builds the garden again one level lighter and
+// this device remembers that level, in its own storage only; it is forgotten
+// after a week, so a later visit (another browser version, a plugged-in
+// laptop) measures the full garden again.
+const LEVELS: readonly Tier[] = ['ultra', 'high', 'phone']
+const KEY = 'realm-level'
+const KEEP_MS = 7 * 24 * 3600 * 1000
+
+export function lighterLevel(tier: Tier): Tier | null {
+  return LEVELS[LEVELS.indexOf(tier) + 1] ?? null
+}
+
+export function rememberedLevel(): Tier | null {
+  try {
+    const [level, at] = (localStorage.getItem(KEY) ?? '').split(' ')
+    if (!LEVELS.includes(level as Tier) || !(Date.now() - Number(at) < KEEP_MS)) return null
+    return level as Tier
+  } catch {
+    return null
+  }
+}
+
+export function rememberLevel(tier: Tier | null): void {
+  try {
+    if (tier && tier !== 'ultra') localStorage.setItem(KEY, `${tier} ${Date.now()}`)
+    else localStorage.removeItem(KEY)
+  } catch {
+    // storage blocked: the next visit measures again
+  }
 }
