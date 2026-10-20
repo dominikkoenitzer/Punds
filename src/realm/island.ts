@@ -16,6 +16,7 @@ import { Pond } from './pond'
 import { Plants } from './plants'
 import { CedarGrove, CherryTree, MapleTree, Petals, provideAtlas } from './trees'
 import { baked, startBakes } from './bake'
+import { dress } from './season'
 import { cherryOpts, mapleOpts, unpackFar, unpackGrove, unpackTree, type PackedTree } from './bakeJobs'
 
 // What the island is made of, in the order it is built. Each step yields to
@@ -190,6 +191,8 @@ export async function buildIsland(realm: Realm): Promise<void> {
       hiddenFromClouds.push(pond.object)
       return new Sheltered(pond, hiddenFromPond)
     },
+    // what the season adds
+    ...(dress()?.parts ?? []).map((make) => () => make(tier)),
   ]
   // ?debug&skip=2,7 leaves build steps out, to measure what each one costs
   const params = new URLSearchParams(location.search)
