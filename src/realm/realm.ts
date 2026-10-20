@@ -27,8 +27,9 @@ export interface RealmOptions {
   onCursor?: (state: CursorState) => void
   // the device cannot carry this much garden even at the lowest resolution:
   // the page builds a lighter one, or shows the still picture and the
-  // written links when it is already the lightest
-  onTooSlow?: () => void
+  // written links when it is already the lightest; `over` is how many times
+  // the frame budget the frames took there
+  onTooSlow?: (over: number) => void
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
@@ -833,7 +834,7 @@ export class Realm {
     // still far too slow at the lowest resolution in the first minute
     if (next.scale <= MIN_SCALE + 1e-9 && p75 > budget * 2 && now - this.readyAt < 60000) {
       this.tooSlow++
-      if (this.tooSlow >= 2) this.opts.onTooSlow?.()
+      if (this.tooSlow >= 2) this.opts.onTooSlow?.(p75 / budget)
     } else {
       this.tooSlow = 0
     }

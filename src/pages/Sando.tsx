@@ -107,9 +107,11 @@ export default function Sando() {
           ...(level ? { tier: level } : {}),
           instant: poster !== null,
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-          onTooSlow: () => {
+          onTooSlow: (over) => {
             if (cancelled || !realm) return
-            const lighter = lighterLevel(realm.tier)
+            // far over: one level lighter would not be enough, and every
+            // rebuild costs the visitor seconds
+            const lighter = over > 4 ? (realm.tier === 'phone' ? null : 'phone') : lighterLevel(realm.tier)
             if (lighter && !new URLSearchParams(location.search).has('tier')) {
               rememberLevel(lighter)
               setLevel(lighter)
