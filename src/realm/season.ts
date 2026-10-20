@@ -9,9 +9,9 @@ import type { Frame, RealmPart, Tier } from './types'
 
 export type SeasonName = 'halloween'
 
-// Halloween: the last week of October, up to and including the 31st
-const HALLOWEEN_FROM: [number, number] = [9, 24] // month index, day
-const HALLOWEEN_TO: [number, number] = [9, 31]
+// Halloween: from the 27th of October up to and including the 1st of November
+const HALLOWEEN_FROM: [number, number] = [9, 27] // month index, day
+const HALLOWEEN_TO: [number, number] = [10, 1]
 
 function within(date: Date, from: [number, number], to: [number, number]): boolean {
   const m = date.getMonth()

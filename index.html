@@ -36,7 +36,9 @@
       (function () {
         var asked = new URLSearchParams(location.search).get('season')
         var now = new Date()
-        var halloween = asked === 'halloween' || (asked !== 'none' && now.getMonth() === 9 && now.getDate() >= 24)
+        var m = now.getMonth()
+        var d = now.getDate()
+        var halloween = asked === 'halloween' || (asked !== 'none' && ((m === 9 && d >= 27) || (m === 10 && d === 1)))
         var dir = halloween ? '/realm/halloween/' : '/realm/'
         var wide = document.createElement('link')
         wide.rel = 'preload'
