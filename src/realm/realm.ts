@@ -546,22 +546,21 @@ export class Realm {
   private async calibrate(): Promise<void> {
     this.calibrating = []
     for (let i = 0; i < 8; i++) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    const ms = this.calibrating.slice(2).sort((a, b) => a - b)
+    const ms = this.calibrating.slice(2)
     this.calibrating = null
     if (this.disposed || !ms.length) return
-    const median = ms[Math.floor(ms.length / 2)]!
+    // the lower quarter: a frame that also waited on a late upload or a
+    // clock still rising says less about this device than the quick ones
+    const cost = percentile(ms, 0.25)
     const budget = this.frameBudget(true)
-    const scale = initialScale(median, budget)
-    this.calibration = { ms: Math.round(median * 10) / 10, scale }
+    const scale = initialScale(cost, budget)
+    this.calibration = { ms: Math.round(cost * 10) / 10, scale }
     this.buildTimes.push(['frame at full resolution', this.calibration.ms], ['scale', Math.round(scale * 1000) / 1000])
     this.quality = initialScaleState(scale)
     if (scale !== this.dprScale) {
       this.dprScale = scale
       this.resize()
     }
-    // far too slow even at the lowest resolution: this much garden is too
-    // much for this device
-    if (median * MIN_SCALE * MIN_SCALE > budget * 2.5) this.opts.onTooSlow?.()
   }
 
   // what one frame may take: phones and a still screen run at the calm rate;
