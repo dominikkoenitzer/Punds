@@ -28,8 +28,9 @@ export interface RealmOptions {
   onCursor?: (state: CursorState) => void
   // the device cannot carry this much garden even at the lowest resolution:
   // the page builds a lighter one, or shows the still picture and the
-  // written links when it is already the lightest
-  onTooSlow?: () => void
+  // written links when it is already the lightest; `over` is how many times
+  // the frame budget the frames took there
+  onTooSlow?: (over: number) => void
   // the GPU took the scene away and has not given it back: the page should
   // build it again
   onLost?: () => void
@@ -997,7 +998,7 @@ export class Realm {
     // device should not be asked to carry this much garden
     if (next.scale <= MIN_SCALE + 1e-9 && this.quality.scale <= MIN_SCALE + 1e-9 && p75 > 1000 / 14 && now - this.readyAt < 30000) {
       this.tooSlow++
-      if (this.tooSlow >= 2) this.opts.onTooSlow?.()
+      if (this.tooSlow >= 2) this.opts.onTooSlow?.(p75 / budget)
     } else {
       this.tooSlow = 0
     }
