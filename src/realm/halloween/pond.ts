@@ -127,11 +127,16 @@ if (fin < 0.5) {
   float sweep = pow(ang / 3.14159, 1.3);
   float rb = (b - 0.23 + 0.07 * sweep) / 0.036;
   float ribD = abs(fract(rb + 0.5) - 0.5) * 0.036;
-  float ribW = mix(0.0042, 0.0024, sweep);
+  float ribW = mix(0.0034, 0.002, sweep);
   float cage = step(-0.5, rb) * (1.0 - smoothstep(10.5, 11.0, rb));
   float ribLen = mix(2.6, 1.9, smoothstep(0.0, 11.0, rb));
   float ribAa = kLine(rb * 0.036, 0.0);
   float ribs = (1.0 - smoothstep(ribW - ribAa, ribW + ribAa, ribD)) * cage * smoothstep(0.15, 0.3, ang) * (1.0 - smoothstep(ribLen - 0.12, ribLen, ang));
+  // each rib is a round rod: bright along its crest, falling off to its sides
+  float ribRound = sqrt(max(1.0 - (ribD * ribD) / (ribW * ribW), 0.0));
+  shade *= mix(1.0, 0.55 + 0.6 * ribRound, ribs);
+  // the back of the cage stands nearest the moon; the flanks fall into shade
+  shade *= 0.72 + 0.42 * cos(ang * 0.55);
   // behind the cage the vertebrae carry fine spines above and below
   float tb = (b - 0.63 + 0.03 * ang) / 0.03;
   float tD = abs(fract(tb + 0.5) - 0.5) * 0.03;
@@ -152,7 +157,7 @@ if (fin < 0.5) {
   shade = 0.92 - 0.12 * root;
 }
 vec3 boneCol = vec3(0.84, 0.8, 0.7) * shade;
-vec3 veil = vec3(0.36, 0.22, 0.2);
+vec3 veil = vec3(0.2, 0.1, 0.09);
 vec3 body = mix(veil, boneCol, bone);
 body = mix(body, vec3(0.02, 0.01, 0.008), hole);
 diffuseColor.rgb = body;
@@ -212,14 +217,16 @@ if (cameraPosition.y > ${POND_LEVEL.toFixed(3)}) {
   f = patchSpan(f, 'float roughnessFactor = roughness *', 'if (fin > 0.5) roughnessFactor = 0.45;', KOI_ROUGHNESS)
   // the lantern light wraps the bone softly
   f = patch(f, '#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + KOI_LANTERNS)
-  // Seen through the blood, which lets red through longest: a koi further
-  // down turns red, then fades into the dark.
+  // Seen through the blood, which lets red through longest: a koi just under
+  // the skin keeps its pale bone, a hand deeper it turns red, and deeper
+  // still it sinks into the liquid's own dark red rather than to black.
   f = patch(
     f,
     '#include <opaque_fragment>',
     `float koiUnder = max(vKoiDepth, 0.0);
-outgoingLight *= exp(-koiUnder * vec3(0.0, 9.0, 10.5));
-diffuseColor.a *= exp(-koiUnder * 6.5);
+outgoingLight *= exp(-koiUnder * vec3(0.4, 9.0, 10.5));
+outgoingLight = mix(outgoingLight, vec3(0.07, 0.003, 0.0025), 1.0 - exp(-koiUnder * 3.5));
+diffuseColor.a *= exp(-koiUnder * 5.0);
 #include <opaque_fragment>`,
   )
   shader.fragmentShader = f
