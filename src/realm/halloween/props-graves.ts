@@ -38,6 +38,10 @@ const boneLightUniforms = {
   uCandleAt: { value: candleAt },
   uCandleGain: { value: 0.4 },
 }
+const soilLightUniforms = {
+  uCandleAt: { value: candleAt },
+  uCandleGain: { value: 0.3 },
+}
 
 // The lettering cut into the stones: for each stone its foot (x, z), its
 // yaw and the half width of the carved field; then the field's lowest and
@@ -232,6 +236,7 @@ function stoneGeometries(): THREE.BufferGeometry[] {
     worldUv(g, 0.7, 1.7, 4.1)
     parts.push(g)
   }
+
   return parts
 }
 
@@ -315,7 +320,7 @@ function handGeometry(curl: number, fine: boolean): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
   // the forearm's two bones, a little apart, the arm leaning back
   const lean = new THREE.Vector3(0, -1, -0.18).normalize()
-  for (const [dx, r] of [[-0.013, 0.011], [0.014, 0.0095]] as const) {
+  for (const [dx, r] of [[-0.016, 0.0165], [0.017, 0.014]] as const) {
     const top = new THREE.Vector3(dx, -0.01, 0)
     parts.push(boneAt(top.clone().addScaledVector(lean, 0.72), top, r, sides))
   }
@@ -323,9 +328,9 @@ function handGeometry(curl: number, fine: boolean): THREE.BufferGeometry {
   const wrist = new THREE.IcosahedronGeometry(1, fine ? 1 : 0)
   for (let i = 0; i < 8; i++) {
     const row = i < 4 ? 0 : 1
-    const x = -0.021 + (i % 4) * 0.014
+    const x = -0.0255 + (i % 4) * 0.017
     const g = wrist.clone()
-    g.scale(0.0085, 0.008, 0.0075)
+    g.scale(0.011, 0.0105, 0.0095)
     g.translate(x, 0.008 + row * 0.014, (row ? 0.002 : 0) - 0.001 * (i % 2))
     parts.push(g)
   }
@@ -386,30 +391,63 @@ function handGeometry(curl: number, fine: boolean): THREE.BufferGeometry {
   return out
 }
 
+// the world position and normal for a material lit by the candle
+function candleVaryings(shader: THREE.WebGLProgramParametersWithUniforms, extraPars: string): void {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vBoneWorld;\nvarying vec3 vBoneNormal;')
+    .replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      vBoneWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      vBoneNormal = normalize(mat3(modelMatrix) * objectNormal);`,
+    )
+  shader.fragmentShader = shader.fragmentShader.replace(
+    '#include <common>',
+    `#include <common>
+    ${extraPars}
+    varying vec3 vBoneWorld;
+    varying vec3 vBoneNormal;
+    ${CANDLE_GLSL}
+    ${CANDLE_LIGHT_GLSL}`,
+  )
+}
+
+// the turned earth: dark and damp, the clods paler where they broke open,
+// and the candle's light on their tops
+function soilMaterial(): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.15, 0.095, 0.06), roughness: 0.9 })
+  mat.envMapIntensity = 0.7
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, candleUniforms, soilLightUniforms)
+    candleVaryings(shader, '')
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          float s = fract(sin(dot(floor(vBoneWorld * 140.0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          diffuseColor.rgb *= 0.75 + 0.5 * s;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.22, 0.14), smoothstep(0.5, 1.0, vBoneNormal.y) * 0.35);
+        }`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        totalEmissiveRadiance += candleLight(vBoneWorld, normalize(vBoneNormal), diffuseColor.rgb);`,
+      )
+  }
+  mat.customProgramCacheKey = () => 'hallow-soil'
+  return mat
+}
+
 function boneMaterial(): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.78, 0.6, 0.36), roughness: 0.7 })
   // the night sky's violet fill would turn old bone lilac; the candle warms it
   mat.envMapIntensity = 0.5
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, candleUniforms, boneLightUniforms, { uGround: hand.ground })
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBoneWorld;\nvarying vec3 vBoneNormal;')
-      .replace(
-        '#include <project_vertex>',
-        `#include <project_vertex>
-        vBoneWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        vBoneNormal = normalize(mat3(modelMatrix) * objectNormal);`,
-      )
+    candleVaryings(shader, 'uniform float uGround;')
     shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        `#include <common>
-        uniform float uGround;
-        varying vec3 vBoneWorld;
-        varying vec3 vBoneNormal;
-        ${CANDLE_GLSL}
-        ${CANDLE_LIGHT_GLSL}`,
-      )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
@@ -436,12 +474,12 @@ function soilGeometry(seed: number): THREE.BufferGeometry {
   const rand = rng(seed)
   const prof: [number, number][] = [
     [0.03, 0.0],
-    [0.05, 0.03],
-    [0.09, 0.045],
-    [0.15, 0.03],
-    [0.21, 0.012],
-    [0.27, 0.0],
-    [0.3, -0.02],
+    [0.05, 0.045],
+    [0.09, 0.072],
+    [0.15, 0.05],
+    [0.22, 0.022],
+    [0.28, 0.0],
+    [0.32, -0.02],
   ]
   const g = new THREE.LatheGeometry(
     prof.map(([r, y]) => new THREE.Vector2(r, y)),
@@ -456,10 +494,10 @@ function soilGeometry(seed: number): THREE.BufferGeometry {
     pos.setXYZ(i, x * k, pos.getY(i) * (0.7 + 0.6 * (0.5 + 0.5 * Math.sin(a * 5 + 2.0))), z * k)
   }
   const parts: THREE.BufferGeometry[] = [g]
-  for (let i = 0; i < 9; i++) {
-    const c = new THREE.IcosahedronGeometry(0.018 + rand() * 0.02, 0)
+  for (let i = 0; i < 16; i++) {
+    const c = new THREE.IcosahedronGeometry(0.022 + rand() * 0.028, 0)
     const a = rand() * Math.PI * 2
-    const r = 0.1 + rand() * 0.22
+    const r = 0.08 + rand() * 0.24
     c.scale(1, 0.6, 1)
     transformed(c, Math.cos(a) * r, 0.01, Math.sin(a) * r, rand(), rand() * 3, rand())
     parts.push(c)
@@ -514,9 +552,9 @@ export class Graves implements RealmPart {
     const h = GRAVES.hand
     const ground = surfaceY(h.x, h.z)
     hand.ground.value = ground
-    const soil = new THREE.Mesh(soilGeometry(5), new THREE.MeshStandardMaterial({ color: new THREE.Color(0.06, 0.04, 0.03), roughness: 0.95 }))
+    const soil = new THREE.Mesh(soilGeometry(5), soilMaterial())
     soil.position.set(h.x, ground - 0.002, h.z)
-    soil.scale.setScalar(1.2)
+    soil.scale.setScalar(1.7)
     soil.receiveShadow = true
     this.object.add(soil)
 
