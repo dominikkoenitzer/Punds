@@ -201,18 +201,20 @@ float ghostDensity(vec3 p, float lod, bool fine, out float emit, out float depth
   vec3 w = p + vec3(0.0, -uStormT * 1.5, 0.0);
   float n = textureLod(uNoise, w * (1.0 / 170.0), max(0.0, lod - 0.5)).r;
   float face = smoothstep(430.0, 540.0, l.y) * g;
-  float erode = (0.4 - n) * mix(70.0, 36.0, face) * (1.0 + (1.0 - g) * 0.9);
+  // the billows bite less once the figure is drawn, so its outline holds
+  float erode = (0.4 - n) * mix(70.0, 36.0, face) * (1.0 + (1.0 - g) * 0.9) * mix(1.0, 0.55, g);
   float fn = 0.5;
   if (fine) fn = textureLod(uNoise, w * (1.0 / 60.0), lod + 0.4).g;
-  erode += (0.5 - fn) * mix(34.0, 18.0, face);
+  erode += (0.5 - fn) * mix(34.0, 18.0, face) * mix(1.0, 0.65, g);
   d += erode;
   depth = max(-d * GHOST_SCALE, 0.0);
-  // the foot dissolves into the sea's tops
-  float dens = clamp(-d * GHOST_SCALE / 14.0, 0.0, 1.0) * smoothstep(-20.0, 40.0, p.y);
-  // the light inside: strongest in the chest, dark in the hollows of the face
+  // the foot dissolves into the sea's tops; the drawn figure has a firmer edge
+  float dens = clamp(-d * GHOST_SCALE / mix(14.0, 7.0, g), 0.0, 1.0) * smoothstep(-20.0, 40.0, p.y);
+  // the light inside: strongest in the chest, dark in the hollows of the face,
+  // and a share through the whole figure so the arms and hood read in the flash
   vec3 c = l - vec3(0.0, 500.0, 0.0);
   // billowed too: the light shows brighter through the thinner puffs
-  emit = (0.12 + exp(-dot(c, c) * (1.0 / (170.0 * 170.0))) * 1.6 + exp(-dot(c, c) * (1.0 / (420.0 * 420.0))) * 0.35) * (0.3 + n * 1.4 + (fn - 0.5) * 1.2) * mix(0.15, 1.0, smoothstep(0.0, 30.0, hollow));
+  emit = (0.12 + 0.14 * g + exp(-dot(c, c) * (1.0 / (170.0 * 170.0))) * 1.6 + exp(-dot(c, c) * (1.0 / (420.0 * 420.0))) * 0.35) * (0.3 + n * 1.4 + (fn - 0.5) * 1.2) * mix(0.15, 1.0, smoothstep(0.0, 30.0, hollow));
   return dens;
 }
 
@@ -226,7 +228,7 @@ float ghostShade(vec3 p, float lod) {
 // The lightning's light at a sample: it lights the cloud from within around
 // where it strikes and spreads out through it, and lights the ghost whole.
 vec3 flashLight(vec3 p, float gEmit, float level) {
-  float glowGhost = (uStormFlash + uStormGlow) * gEmit * 4.0;
+  float glowGhost = (uStormFlash + uStormGlow) * gEmit * 5.5;
   if (uStormFlash < 0.002 && glowGhost < 0.002) return vec3(0.0);
   vec3 o = p - uStormFlashPos;
   float r2 = dot(o, o * vec3(1.0, 1.8, 1.0));
@@ -264,7 +266,8 @@ ${MOON_CLEAR_GLSL}
     `  float dens;
   float gEmit = 0.0;
   if (gMarchGhost) {
-    dens = ghostDensity(p, lod, true, gEmit, dTop);
+    // the figure's billows keep one fineness however fine the trace is
+    dens = ghostDensity(p, max(lod, 1.0), true, gEmit, dTop);
     tower = 1.0;
     gEmit *= smoothstep(0.0, 0.3, dens);
   } else {
@@ -276,7 +279,7 @@ ${MOON_CLEAR_GLSL}
   src = swap(
     src,
     '    od += density(p + uSunDir * lt, 0.0, lod, dl, tl2) * ls;',
-    '    od += (gMarchGhost ? ghostShade(p + uSunDir * (lt * 6.0), lod) * 6.0 : density(p + uSunDir * lt, 0.0, lod, dl, tl2)) * ls;',
+    '    od += (gMarchGhost ? ghostShade(p + uSunDir * (lt * 6.0), max(lod, 1.0)) * 6.0 : density(p + uSunDir * lt, 0.0, lod, dl, tl2)) * ls;',
   )
   // moonlit rims run red-orange, the shade toward violet
   src = swap(src, 'mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward)', 'mix(vec3(1.0, 0.5, 0.32), vec3(1.0, 0.66, 0.5), sunward)')
@@ -381,12 +384,13 @@ class Storm implements RealmPart {
   private rise: GhostRise | null = null
   private nextFlash = 0
   private nextGhost = 0
+  private hold = false
   private readonly pos = stormUniforms.uStormFlashPos.value
   private readonly dir = new THREE.Vector3()
 
   constructor() {
     if (new URLSearchParams(location.search).has('debug')) {
-      const h = hallow as typeof hallow & { ghostNow?: () => void; flashNow?: () => void }
+      const h = hallow as typeof hallow & { ghostNow?: () => void; flashNow?: () => void; ghostHold?: (on: boolean) => void }
       // for shots: the shape already drawn and the lightning striking in it now
       h.ghostNow = () => {
         this.rise = { start: this.now - GHOST_FORM, struck: true }
@@ -394,6 +398,11 @@ class Storm implements RealmPart {
         this.nextFlash = Math.max(this.nextFlash, this.now + 12)
       }
       h.flashNow = () => this.strike(false, this.now)
+      // the ghost's lightning held at its peak, for a still of the moment
+      h.ghostHold = (on) => {
+        this.hold = on
+        if (on) h.ghostNow!()
+      }
     }
   }
 
@@ -443,6 +452,10 @@ class Storm implements RealmPart {
     const f = this.flash
     hallow.uFlash.value = f ? Math.min(1, flashLevel(f, t - f.start)) : 0
     if (f && t - f.start > 2.6) this.flash = null
+    if (this.hold) {
+      hallow.uGhost.value = 1
+      hallow.uFlash.value = 1
+    }
   }
 
   private strike(ghost: boolean, t: number): void {
