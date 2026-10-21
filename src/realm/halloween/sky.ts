@@ -21,13 +21,18 @@ const R = MOON_RADIUS.toFixed(4)
 // whole, low over the cloud sea between the blossoms and the shrine. The
 // light keeps the sun's place, so the shadows keep their composition; from
 // here both still come from the front left.
+// A tall screen sees a narrower slice, turned a little toward the rack, so
+// there the disc stands further round to the right to stay in the first
+// view; the turn follows the screen's shape as it changes.
 const DISC_TURN = -0.5
+const DISC_TURN_TALL = -0.9
 const DISC_RISE = -0.02
 const UP = new THREE.Vector3(0, 1, 0)
 const disc = new THREE.Vector3()
 const side = new THREE.Vector3()
 export function discDirection(): THREE.Vector3 {
-  disc.copy(hallow.uMoonDir.value).applyAxisAngle(UP, DISC_TURN)
+  const tall = typeof window !== 'undefined' && window.innerWidth < window.innerHeight
+  disc.copy(hallow.uMoonDir.value).applyAxisAngle(UP, tall ? DISC_TURN_TALL : DISC_TURN)
   side.crossVectors(disc, UP).normalize()
   return disc.applyAxisAngle(side, DISC_RISE).normalize()
 }
