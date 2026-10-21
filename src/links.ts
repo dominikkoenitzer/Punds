@@ -10,5 +10,5 @@ export interface Link {
 export const LINKS: readonly Link[] = [
   { name: 'Portfolio', href: 'https://dk.punds.ch' },
   { name: 'GitHub', href: 'https://github.com/dominikkoenitzer' },
-  { name: 'Senbon', href: 'https://senbon.vercel.app/' },
+  { name: 'Senbon', href: 'https://senbon.punds.ch/' },
 ]
