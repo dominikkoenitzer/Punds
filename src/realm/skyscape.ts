@@ -1928,7 +1928,10 @@ export class Skyscape implements RealmPart {
     const ru = this.resolveMaterial.uniforms
     ru.uHistory!.value = this.historyRead.texture
     // phones keep less history: their coarser trace smears sooner
-    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) : 0
+    // a season's sudden light (lightning) lets go of the history for its
+    // moment, so the flash lands in a trace or two instead of fading in
+    const sudden = dressFor<CloudDress>('Skyscape')?.sudden?.() ?? 0
+    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) * (1 - 0.75 * sudden) : 0
     renderer.setRenderTarget(this.historyWrite)
     renderer.render(this.resolveScene, this.marchCamera)
     this.compositeMaterial.uniforms.uCloud!.value = this.historyWrite.texture
