@@ -37,10 +37,10 @@ export const light: LightDress = {
     // frame opens a little, so the kick is felt everywhere and not only out
     // over the sea
     const f = hallow.uFlash.value * frame.motion
-    this.keyColor.copy(KEY).lerp(FLASH, f * 0.45)
-    this.keyIntensity = 6.5 + f * 5.5
-    this.environmentIntensity = 2.4 + f * 2.6
-    this.exposure = 1.05 + f * 0.22
-    this.fogColor.copy(FOG).lerp(FLASH_FOG, f * 0.5)
+    this.keyColor.copy(KEY).lerp(FLASH, f * 0.6)
+    this.keyIntensity = 6.5 + f * 7.5
+    this.environmentIntensity = 2.4 + f * 1.2
+    this.exposure = 1.05 + f * 0.15
+    this.fogColor.copy(FOG).lerp(FLASH_FOG, f * 0.3)
   },
 }
