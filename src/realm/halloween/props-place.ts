@@ -66,14 +66,16 @@ export const GRAVE_PUMPKIN = { x: -3.55, z: -3.55 }
 
 export const PUMPKINS: readonly PumpkinSpot[] = [
   // a step past the second lantern on the left, low in the start view
-  { x: -1.9, z: 4.3, r: 0.19, yaw: yawTo(-1.9, 4.3, EYE.x, EYE.z) + 0.25, phone: true },
-  // at the rack, one at each post, both looking to its view
+  // set down as they were carried, so no two look the same way
+  { x: -1.9, z: 4.3, r: 0.19, yaw: yawTo(-1.9, 4.3, EYE.x, EYE.z) + 0.55, phone: true },
+  // at the rack, one at each post: the left one to its view, the right one
+  // turned toward the path
   { x: rackL.x, z: rackL.z, r: 0.215, yaw: yawTo(rackL.x, rackL.z, rackEye.x, rackEye.z) + 0.2, phone: true },
-  { x: rackR.x, z: rackR.z, r: 0.165, yaw: yawTo(rackR.x, rackR.z, rackEye.x, rackEye.z) - 0.15, phone: false },
-  // beside the graves
-  { x: GRAVE_PUMPKIN.x, z: GRAVE_PUMPKIN.z, r: 0.17, yaw: yawTo(GRAVE_PUMPKIN.x, GRAVE_PUMPKIN.z, EYE.x, EYE.z) - 0.3, phone: true },
-  // at the foot of the fourth lantern on the right
-  { x: 1.95, z: -1.42, r: 0.155, yaw: yawTo(1.95, -1.42, EYE.x, EYE.z) - 0.2, phone: false },
+  { x: rackR.x, z: rackR.z, r: 0.165, yaw: yawTo(rackR.x, rackR.z, rackEye.x, rackEye.z) - 0.75, phone: false },
+  // beside the graves, looking at the stones more than at the path
+  { x: GRAVE_PUMPKIN.x, z: GRAVE_PUMPKIN.z, r: 0.17, yaw: yawTo(GRAVE_PUMPKIN.x, GRAVE_PUMPKIN.z, EYE.x, EYE.z) - 0.5, phone: true },
+  // at the foot of the fourth lantern on the right, facing up the path
+  { x: 1.95, z: -1.42, r: 0.155, yaw: yawTo(1.95, -1.42, EYE.x, EYE.z) + 0.6, phone: false },
   // on the third stair tread, at its left end, and on the terrace at the top
   { x: -1.14, z: tread(2).z, r: 0.122, yaw: 0.15, phone: false },
   { x: 1.86, z: -10.35, r: 0.2, yaw: -0.25, phone: false },
