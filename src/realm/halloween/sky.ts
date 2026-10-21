@@ -25,7 +25,7 @@ const R = MOON_RADIUS.toFixed(4)
 // there the disc stands further round to the right to stay in the first
 // view; the turn follows the screen's shape as it changes.
 const DISC_TURN = -0.5
-const DISC_TURN_TALL = -1.15
+const DISC_TURN_TALL = -0.9
 const DISC_RISE = -0.02
 const UP = new THREE.Vector3(0, 1, 0)
 const disc = new THREE.Vector3()
