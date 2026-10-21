@@ -50,6 +50,7 @@ const LETTERED = [
   { s: GRAVES.slab, sink: 0.04, half: 0.18, low: 0.2, high: 0.6, pitch: 0.072, seed: 1.0 },
   { s: GRAVES.pointed, sink: 0.07, half: 0.07, low: 0.32, high: 0.82, pitch: 0.088, seed: 2.0 },
   { s: GRAVES.broken, sink: 0.03, half: 0.16, low: 0.18, high: 0.44, pitch: 0.072, seed: 3.0 },
+  { s: GRAVES.stump, sink: 0.16, half: 0.13, low: 0.12, high: 0.32, pitch: 0.066, seed: 4.0 },
 ]
 const letterUniforms = {
   uGraveAt: { value: LETTERED.map((l) => new THREE.Vector4(l.s.x, l.s.z, l.s.yaw, l.half)) },
@@ -237,6 +238,13 @@ function stoneGeometries(): THREE.BufferGeometry[] {
     parts.push(g)
   }
 
+  // a small old slab with a flat worn crown, sunk deep in the turf
+  {
+    const w = 0.4
+    const h = 0.52
+    const top = (x: number) => h - 0.04 + 0.04 * Math.sqrt(Math.max(0, 1 - (x / (w / 2)) ** 2)) - 0.02 * (Math.abs(x) / (w / 2)) ** 4
+    place(slabGeometry(outline(w, top, 17, 0.008), 0.1, 3.3), GRAVES.stump, 0.16)
+  }
   return parts
 }
 
