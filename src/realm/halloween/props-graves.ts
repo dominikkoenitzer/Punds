@@ -31,13 +31,85 @@ vec3 candleLight(vec3 world, vec3 n, vec3 albedo) {
 `
 const candleLightUniforms = {
   uCandleAt: { value: candleAt },
-  uCandleGain: { value: 0.1 },
+  uCandleGain: { value: 0.35 },
 }
 // pale bone takes the candle more than moss and stone do
 const boneLightUniforms = {
   uCandleAt: { value: candleAt },
   uCandleGain: { value: 0.4 },
 }
+
+// The lettering cut into the stones: for each stone its foot (x, z), its
+// yaw and the half width of the carved field; then the field's lowest and
+// highest line, the pitch of its rows and a seed for the strokes.
+const LETTERED = [
+  { s: GRAVES.slab, sink: 0.04, half: 0.18, low: 0.2, high: 0.6, pitch: 0.072, seed: 1.0 },
+  { s: GRAVES.pointed, sink: 0.07, half: 0.07, low: 0.32, high: 0.82, pitch: 0.088, seed: 2.0 },
+  { s: GRAVES.broken, sink: 0.03, half: 0.16, low: 0.18, high: 0.44, pitch: 0.072, seed: 3.0 },
+]
+const letterUniforms = {
+  uGraveAt: { value: LETTERED.map((l) => new THREE.Vector4(l.s.x, l.s.z, l.s.yaw, l.half)) },
+  uGraveBand: {
+    value: LETTERED.map((l) => {
+      const foot = surfaceY(l.s.x, l.s.z) - l.sink
+      return new THREE.Vector4(foot + l.low, foot + l.high, l.pitch, l.seed)
+    }),
+  },
+}
+
+// Rows of worn letters on the broad faces: each cell a stroke or two (an
+// upright, a bowl, a cross bar), most cells cut, the rows of uneven length
+// like a name over its dates. Returns the cut, and the lip under each cut
+// that catches the light from above.
+const LETTER_GLSL = /* glsl */ `
+uniform vec4 uGraveAt[${LETTERED.length}];
+uniform vec4 uGraveBand[${LETTERED.length}];
+float graveGlyph(float x, float y, float kind, float aa) {
+  float up = 1.0 - smoothstep(0.1 - aa, 0.1 + aa, abs(x - 0.3));
+  float g = up;
+  if (kind < 0.33) {
+    float bowl = abs(length(vec2((x - 0.52) * 1.1, y - 0.5)) - 0.4);
+    g = max(g, 1.0 - smoothstep(0.09 - aa, 0.09 + aa, bowl));
+  } else if (kind < 0.66) {
+    float bar = (1.0 - smoothstep(0.1 - aa, 0.1 + aa, abs(y - 0.92))) * step(0.2, x) * step(x, 0.78);
+    g = max(g, bar);
+  } else {
+    float bar = (1.0 - smoothstep(0.1 - aa, 0.1 + aa, abs(y - 0.5))) * step(0.2, x) * step(x, 0.72);
+    g = max(g, bar);
+  }
+  return g * step(0.0, y) * step(y, 1.0) * step(0.18, x) * step(x, 0.84);
+}
+vec2 graveCarve(vec3 w, vec3 n) {
+  for (int i = 0; i < ${LETTERED.length}; i++) {
+    vec4 g = uGraveAt[i];
+    vec4 b = uGraveBand[i];
+    vec2 o = w.xz - g.xy;
+    if (dot(o, o) > 0.5) continue;
+    vec2 front = vec2(sin(g.z), cos(g.z));
+    if (abs(dot(n.xz, front)) < 0.7) continue;
+    float a = dot(o, vec2(cos(g.z), -sin(g.z)));
+    if (abs(a) > g.w || w.y < b.x || w.y > b.y) continue;
+    float row = (w.y - b.x) / b.z;
+    float ri = floor(row);
+    float rowLen = mix(0.5, 1.0, fract(sin(ri * 91.7 + b.w) * 43758.5453));
+    if (abs(a) > g.w * rowLen) continue;
+    float cell = (a + g.w * rowLen) / 0.03;
+    float ci = floor(cell);
+    float h1 = fract(sin(ci * 12.9898 + ri * 78.233 + b.w) * 43758.5453);
+    if (h1 > 0.86) continue;
+    float kind = fract(sin(ci * 39.17 + ri * 7.1 + b.w * 3.0) * 43758.5453);
+    float x = fract(cell);
+    float y = (fract(row) - 0.2) / 0.6;
+    float aa = fwidth(cell) * 0.9;
+    float cut = graveGlyph(x, y, kind, aa);
+    float lip = max(graveGlyph(x, y + 0.2, kind, aa) - cut, 0.0);
+    // the old cuts are worn shallow here and there
+    float wear = 0.55 + 0.45 * smoothstep(0.3, 0.7, sNoise(w * 23.0));
+    return vec2(cut, lip) * wear;
+  }
+  return vec2(0.0);
+}
+`
 
 // --- the stones ----------------------------------------------------------------------
 
@@ -164,22 +236,34 @@ function stoneGeometries(): THREE.BufferGeometry[] {
 }
 
 // the stones' own look on top of the garden's weathered stone: moss creeping
-// up from the turf, and the candle's warmth on the near faces
+// up from the turf, the lettering, the rain's sheen on every face it reaches,
+// and the candle's warmth on the near faces
 function graveStone(mat: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
   const base = mat.onBeforeCompile.bind(mat)
   mat.onBeforeCompile = (shader, renderer) => {
     base(shader, renderer)
-    Object.assign(shader.uniforms, candleUniforms, candleLightUniforms)
+    Object.assign(shader.uniforms, candleUniforms, candleLightUniforms, letterUniforms)
     shader.fragmentShader = shader.fragmentShader
-      .replace('float stoneMoss;', `float stoneMoss;\n${CANDLE_GLSL}\n${CANDLE_LIGHT_GLSL}`)
+      .replace('float stoneMoss;', `float stoneMoss;\nfloat stoneWet;\n${CANDLE_GLSL}\n${CANDLE_LIGHT_GLSL}\n${LETTER_GLSL}`)
       .replace(
         'diffuseColor.rgb = mix(diffuseColor.rgb, uMoss * (0.65 + n * 0.5), stoneMoss);',
         `{
           float rise = vStoneWorld.y - ${surfaceY(GRAVES.slab.x, GRAVES.slab.z).toFixed(3)};
-          float creep = (1.0 - smoothstep(0.0, 0.16 + 0.2 * n, rise)) * smoothstep(0.35, 0.7, sNoise(vStoneWorld * 5.3) * 0.5 + n * 0.6);
-          stoneMoss = max(stoneMoss, creep * 0.9);
+          float creep = (1.0 - smoothstep(0.0, 0.22 + 0.3 * n, rise)) * smoothstep(0.3, 0.65, sNoise(vStoneWorld * 5.3) * 0.5 + n * 0.6);
+          stoneMoss = max(stoneMoss, creep);
+          vec2 carve = graveCarve(vStoneWorld, normalize(vStoneNormal));
+          diffuseColor.rgb *= mix(1.0, 0.26, carve.x) * (1.0 + 0.35 * carve.y);
+          stoneMoss = max(stoneMoss, carve.x * 0.3 * smoothstep(0.4, 0.8, n));
+          // rain wets every face, the tops most, and runs darker down the fronts
+          stoneWet = (0.5 + 0.5 * smoothstep(-0.3, 0.7, vStoneNormal.y)) * (0.6 + 0.4 * sNoise(vStoneWorld * 7.0 + 3.0));
+          diffuseColor.rgb *= mix(1.0, 0.72, stoneWet);
         }
         diffuseColor.rgb = mix(diffuseColor.rgb, uMoss * (0.65 + n * 0.5), stoneMoss);`,
+      )
+      .replace(
+        'roughnessFactor = mix(roughnessFactor, 0.95, stoneMoss);',
+        `roughnessFactor = mix(roughnessFactor, 0.14, stoneWet * 0.9);
+        roughnessFactor = mix(roughnessFactor, 0.8, stoneMoss);`,
       )
       .replace(
         '#include <emissivemap_fragment>',
@@ -419,7 +503,7 @@ export class Graves implements RealmPart {
   }
 
   private constructor(stone: Awaited<ReturnType<typeof loadPbr>>, tier: Tier) {
-    const stoneMat = graveStone(weatheredStone(stone, new THREE.Color(0.1, 0.15, 0.045), { color: new THREE.Color(0.66, 0.65, 0.62) }))
+    const stoneMat = graveStone(weatheredStone(stone, new THREE.Color(0.16, 0.22, 0.06), { color: new THREE.Color(0.86, 0.83, 0.78) }))
     const stoneGeo = merge(stoneGeometries())
     stoneGeo.computeBoundingSphere()
     const stones = new THREE.Mesh(stoneGeo, stoneMat)
