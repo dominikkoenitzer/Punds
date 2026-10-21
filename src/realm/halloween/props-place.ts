@@ -55,9 +55,6 @@ export const GRAVES = {
   slab: { x: -4.25, z: -3.3, yaw: 0.55, lean: [-0.13, 0.05] as const },
   pointed: { x: -5.3, z: -4.35, yaw: 0.35, lean: [0.1, -0.12] as const },
   broken: { x: -6.0, z: -3.45, yaw: 0.85, lean: [-0.06, 0.1] as const },
-  // an older, smaller stone across the path on the right lawn, sunk to its
-  // shoulders: the one a tall screen's narrower first view still holds
-  stump: { x: 2.75, z: 1.4, yaw: -0.55, lean: [0.08, -0.14] as const },
   // the hand rises in front of the near slab
   hand: { x: -3.9, z: -2.82 },
 }
