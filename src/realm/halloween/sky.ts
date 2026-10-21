@@ -12,7 +12,7 @@ import { hallow } from './state'
 
 // the moon's radius in radians: far larger than the real one, so it rules the
 // sky low over the cloud sea
-const MOON_RADIUS = 0.058
+export const MOON_RADIUS = 0.058
 const R = MOON_RADIUS.toFixed(4)
 
 // Seen from the path, the cherry hides the whole sky around the light's own

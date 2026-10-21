@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { dress } from '../season'
 import type { Frame, RealmPart, Tier } from '../types'
+import { MOON_RADIUS } from './sky'
 import { announceFlash, hallow } from './state'
 
 // Lightning far out in the cloud sea, and now and then a cloud it lights in
@@ -75,6 +76,16 @@ vec3 dressSky(vec3 c, vec3 d) {
 }
 `
 
+// Clouds and veils thin out over the moon's disc and just around it, so its
+// limb stays crisp: a ray within a disc's width of the limb passes through
+// little of them.
+const MOON_CLEAR_GLSL = /* glsl */ `
+float moonClear(vec3 d) {
+  float a = acos(clamp(dot(d, uSkyMoonDisc), -1.0, 1.0)) / ${MOON_RADIUS.toFixed(4)};
+  return mix(0.15, 1.0, smoothstep(1.0, 1.8, a));
+}
+`
+
 // every rewrite must find its place, or the clouds would quietly stay as they are
 function swap(src: string, from: string, to: string): string {
   if (!src.includes(from)) throw new Error(`storm: no "${from.slice(0, 40)}" in the cloud shader`)
@@ -113,6 +124,8 @@ const vec3 FLASH_COLOR = vec3(0.78, 0.8, 1.0);
 
 // set for the stretch of a ray that runs through the ghost's box
 bool gMarchGhost = false;
+// how much of the clouds this ray sees, thinner over the moon
+float gMoonClear = 1.0;
 
 float sdEll(vec3 p, vec3 r) {
   float k0 = length(p / r);
@@ -209,13 +222,13 @@ float ghostShade(vec3 p, float lod) {
 
 // The lightning's light at a sample: it lights the cloud from within around
 // where it strikes and spreads out through it, and lights the ghost whole.
-vec3 flashLight(vec3 p, float fog, float gEmit, float level) {
-  float glowGhost = (uStormFlash + uStormGlow) * gEmit * 6.0;
+vec3 flashLight(vec3 p, float gEmit, float level) {
+  float glowGhost = (uStormFlash + uStormGlow) * gEmit * 4.0;
   if (uStormFlash < 0.002 && glowGhost < 0.002) return vec3(0.0);
   vec3 o = p - uStormFlashPos;
   float r2 = dot(o, o * vec3(1.0, 1.8, 1.0));
-  float glow = exp(-r2 * (1.0 / (260.0 * 260.0))) * 5.0 + exp(-r2 * (1.0 / (700.0 * 700.0))) * 0.7;
-  return FLASH_COLOR * (level * (uStormFlash * glow + glowGhost) * (1.0 - fog * 0.6));
+  float glow = exp(-r2 * (1.0 / (260.0 * 260.0))) * 3.6 + exp(-r2 * (1.0 / (700.0 * 700.0))) * 0.55;
+  return FLASH_COLOR * (level * (uStormFlash * glow + glowGhost));
 }
 
 // where the ray crosses the ghost's box
@@ -239,6 +252,7 @@ bool ghostHit(vec3 ro, vec3 rd, out float t0, out float t1) {
 function marchRewrite(src: string): string {
   src = skyRewrite(src)
   src = swap(src, '// height of the cloud tops at xz, and how much of a tower this column is', `${GHOST_GLSL}
+${MOON_CLEAR_GLSL}
 // height of the cloud tops at xz, and how much of a tower this column is`)
   // in the ghost's stretch of the ray the samples are the ghost's alone
   src = swap(
@@ -251,7 +265,7 @@ function marchRewrite(src: string): string {
     tower = 1.0;
     gEmit *= smoothstep(0.0, 0.3, dens);
   } else {
-    dens = density(p, detail, lod, dTop, tower);
+    dens = density(p, detail, lod, dTop, tower) * gMoonClear;
   }`,
   )
   // the light's steps through the ghost reach six times further, so the
@@ -264,12 +278,16 @@ function marchRewrite(src: string): string {
   // moonlit rims run red-orange, the shade toward violet
   src = swap(src, 'mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward)', 'mix(vec3(1.0, 0.5, 0.32), vec3(1.0, 0.66, 0.5), sunward)')
   src = swap(src, 'amb * mix(vec3(0.86, 0.96, 1.12), vec3(1.0), sunward)', 'amb * mix(vec3(0.86, 0.78, 1.18), vec3(1.0, 0.9, 1.05), sunward)')
+  // the lightning lights the cloud before the air between it and the eye
+  // dims it, so the glow keeps the billows' form
   src = swap(
     src,
     '  lit = mix(lit, air, fog * sqrt(fog));',
-    `  lit = mix(lit, air, fog * sqrt(fog));
-  lit += flashLight(p, fog, gEmit, dot(sunC, vec3(0.3333)));`,
+    `  lit += flashLight(p, gEmit, dot(sunC, vec3(0.3333)));
+  lit = mix(lit, air, fog * sqrt(fog));`,
   )
+  src = swap(src, '  float cosT = dot(rd, uSunDir);', `  gMoonClear = moonClear(rd);
+  float cosT = dot(rd, uSunDir);`)
   // the ghost's box is marched first, at the towers' steps; it stands
   // beyond the sea's near edge and in front of the banks behind it, and the
   // stretch is cut where the ray enters the sea, which takes over there
@@ -296,7 +314,14 @@ function marchRewrite(src: string): string {
 export const clouds: CloudDress = {
   sky: skyRewrite,
   march: marchRewrite,
-  wisp: skyRewrite,
+  wisp: (src) =>
+    swap(
+      swap(skyRewrite(src), 'void main() {', `${MOON_CLEAR_GLSL}
+void main() {`),
+      '  gl_FragColor = vec4(col * a, a);',
+      `  a *= moonClear(view);
+  gl_FragColor = vec4(col * a, a);`,
+    ),
   uniforms: () => ({ ...stormUniforms, ...(dress()?.sky?.uniforms ?? {}) }),
   sunColor: new THREE.Color(1.0, 0.42, 0.24).multiplyScalar(3.4),
   shadowColor: new THREE.Color(0.4, 0.28, 0.68).multiplyScalar(0.9),
