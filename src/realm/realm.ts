@@ -767,6 +767,7 @@ export class Realm {
       light.update?.(this.frame)
       this.sunColor.copy(light.keyColor)
       this.sun.intensity = light.keyIntensity
+      this.scene.environmentIntensity = light.environmentIntensity
     } else {
       this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
       this.sun.intensity = 13 - p * 2.5
