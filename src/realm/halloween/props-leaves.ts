@@ -36,11 +36,13 @@ function leafGeometry(): THREE.BufferGeometry {
   return g
 }
 
+// rust, scarlet, ochre and a paler gold: warm against the cold ground, so
+// they read from the path
 const COLOURS = [
-  new THREE.Color(0.42, 0.035, 0.018),
-  new THREE.Color(0.5, 0.09, 0.02),
-  new THREE.Color(0.55, 0.2, 0.03),
-  new THREE.Color(0.3, 0.12, 0.04),
+  new THREE.Color(0.55, 0.07, 0.02),
+  new THREE.Color(0.64, 0.15, 0.03),
+  new THREE.Color(0.72, 0.34, 0.05),
+  new THREE.Color(0.62, 0.42, 0.08),
 ]
 
 export class Leaves implements RealmPart {
@@ -63,8 +65,12 @@ export class Leaves implements RealmPart {
       const r = Math.sqrt(rand()) * m.spread * 1.1
       tryAt(m.x + Math.cos(a) * r - rand() * 2.5, m.z + Math.sin(a) * r * 0.8 + rand() * 1.5)
     }
-    // along the path toward the start, thinning out
-    for (let i = 0; i < 10; i++) tryAt((rand() - 0.5) * 2.2, -6 + rand() * rand() * 12)
+    // along the path toward the start, thinning out, and a drift at the
+    // path's edges near the first lanterns
+    for (let i = 0; i < 14; i++) tryAt((rand() - 0.5) * 2.2, -6 + rand() * rand() * 12)
+    for (let i = 0; i < 8; i++) tryAt((rand() < 0.5 ? -1 : 1) * (0.9 + rand() * 0.9), 1.5 + rand() * 5)
+    // a few at the visitor's feet
+    for (let i = 0; i < 6; i++) tryAt((rand() - 0.5) * 2.4, 5.5 + rand() * 3.5)
     // on the steps, near their ends
     for (let i = 0; i < 4; i++) {
       const t = tread(Math.floor(rand() * STEPS.count))
@@ -75,7 +81,8 @@ export class Leaves implements RealmPart {
     const count = tier === 'phone' ? Math.ceil(spots.length * 0.6) : spots.length
 
     const geo = leafGeometry()
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.62, side: THREE.DoubleSide })
+    // wet with the rain, so the moon catches their backs
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.42, side: THREE.DoubleSide })
     this.object = new THREE.InstancedMesh(geo, mat, count)
     const q = new THREE.Quaternion()
     const e = new THREE.Euler()
@@ -85,7 +92,7 @@ export class Leaves implements RealmPart {
     const c = new THREE.Color()
     for (let i = 0; i < count; i++) {
       const at = spots[i]!
-      const size = 0.075 + rand() * 0.035
+      const size = 0.1 + rand() * 0.05
       // some lie on their backs, all tilted a little by what they rest on
       e.set((rand() - 0.5) * 0.3, rand() * Math.PI * 2, (rand() - 0.5) * 0.3 + (rand() < 0.3 ? Math.PI : 0), 'YXZ')
       q.setFromEuler(e)
