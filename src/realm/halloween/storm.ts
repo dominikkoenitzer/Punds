@@ -153,7 +153,7 @@ vec3 ghostLocal(vec3 p) {
   return vec3(o.x * f.y - o.y * f.x, p.y + 55.0, dot(o, f)) / GHOST_SCALE;
 }
 
-float ghostShape(vec3 p, out float hollow) {
+float ghostShape(vec3 p, out float hollow, out float limb) {
   float ft = uStormT;
   // the body: broad under the shoulders, narrowing as it falls and trailing
   // off downwind in a long tail that sinks into the sea, slowly swaying
@@ -167,15 +167,17 @@ float ghostShape(vec3 p, out float hollow) {
   // the hood, and the head in it bowed a little toward the island
   d = smin(d, sdEll(p - vec3(0.0, 640.0, 8.0), vec3(62.0, 80.0, 60.0)), 22.0);
   // long arms raised out and up toward the island, one a little higher,
-  // with sleeves hanging from them
+  // with sleeves hanging from them; thick enough that the billows leave
+  // a whole arm and a hand at its end
   vec3 q = vec3(abs(p.x), p.y, p.z);
   float lift = p.x > 0.0 ? 50.0 : 0.0;
   vec3 elbow = vec3(265.0, 560.0 + lift * 0.4, 90.0);
   vec3 hand = vec3(410.0, 650.0 + lift, 190.0);
-  float arm = sdCap(q, vec3(110.0, 515.0, 0.0), elbow, 40.0, 26.0);
-  arm = smin(arm, sdCap(q, elbow, hand, 26.0, 7.0), 20.0);
-  arm = smin(arm, sdEll(q - vec3(205.0, 470.0 + lift * 0.3, 40.0), vec3(58.0, 92.0, 26.0)), 40.0);
-  d = smin(d, arm, 36.0);
+  float arm = sdCap(q, vec3(110.0, 515.0, 0.0), elbow, 58.0, 40.0);
+  arm = smin(arm, sdCap(q, elbow, hand, 40.0, 20.0), 30.0);
+  arm = smin(arm, sdEll(q - vec3(205.0, 470.0 + lift * 0.3, 40.0), vec3(74.0, 112.0, 40.0)), 46.0);
+  d = smin(d, arm, 44.0);
+  limb = arm;
   // hollow eyes and an open mouth, only as shade, not cut through
   float eye = sdEll(vec3(abs(p.x) - 24.0, p.y - 650.0, p.z - 62.0), vec3(17.0, 22.0, 40.0));
   float mouth = sdEll(p - vec3(0.0, 602.0, 60.0), vec3(12.0, 24.0, 40.0));
@@ -191,7 +193,8 @@ float ghostDensity(vec3 p, float lod, bool fine, out float emit, out float depth
   vec3 l = ghostLocal(p);
   if (any(greaterThan(abs(l - GHOST_BOX_C), GHOST_BOX_H))) return 0.0;
   float hollow;
-  float d = ghostShape(l, hollow);
+  float limb;
+  float d = ghostShape(l, hollow, limb);
   float g = uStormGhost;
   // between its hours the shape is only a towering cloud: the figure melts
   // into a rounded mass and the billows eat further into it
@@ -202,10 +205,12 @@ float ghostDensity(vec3 p, float lod, bool fine, out float emit, out float depth
   float n = textureLod(uNoise, w * (1.0 / 170.0), max(0.0, lod - 0.5)).r;
   float face = smoothstep(430.0, 540.0, l.y) * g;
   // the billows bite less once the figure is drawn, so its outline holds
-  float erode = (0.4 - n) * mix(70.0, 36.0, face) * (1.0 + (1.0 - g) * 0.9) * mix(1.0, 0.55, g);
+  // and less again along the arms, so they read as arms and not as a row of puffs
+  float arms = smoothstep(40.0, 0.0, limb) * g;
+  float erode = (0.4 - n) * mix(70.0, 36.0, face) * (1.0 + (1.0 - g) * 0.9) * mix(1.0, 0.55, g) * mix(1.0, 0.6, arms);
   float fn = 0.5;
   if (fine) fn = textureLod(uNoise, w * (1.0 / 60.0), lod + 0.4).g;
-  erode += (0.5 - fn) * mix(34.0, 18.0, face) * mix(1.0, 0.65, g);
+  erode += (0.5 - fn) * mix(34.0, 18.0, face) * mix(1.0, 0.65, g) * mix(1.0, 0.7, arms);
   d += erode;
   depth = max(-d * GHOST_SCALE, 0.0);
   // the foot dissolves into the sea's tops; the drawn figure has a firmer edge
@@ -215,14 +220,21 @@ float ghostDensity(vec3 p, float lod, bool fine, out float emit, out float depth
   vec3 c = l - vec3(0.0, 500.0, 0.0);
   // billowed too: the light shows brighter through the thinner puffs
   emit = (0.12 + 0.14 * g + exp(-dot(c, c) * (1.0 / (170.0 * 170.0))) * 1.6 + exp(-dot(c, c) * (1.0 / (420.0 * 420.0))) * 0.35) * (0.3 + n * 1.4 + (fn - 0.5) * 1.2) * mix(0.15, 1.0, smoothstep(0.0, 30.0, hollow));
+  // the drawn figure glows darker toward its foot and its underside, and
+  // brighter in its outer few metres, so its outline stands out in the flash
+  float under = mix(0.18, 1.0, smoothstep(160.0, 560.0, l.y));
+  float rim = 1.0 - smoothstep(3.0, 26.0, depth);
+  emit *= mix(1.0, under * (1.0 + rim * 1.4), g);
   return dens;
 }
 
-// the light's step through the ghost, with nothing else
+// the light's step through the ghost, with nothing else; the drawn
+// figure's lower body holds the light longer, so its underside falls darker
 float ghostShade(vec3 p, float lod) {
   float e;
   float dp;
-  return ghostDensity(p, lod, false, e, dp);
+  float low = 1.0 - smoothstep(120.0, 480.0, ghostLocal(p).y);
+  return ghostDensity(p, lod, false, e, dp) * (1.0 + low * 1.2 * uStormGhost);
 }
 
 // The lightning's light at a sample: it lights the cloud from within around
