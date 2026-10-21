@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
 import { ISLAND_RX, ISLAND_RZ, AZALEAS, CHERRY, LANTERNS, MAPLES, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
 import { WIND_GLSL, realmUniforms } from './atmosphere'
+import { dressFor } from './season'
+import type { GrassDress } from './halloween/props-pumpkins'
 
 // The lawn: instanced geometry blades in square tiles, so the renderer can cull
 // whole tiles against the frustum. Every blade is a curved, tapered strip whose
@@ -433,6 +435,8 @@ export class Grass implements RealmPart {
     const fade = this.fade
     const sunTint = { value: new THREE.Color(5.0, 4.6, 1.6) }
     const viewHeight = this.viewHeight
+    // a season may light the blades with its own lights
+    const worn = dressFor<GrassDress>('Grass')
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = realmUniforms.uTime
       shader.uniforms.uWind = realmUniforms.uWind
@@ -441,12 +445,13 @@ export class Grass implements RealmPart {
       shader.uniforms.uFade = fade
       shader.uniforms.uSunTint = sunTint
       shader.uniforms.uViewHeight = viewHeight
+      if (worn) Object.assign(shader.uniforms, worn.uniforms)
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\n${VERTEX_PARS}`)
+        .replace('#include <common>', `#include <common>\n${VERTEX_PARS}\n${worn?.vertexPars ?? ''}`)
         .replace('#include <beginnormal_vertex>', `vec3 objectNormal = vec3(0.0, 1.0, 0.0);\n${VERTEX_MAIN}`)
-        .replace('#include <begin_vertex>', 'vec3 transformed = grassWorld - grassTile;')
+        .replace('#include <begin_vertex>', `vec3 transformed = grassWorld - grassTile;\n${worn?.vertex ?? ''}`)
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\n${FRAGMENT_PARS}`)
+        .replace('#include <common>', `#include <common>\n${FRAGMENT_PARS}\n${worn?.fragmentPars ?? ''}`)
         .replace('#include <lights_physical_pars_fragment>', `#include <lights_physical_pars_fragment>\n${TRANSLUCENCY}`)
         .replace('#include <color_fragment>', COLOR_FRAGMENT)
         .replace('#include <normal_fragment_begin>', NORMAL_FRAGMENT)
@@ -467,12 +472,13 @@ export class Grass implements RealmPart {
           outgoingLight = max(outgoingLight, vec3(0.0));
           float grassLum = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));
           outgoingLight *= min(1.0, mix(1.2, 0.55, vCalm) / max(grassLum, 1e-5));
+          ${worn?.fragment ?? ''}
           #include <opaque_fragment>`,
         )
     }
     // phones skip the second patch octave and the second flutter axis
     if (simple) material.defines = { GRASS_SIMPLE: '' }
-    material.customProgramCacheKey = () => (simple ? 'realm-grass-simple' : 'realm-grass')
+    material.customProgramCacheKey = () => (simple ? 'realm-grass-simple' : 'realm-grass') + (worn ? '-dressed' : '')
     return material
   }
 

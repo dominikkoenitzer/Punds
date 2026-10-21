@@ -5,6 +5,7 @@ import { sky } from './sky'
 import { clouds, stormParts } from './storm'
 import { pond } from './pond'
 import { propParts } from './props'
+import { grass } from './props-pumpkins'
 import { rainParts } from './rain'
 import { sound } from './sound'
 import { hallow } from './state'
@@ -19,6 +20,7 @@ export const dress: Dress = {
   Skyscape: clouds,
   Blossom: blossom,
   Pond: pond,
+  Grass: grass,
   Ambience: sound,
   parts: [...stormParts, ...propParts, ...rainParts],
 }

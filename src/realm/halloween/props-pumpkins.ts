@@ -15,10 +15,11 @@ import { PUMPKINS, surfaceY, type PumpkinSpot } from './props-place'
 // the candle's colour, linear
 const CANDLE = new THREE.Color(1.0, 0.5, 0.15)
 
-// shared by the shells, the pools and the hand at the graves
-export const CANDLE_GLSL = /* glsl */ `
-uniform float uTime;
-uniform float uMotion;
+const seedOf = (i: number) => 0.07 + i * 0.131
+
+// the candle's breath and colour, for a program that declares uTime and
+// uMotion itself
+const CANDLE_FN = /* glsl */ `
 float pkHash1(float n) { return fract(sin(n) * 43758.5453); }
 float pkNoise1(float x) {
   float i = floor(x);
@@ -36,9 +37,61 @@ float candle(float seed) {
 const vec3 CANDLE = vec3(${CANDLE.r.toFixed(3)}, ${CANDLE.g.toFixed(3)}, ${CANDLE.b.toFixed(3)});
 `
 
+// shared by the shells, the pools and the hand at the graves
+export const CANDLE_GLSL = /* glsl */ `
+uniform float uTime;
+uniform float uMotion;
+${CANDLE_FN}`
+
 export const candleUniforms = {
   uTime: realmUniforms.uTime,
   uMotion: { value: 1 },
+}
+
+// --- the candles' light on the lawn ------------------------------------------------
+
+// What the lawn takes from the candles: each blade near a pumpkin is lit by
+// its flame, per vertex, so the pool of light climbs the blades instead of
+// lying flat under them. The same breath as the painted pool.
+export interface GrassDress {
+  uniforms: Record<string, THREE.IUniform>
+  vertexPars: string
+  vertex: string
+  fragmentPars: string
+  fragment: string
+}
+
+const POOL_SLOTS = 7
+
+const grassUniforms = {
+  uPools: { value: PUMPKINS.map((p) => new THREE.Vector4(p.x, surfaceY(p.x, p.z) + 0.13, p.z, p.r * 6)) },
+  uPoolSeeds: { value: PUMPKINS.map((_, i) => seedOf(i)) },
+  uMotion: candleUniforms.uMotion,
+}
+
+export const grass: GrassDress = {
+  uniforms: grassUniforms,
+  vertexPars: /* glsl */ `
+uniform vec4 uPools[${POOL_SLOTS}];
+uniform float uPoolSeeds[${POOL_SLOTS}];
+uniform float uMotion;
+varying vec3 vCandle;
+${CANDLE_FN}`,
+  vertex: /* glsl */ `
+vCandle = vec3(0.0);
+for (int i = 0; i < ${POOL_SLOTS}; i++) {
+  vec4 pl = uPools[i];
+  if (pl.w <= 0.0) continue;
+  vec3 l = pl.xyz - grassWorld;
+  float d2 = dot(l, l);
+  float r2 = pl.w * pl.w;
+  if (d2 > r2) continue;
+  float fall = 1.0 - d2 / r2;
+  fall *= fall * (0.3 + 0.7 * exp(-d2 / r2 * 5.0));
+  vCandle += CANDLE * vec3(1.0, 0.8, 0.65) * fall * candle(uPoolSeeds[i]) * 1.1;
+}`,
+  fragmentPars: 'varying vec3 vCandle;',
+  fragment: 'outgoingLight += vCandle * diffuseColor.rgb;',
 }
 
 // --- the face ------------------------------------------------------------------
@@ -663,8 +716,6 @@ function poolGeometry(spots: readonly PumpkinSpot[], seeds: readonly number[]): 
   return g
 }
 
-const seedOf = (i: number) => 0.07 + i * 0.131
-
 // --- the part ------------------------------------------------------------------------
 
 export class Pumpkins implements RealmPart {
@@ -674,6 +725,10 @@ export class Pumpkins implements RealmPart {
 
   constructor(tier: Tier) {
     const spots = PUMPKINS.filter((p) => tier !== 'phone' || p.phone)
+    // the lawn is lit only by the candles that burn on this tier
+    PUMPKINS.forEach((p, i) => {
+      if (!spots.includes(p)) grassUniforms.uPools.value[i]!.w = 0
+    })
     const rand = rng(4410)
     const all = faces()
     const out = new Streams()
