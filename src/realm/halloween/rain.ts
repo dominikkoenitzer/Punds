@@ -1,8 +1,9 @@
 import * as THREE from 'three'
 import { realmUniforms } from '../atmosphere'
-import { EMA_RACK, LANTERNS, SHRINE, TERRACE_Y, groundHeight, rng } from '../layout'
+import { EMA_RACK, LANTERNS, SHRINE, TERRACE_FRONT_Z, TERRACE_Y, groundHeight, pathWeight, rng } from '../layout'
 import type { Frame, RealmPart, Tier } from '../types'
 import { light } from './light'
+import { surfaceY } from './props-place'
 import { hallow } from './state'
 
 // The gentle red rain: thin streaks in a column that travels with the eyes.
@@ -143,11 +144,126 @@ void main() {
 }
 `
 
+// Where the drops land on stone they throw a small crown and a ring that
+// spreads and fades within half a second. Each splash has its place on the
+// paving, the steps or the terrace and strikes again and again, a hand's
+// width to one side each time, so the stone glitters without a beat.
+const SPLASH_VERT = /* glsl */ `
+uniform float uRainTime;
+uniform float uRain;
+uniform float uLive;
+uniform float uStill;
+uniform vec3 uMoonDir;
+uniform vec3 uKey;
+uniform float uFlash;
+uniform vec3 uFlashDir;
+uniform vec3 uLanterns[${LANTERNS.length}];
+
+attribute vec4 aSplash;
+
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vAge;
+
+float sHash(float n) { return fract(sin(n) * 43758.5453); }
+
+void main() {
+  float phase = aSplash.w;
+  float period = 0.7 + 0.6 * fract(phase * 7.31);
+  float cyc = (uRainTime + phase * 11.0) / period;
+  float ci = floor(cyc);
+  float t = fract(cyc);
+  vec3 p = aSplash.xyz + vec3((sHash(ci * 12.9898 + phase * 78.233) - 0.5) * 0.3, 0.0, (sHash(ci * 39.17 + phase * 7.1) - 0.5) * 0.3);
+  // a splash shows for the first part of its cycle; the rain's strength
+  // thins them out like the drops
+  float keep = step(fract(phase * 3.7), uRain) * step(t, 0.5) * uLive;
+  float age = mix(t * 2.0, 0.35, uStill);
+  vAge = age;
+  float r = 0.016 + 0.055 * age;
+  vec3 world = p + vec3(position.x * r, 0.006, position.y * r);
+  vUv = position.xy;
+
+  vec3 toS = p - cameraPosition;
+  float d = length(toS);
+  vec3 V = toS / max(d, 1e-3);
+  float fade = 1.0 - smoothstep(7.0, 14.0, d);
+  float moon = max(dot(V, uMoonDir), 0.0);
+  vec3 col = uKey * (0.05 + 0.5 * pow(moon, 6.0)) * 0.11 + vec3(0.05, 0.035, 0.06);
+  vec3 warm = vec3(0.0);
+  for (int i = 0; i < ${LANTERNS.length}; i++) {
+    vec3 l = uLanterns[i] - p;
+    float dl2 = dot(l, l);
+    if (dl2 > 16.0) continue;
+    warm += 0.8 / (1.0 + dl2 * 2.2) * (1.0 - dl2 / 16.0);
+  }
+  col += vec3(1.0, 0.5, 0.18) * warm;
+  col += vec3(0.75, 0.8, 1.0) * uFlash * (0.25 + 0.6 * max(dot(V, uFlashDir), 0.0));
+  col *= vec3(1.0, 0.36, 0.3);
+  vColor = col * fade * keep * 4.5;
+
+  gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
+  if (keep * fade <= 0.0) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+}
+`
+
+const SPLASH_FRAG = /* glsl */ `
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vAge;
+
+void main() {
+  float d = length(vUv);
+  // the ring widens and thins as it spreads; the crown stands only at first
+  float ring = smoothstep(0.4, 0.72, d) * (1.0 - smoothstep(0.86, 1.0, d));
+  float crown = exp(-d * d * 7.0) * (1.0 - smoothstep(0.0, 0.35, vAge));
+  float a = ring * (1.0 - vAge) * (1.0 - vAge) * 0.9 + crown;
+  gl_FragColor = vec4(vColor * a, 0.0);
+}
+`
+
+// the lit, additive blend the drops use
+const LIGHT_BLEND = {
+  transparent: true,
+  depthWrite: false,
+  depthTest: true,
+  toneMapped: false,
+  fog: false,
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.OneFactor,
+  blendDst: THREE.OneFactor,
+  blendSrcAlpha: THREE.ZeroFactor,
+  blendDstAlpha: THREE.OneFactor,
+} as const
+
+// splash places on the stone around the path, the steps and the terrace
+function splashSpots(count: number): Float32Array {
+  const rand = rng(50117)
+  const out = new Float32Array(count * 4)
+  let n = 0
+  let tries = 0
+  while (n < count && tries++ < count * 40) {
+    const x = (rand() - 0.5) * 7
+    const z = -12.5 + rand() * 24
+    if (pathWeight(x, z) < 0.6 && !(z < TERRACE_FRONT_Z && Math.abs(x) < 3.5)) continue
+    // the shrine's roof keeps its floor dry
+    if (Math.abs(x - SHRINE.x) < 4.75 && z - SHRINE.z > -3.05 && z - SHRINE.z < 4.5) continue
+    out[n * 4] = x
+    out[n * 4 + 1] = surfaceY(x, z)
+    out[n * 4 + 2] = z
+    out[n * 4 + 3] = rand()
+    n++
+  }
+  return out
+}
+
 class Rain implements RealmPart {
-  readonly object: THREE.Mesh
+  readonly object = new THREE.Group()
   readonly kind = 'Rain'
   private geometry: THREE.InstancedBufferGeometry
   private material: THREE.ShaderMaterial
+  private splashGeometry: THREE.InstancedBufferGeometry
+  private splashMaterial: THREE.ShaderMaterial
   private camera: THREE.Camera | null = null
   private size = new THREE.Vector2()
   private key = new THREE.Vector3()
@@ -184,18 +300,8 @@ class Rain implements RealmPart {
         uShrine: { value: new THREE.Vector4(SHRINE.x, SHRINE.z, TERRACE_Y, 0) },
         uRack: { value: new THREE.Vector4(EMA_RACK.x, EMA_RACK.z, groundHeight(EMA_RACK.x, EMA_RACK.z) + 2.15, EMA_RACK.rotation) },
       },
-      transparent: true,
-      depthWrite: false,
-      depthTest: true,
-      toneMapped: false,
-      fog: false,
       // light only adds; the target's alpha is left alone
-      blending: THREE.CustomBlending,
-      blendEquation: THREE.AddEquation,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneFactor,
-      blendSrcAlpha: THREE.ZeroFactor,
-      blendDstAlpha: THREE.OneFactor,
+      ...LIGHT_BLEND,
     })
     const mesh = new THREE.Mesh(g, this.material)
     mesh.frustumCulled = false
@@ -213,7 +319,43 @@ class Rain implements RealmPart {
       u.uPixel!.value = (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov ?? 50) / 2)) / Math.max(1, h)
       this.material.uniformsNeedUpdate = true
     }
-    this.object = mesh
+    this.object.add(mesh)
+
+    const splashes = tier === 'ultra' ? 900 : tier === 'high' ? 650 : 260
+    const sg = new THREE.InstancedBufferGeometry()
+    sg.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3))
+    sg.setIndex([0, 1, 2, 2, 1, 3])
+    sg.setAttribute('aSplash', new THREE.InstancedBufferAttribute(splashSpots(splashes), 4))
+    sg.instanceCount = splashes
+    this.splashGeometry = sg
+    const u = this.material.uniforms
+    this.splashMaterial = new THREE.ShaderMaterial({
+      vertexShader: SPLASH_VERT,
+      fragmentShader: SPLASH_FRAG,
+      uniforms: {
+        uRainTime: u.uRainTime!,
+        uRain: hallow.uRain,
+        uLive: { value: 1 },
+        uStill: u.uStill!,
+        uMoonDir: hallow.uMoonDir,
+        uKey: { value: this.key },
+        uFlash: hallow.uFlash,
+        uFlashDir: hallow.uFlashDir,
+        uLanterns: { value: lanterns },
+      },
+      ...LIGHT_BLEND,
+    })
+    const splashMesh = new THREE.Mesh(sg, this.splashMaterial)
+    splashMesh.frustumCulled = false
+    splashMesh.castShadow = false
+    splashMesh.receiveShadow = false
+    splashMesh.renderOrder = 21
+    splashMesh.onBeforeRender = (_renderer, _scene, camera) => {
+      // the splashes too show only to the eyes
+      this.splashMaterial.uniforms.uLive!.value = camera === this.camera ? 1 : 0
+      this.splashMaterial.uniformsNeedUpdate = true
+    }
+    this.object.add(splashMesh)
   }
 
   update(frame: Frame): void {
@@ -229,6 +371,8 @@ class Rain implements RealmPart {
   dispose(): void {
     this.geometry.dispose()
     this.material.dispose()
+    this.splashGeometry.dispose()
+    this.splashMaterial.dispose()
   }
 }
 
