@@ -116,8 +116,8 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
   float m = dot(dir, uSkyMoonDisc);
   float fade = smoothstep(0.05, 0.5, dir.y) * (1.0 - smoothstep(0.6, 0.93, m)) * clear;
   if (fade > 0.0) {
-    vec3 stars = nightStarLayer(dir, px, 150.0, 0.34, 0.0011, 1.3);
-    stars += nightStarLayer(dir, px, 420.0, 0.24, 0.0006, 0.45);
+    vec3 stars = nightStarLayer(dir, px, 150.0, 0.16, 0.0011, 1.3);
+    stars += nightStarLayer(dir, px, 420.0, 0.1, 0.0006, 0.45);
     col += stars * fade;
   }
   // the moon, drawn from its distance to the centre so its limb is sharp at
