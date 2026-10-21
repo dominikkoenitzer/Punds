@@ -532,7 +532,7 @@ function pumpkinMaterial(): THREE.MeshStandardMaterial {
       .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
-        if (pkRegion < 0.5) roughnessFactor = mix(0.62, 0.36 + 0.22 * pkMottle, smoothstep(0.0, 0.5, vPk.y));
+        if (pkRegion < 0.5) roughnessFactor = mix(0.66, 0.5 + 0.2 * pkMottle, smoothstep(0.0, 0.5, vPk.y));
         else if (pkRegion < 1.5) roughnessFactor = 0.75;
         else if (pkRegion < 3.5) roughnessFactor = 0.9;
         else if (pkRegion < 4.5) roughnessFactor = 0.85;
@@ -615,7 +615,7 @@ function poolMaterial(): THREE.ShaderMaterial {
         // most of the light leaves through the face
         float front = dot(vRel / max(l, 1e-4), vFace);
         float k = mix(1.0, 0.3 + 0.7 * smoothstep(-0.5, 0.8, front), smoothstep(0.08, 0.35, d));
-        gl_FragColor = vec4(CANDLE * uGain * fall * k * candle(vSeed), 1.0);
+        gl_FragColor = vec4(CANDLE * vec3(1.0, 0.8, 0.65) * uGain * fall * k * candle(vSeed), 1.0);
       }`,
     blending: THREE.AdditiveBlending,
     transparent: true,
@@ -716,7 +716,7 @@ export class Pumpkins implements RealmPart {
     // seeds by the place in the full list, so a pool breathes with its pumpkin
     const pg = poolGeometry(spots, spots.map((p) => seedOf(PUMPKINS.indexOf(p))))
     const pm = poolMaterial()
-    pm.uniforms.uGain!.value = 0.55
+    pm.uniforms.uGain!.value = 0.45
     const pools = new THREE.Mesh(pg, pm)
     pools.renderOrder = 1
     this.object.add(pools)

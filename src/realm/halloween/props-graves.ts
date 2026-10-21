@@ -231,7 +231,7 @@ function handGeometry(curl: number, fine: boolean): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = []
   // the forearm's two bones, a little apart, the arm leaning back
   const lean = new THREE.Vector3(0, -1, -0.18).normalize()
-  for (const [dx, r] of [[-0.012, 0.0085], [0.013, 0.0075]] as const) {
+  for (const [dx, r] of [[-0.013, 0.011], [0.014, 0.0095]] as const) {
     const top = new THREE.Vector3(dx, -0.01, 0)
     parts.push(boneAt(top.clone().addScaledVector(lean, 0.72), top, r, sides))
   }
@@ -304,6 +304,8 @@ function handGeometry(curl: number, fine: boolean): THREE.BufferGeometry {
 
 function boneMaterial(): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.78, 0.6, 0.36), roughness: 0.7 })
+  // the night sky's violet fill would turn old bone lilac; the candle warms it
+  mat.envMapIntensity = 0.5
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, candleUniforms, boneLightUniforms, { uGround: hand.ground })
     shader.vertexShader = shader.vertexShader
@@ -429,7 +431,7 @@ export class Graves implements RealmPart {
     const ground = surfaceY(h.x, h.z)
     hand.ground.value = ground
     const soil = new THREE.Mesh(soilGeometry(5), new THREE.MeshStandardMaterial({ color: new THREE.Color(0.06, 0.04, 0.03), roughness: 0.95 }))
-    soil.position.set(h.x, ground - 0.012, h.z)
+    soil.position.set(h.x, ground - 0.002, h.z)
     soil.scale.setScalar(1.2)
     soil.receiveShadow = true
     this.object.add(soil)
