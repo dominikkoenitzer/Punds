@@ -12,7 +12,7 @@ run JavaScript sees an empty page. This file is the readable version.
 
 - [Portfolio](https://dk.punds.ch): the site worth reading. Projects, experience, CV.
 - [Source code](https://github.com/dominikkoenitzer)
-- [Senbon](https://senbon.vercel.app/): deliberately not indexed, listed here for completeness.
+- [Senbon](https://senbon.punds.ch/): deliberately not indexed, listed here for completeness.
 
 ## Notes
 
