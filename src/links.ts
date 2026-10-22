@@ -1,6 +1,5 @@
 // Every address the page links to, in the order the plaques hang on the rack.
-// The domains move to their vercel.app addresses before the old ones lapse, so
-// this file is the only place that needs to change when they do.
+// The sites sit on punds.ch subdomains, so this file is the one place to change when they move.
 
 export interface Link {
   name: string
