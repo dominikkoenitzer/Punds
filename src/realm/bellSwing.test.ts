@@ -21,7 +21,7 @@ describe('bell swing', () => {
     expect(swing.moving).toBe(false)
   })
 
-  it('swings the rope toward the visitor and rocks the bell after it', () => {
+  it('swings the rope and rocks the bell after it', () => {
     const swing = new BellSwing()
     swing.ring()
     swing.step(1 / 30)

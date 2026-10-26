@@ -1,7 +1,7 @@
-// A ring of the shrine bell as motion: the pull swings the long rope from the
-// bell's foot, and the bell rocks on its hanger a beat behind, following the
-// rope at its own quicker pace; both die away. Angles are in radians about
-// the hall's cross axis, negative toward the visitor.
+// A ring of the shrine bell as motion: the visitor shakes the long rope side
+// to side, and the bell rocks on its hanger a beat behind, following the rope
+// at its own quicker pace; both die away. Angles are in radians about the
+// hall's depth axis.
 
 const ROPE_RATE = 2.3 // a rope of about two metres, as a pendulum
 const ROPE_DAMP = 0.1
@@ -18,7 +18,7 @@ export class BellSwing {
   private ropeV = 0
   private bellV = 0
 
-  // a pull toward the visitor; with reduced motion only a small sway
+  // one shake of the rope; with reduced motion only a small sway
   ring(motion = 1): void {
     this.ropeV -= PULL * (motion > 0 ? 1 : 0.35)
   }

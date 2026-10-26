@@ -1533,8 +1533,8 @@ export class Shrine implements RealmPart {
   update(frame: Frame): void {
     if (!this.swing.moving) return
     this.swing.step(frame.dt)
-    this.ringer.rotation.x = this.swing.bell
-    this.ropeArm.rotation.x = this.swing.rope - this.swing.bell
+    this.ringer.rotation.z = this.swing.bell
+    this.ropeArm.rotation.z = this.swing.rope - this.swing.bell
   }
 
   dispose(): void {
