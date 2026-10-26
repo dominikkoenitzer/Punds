@@ -202,7 +202,9 @@ export async function buildIsland(realm: Realm): Promise<void> {
     await yieldToMain()
     const t0 = performance.now()
     const part = await make()
+    const t1 = performance.now()
     realm.add(part)
-    realm.buildTimes.push([part.constructor.name, Math.round(performance.now() - t0)])
+    realm.buildTimes.push([`${index} ${part.constructor.name}`, Math.round(t1 - t0)])
+    realm.buildTimes.push([`${index} add`, Math.round(performance.now() - t1)])
   }
 }
