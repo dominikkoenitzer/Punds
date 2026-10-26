@@ -29,6 +29,9 @@ export interface RealmOptions {
   // the device cannot carry the scene even at the lowest step: the page
   // should drop it for the still picture and the written links
   onTooSlow?: () => void
+  // the GPU took the scene away and has not given it back: the page should
+  // build it again
+  onLost?: () => void
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
@@ -137,6 +140,8 @@ export class Realm {
   private soundWhenShown = false
   private calm = false
   private tooSlow = 0
+  private lost = false
+  private lostTimer = 0
   private visibleObs: IntersectionObserver
   private pointerNdc = new THREE.Vector2()
   private pointerActive = false
@@ -235,6 +240,7 @@ export class Realm {
     el.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointerleave', this.onPointerLeave)
     el.addEventListener('webglcontextlost', this.onContextLost)
+    el.addEventListener('webglcontextrestored', this.onContextRestored)
     this.resizeObs = new ResizeObserver(() => this.resize())
     this.resizeObs.observe(container)
     this.resize()
@@ -260,13 +266,31 @@ export class Realm {
       cancelAnimationFrame(this.raf)
       this.soundWhenShown = this.ambience.on
       if (this.soundWhenShown) this.ambience.setEnabled(false)
-    } else if (!this.disposed) {
+    } else if (!this.disposed && !this.lost) {
       this.raf = requestAnimationFrame(this.tick)
       if (this.soundWhenShown) this.ambience.setEnabled(true)
     }
   }
 
-  private onContextLost = (e: Event) => e.preventDefault()
+  // a phone short of memory may take the GPU away; three.js uploads
+  // everything again once it is back, and if it stays gone the page builds
+  // the scene anew rather than leave an empty canvas
+  private onContextLost = (e: Event) => {
+    e.preventDefault()
+    this.lost = true
+    cancelAnimationFrame(this.raf)
+    window.clearTimeout(this.lostTimer)
+    this.lostTimer = window.setTimeout(() => {
+      if (this.lost && !this.disposed) this.opts.onLost?.()
+    }, 4000)
+  }
+
+  private onContextRestored = () => {
+    window.clearTimeout(this.lostTimer)
+    this.lost = false
+    this.pipeline.timer = null
+    if (this.shown && !this.disposed) this.raf = requestAnimationFrame(this.tick)
+  }
 
   private onPointerMove = (e: PointerEvent) => {
     const r = this.renderer.domElement.getBoundingClientRect()
@@ -674,7 +698,7 @@ export class Realm {
   }
 
   private tick = () => {
-    if (this.disposed) return
+    if (this.disposed || this.lost) return
     this.raf = requestAnimationFrame(this.tick)
     const now = performance.now()
     if (this.ready && !UNCAPPED) {
@@ -857,6 +881,8 @@ export class Realm {
     el.removeEventListener('pointerup', this.onPointerUp)
     el.removeEventListener('pointerleave', this.onPointerLeave)
     el.removeEventListener('webglcontextlost', this.onContextLost)
+    el.removeEventListener('webglcontextrestored', this.onContextRestored)
+    window.clearTimeout(this.lostTimer)
     for (const part of this.parts) part.dispose()
     this.sky?.dispose()
     this.pipeline.dispose()
