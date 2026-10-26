@@ -271,27 +271,38 @@ function marchRewrite(src: string): string {
   src = swap(src, '// height of the cloud tops at xz, and how much of a tower this column is', `${GHOST_GLSL}
 ${MOON_CLEAR_GLSL}
 // height of the cloud tops at xz, and how much of a tower this column is`)
-  // in the ghost's stretch of the ray the samples are the ghost's alone
+  // in the ghost's stretch of the ray the samples are the ghost's alone; the
+  // light's steps through it reach six times further, so the figure's far
+  // side falls into its own shade. The ghost's own sample is taken ahead of
+  // the light loop: a call site inside it cost 3 s of compile.
   src = swap(
     src,
-    '  float dens = density(p, detail, lod, dTop, tower);',
-    `  float dens;
+    '  float dens = 0.0;\n',
+    `  float dens = 0.0;
   float gEmit = 0.0;
+  float gDens = 0.0;
+  float gTop = 0.0;
   if (gMarchGhost) {
     // the figure's billows keep one fineness however fine the trace is
-    dens = ghostDensity(p, max(lod, 1.0), true, gEmit, dTop);
-    tower = 1.0;
-    gEmit *= smoothstep(0.0, 0.3, dens);
-  } else {
-    dens = density(p, detail, lod, dTop, tower) * gMoonClear;
-  }`,
+    gDens = ghostDensity(p, max(lod, 1.0), true, gEmit, gTop);
+    gEmit *= smoothstep(0.0, 0.3, gDens);
+  }
+`,
   )
-  // the light's steps through the ghost reach six times further, so the
-  // figure's far side falls into its own shade
   src = swap(
     src,
-    '    od += density(p + uSunDir * lt, 0.0, lod, dl, tl2) * ls;',
-    '    od += (gMarchGhost ? ghostShade(p + uSunDir * (lt * 6.0), max(lod, 1.0)) * 6.0 : density(p + uSunDir * lt, 0.0, lod, dl, tl2)) * ls;',
+    '    sd = density(sp, here ? detail : 0.0, lod, dl, tl2);',
+    `    if (gMarchGhost) {
+      if (here) {
+        sd = gDens;
+        dl = gTop;
+        tl2 = 1.0;
+      } else {
+        sd = ghostShade(p + uSunDir * (lt * 6.0), max(lod, 1.0)) * 6.0;
+      }
+    } else {
+      sd = density(sp, here ? detail : 0.0, lod, dl, tl2) * (here ? gMoonClear : 1.0);
+    }`,
   )
   // moonlit rims run red-orange, the shade toward violet
   src = swap(src, 'mix(vec3(1.0, 0.8, 0.5), vec3(1.0, 0.95, 0.85), sunward)', 'mix(vec3(1.0, 0.5, 0.32), vec3(1.0, 0.66, 0.5), sunward)')
