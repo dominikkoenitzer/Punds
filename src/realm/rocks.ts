@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { getMaxAnisotropy, inTurn, SCANS_RANK } from './assets'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
-import { groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf } from './layout'
+import { cascadeLocal, cascadePoint, groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf, CASCADE } from './layout'
 import type { RealmPart, Tier } from './types'
 
 // Scanned rocks: groups set a third into the ground at the pond's shore and
@@ -26,6 +26,8 @@ interface Placement {
   tiltZ: number
   bury: number // share of the height below ground
   tone: number // albedo multiplier, for weathering
+  top?: number // set the top here instead of burying (the cascade's steps)
+  squash?: number // height scale, for flat-topped steps
 }
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
@@ -102,6 +104,9 @@ function shoreRocks(rand: () => number, out: Placement[]): void {
       const oz = (rand() - 0.5) * (big ? 0.2 : 1.6)
       const px = x + ox
       const pz = z + oz
+      // the cascade has stones of its own
+      const [f, side] = cascadeLocal(px, pz)
+      if (Math.hypot((f + 0.6) / 1.6, side / 1.9) < 1) continue
       out.push({
         scan: scans[Math.floor(rand() * scans.length)],
         x: px,
@@ -114,6 +119,63 @@ function shoreRocks(rand: () => number, out: Placement[]): void {
         bury: 0.3 + rand() * 0.15,
         tone: 0.85 + rand() * 0.12,
       })
+    }
+  }
+}
+
+// The cascade's stones: the lip the water leaves, the ledge it lands on and
+// leaves again, the stones that wall the gorge and face the bank, and those
+// standing in the plunge pool. Placed in the cascade's frame (f along the
+// flow, s across it): the lip, the ledge and the pool stones by their top
+// above the water, the ones bedded in the bank by how far their top stands
+// above the ground under them, so about half of each shows. Wet ones are
+// darker.
+function cascadeRocks(out: Placement[]): void {
+  const { upper, ledge, lip1, lip2 } = CASCADE
+  type Stone = [scan: string, f: number, s: number, top: number, size: number, squash: number, yaw: number, tone: number]
+  const set: Stone[] = [
+    // the stone the spring wells up behind, and the run's floor
+    ['boulder_01', -2.3, 0.25, upper + 0.5, 1.2, 0.9, 0.4, 0.62],
+    ['rock_09', lip1 - 0.42, 0, upper - 0.02, 0.95, 0.45, 1.3, 0.5],
+    // the ledge
+    ['stone_01', lip2 - 0.38, 0.05, ledge - 0.02, 0.85, 0.5, 0.7, 0.48],
+    // the cut's faces: tall stones either side of each fall, set just
+    // clear of the sheet, so no bare earth shows beside the water
+    ['rock_07', -1.08, -0.66, upper - 0.25, 0.6, 1.5, 2.2, 0.5],
+    ['boulder_01', -1.08, 0.72, upper - 0.2, 0.7, 1.1, 1.0, 0.5],
+    ['stone_01', -0.95, -0.55, ledge + 0.2, 0.65, 1.2, 5.3, 0.46],
+    ['rock_09', -0.95, 0.56, ledge + 0.18, 0.65, 1.2, 1.9, 0.46],
+    ['rock_07', -0.6, 0.76, 1.2, 0.75, 1.3, 1.2, 0.5],
+    ['stone_01', -0.42, -0.72, 0.55, 0.75, 1.1, 0.8, 0.44],
+    ['rock_09', -0.44, 0.72, 0.5, 0.75, 1.1, 3.6, 0.44],
+    // in and around the plunge pool
+    ['stone_01', 0.5, 0.75, 0.1, 0.45, 0.7, 2.6, 0.62],
+    ['rock_09', 0.35, -0.85, 0.12, 0.5, 0.7, 5.6, 0.62],
+  ]
+  const bedded: Stone[] = [
+    // the walls of the run above the upper fall
+    ['rock_09', lip1 - 0.45, -0.8, 0.3, 0.8, 0.85, 0.3, 0.58],
+    ['stone_01', lip1 - 0.5, 0.8, 0.3, 0.8, 0.85, 3.3, 0.58],
+    // the mass of the bank behind the upper fall
+    ['rock_07', lip1 - 0.15, -1.35, 0.4, 1.25, 0.95, 4.6, 0.62],
+    ['boulder_01', lip1 - 0.3, 1.35, 0.35, 1.2, 0.9, 1.4, 0.62],
+    // the gorge walls beside the ledge
+    ['rock_09', (lip1 + lip2) / 2, -0.9, 0.35, 0.9, 0.85, 2.2, 0.55],
+    ['stone_01', (lip1 + lip2) / 2, 0.9, 0.35, 0.9, 0.85, 5.1, 0.55],
+    // the bank's face either side of the lower fall, down to the water
+    ['rock_07', lip2 + 0.15, -1.1, 0.5, 1.1, 0.95, 3.9, 0.52],
+    ['boulder_01', lip2 + 0.1, 1.1, 0.45, 1.1, 0.9, 0.9, 0.52],
+    ['rock_07', lip2 + 0.1, -1.7, 0.45, 1.0, 0.85, 0.6, 0.6],
+    ['rock_09', lip2 + 0.05, 1.7, 0.45, 1.0, 0.85, 2.0, 0.6],
+    ['rock_09', -0.3, -1.05, 0.3, 0.85, 0.75, 1.7, 0.5],
+    ['boulder_01', -0.35, 1.1, 0.3, 0.8, 0.8, 4.4, 0.5],
+  ]
+  const at = { x: 0, y: 0, z: 0 }
+  for (const [list, onGround] of [[set, false], [bedded, true]] as const) {
+    for (const [scan, f, side, top, size, squash, yaw, tone] of list) {
+      cascadePoint(f, side, onGround ? 0 : top, at)
+      const y = onGround ? groundHeight(at.x, at.z) + top : at.y
+      out.push({ scan, x: at.x, y: 0, z: at.z, size, yaw, tiltX: 0, tiltZ: 0, bury: 0, tone, top: y, squash })
     }
   }
 }
@@ -198,6 +260,7 @@ export class Rocks implements RealmPart {
     shoreRocks(rand, places)
     gardenRocks(rand, places)
     rimRocks(rand, places)
+    cascadeRocks(places)
 
     const byScan = new Map<string, Placement[]>()
     for (const p of places) {
@@ -217,9 +280,9 @@ export class Rocks implements RealmPart {
       const extent = Math.max(scan.size.x, scan.size.z)
       list.forEach((p, i) => {
         const k = p.size / extent
-        s.set(k, k * (0.85 + ((i * 37) % 10) / 30), k)
+        s.set(k, k * (p.squash ?? 0.85 + ((i * 37) % 10) / 30), k)
         q.setFromEuler(e.set(p.tiltX, p.yaw, p.tiltZ, 'YXZ'))
-        v.set(p.x, p.y - scan.size.y * s.y * p.bury, p.z)
+        v.set(p.x, p.top === undefined ? p.y - scan.size.y * s.y * p.bury : p.top - scan.size.y * s.y, p.z)
         mesh.setMatrixAt(i, m.compose(v, q, s))
         // a touch of lichen green in the weathered ones
         mesh.setColorAt(i, tone.setRGB(p.tone * 0.97, p.tone, p.tone * 0.93))
