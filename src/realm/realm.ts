@@ -3,12 +3,13 @@ import { Pipeline, type PostParams } from './post'
 import { buildSky, sunKnown, type SkyResult } from './sky'
 import { prefetchScans } from './rocks'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
-import { prefetchSets, setMaxAnisotropy, upgradeTextures } from './assets'
+import { prefetchSets, setMaxAnisotropy, setUploader, upgradeTextures } from './assets'
 import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { GpuTimer } from './gpuTimer'
 import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
+import { dress } from './season'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
 // The realm host: renderer, camera, sun, the parts of the island, the look
@@ -31,6 +32,9 @@ export interface RealmOptions {
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
+  // resolves once that picture is on screen; work that would hold up its
+  // first paint waits for it
+  shown?: Promise<void>
 }
 
 export type CursorState = 'idle' | 'point' | 'grab'
@@ -105,7 +109,6 @@ export class Realm {
   private hoveredPlace: Place | null = null
   private lastX = 0
   private baseFov = 50
-  private rackLens = 0
   private cursorKey = ''
   private lastY = 0
   private placeBoxes: Partial<Record<Place, THREE.Box3>> = {}
@@ -151,7 +154,7 @@ export class Realm {
   private compiling: Promise<unknown>[] = []
   // parts are built while the sky loads; their programs compile once its
   // environment is set, so each is built for it only once
-  private pendingCompile: THREE.Object3D[] | null = null
+  private pendingCompile: RealmPart[] | null = null
   private skyResolve: (sky: SkyResult) => void = () => {}
   readonly skyReady = new Promise<SkyResult>((resolve) => (this.skyResolve = resolve))
   private warming = false
@@ -172,6 +175,9 @@ export class Realm {
     this.renderer.shadowMap.autoUpdate = false
     this.tier = opts.tier ?? detectTier(this.renderer)
     setMaxAnisotropy(Math.min(this.renderer.capabilities.getMaxAnisotropy(), this.tier === 'phone' ? 4 : 16))
+    setUploader((texture) => {
+      if (!this.disposed) this.renderer.initTexture(texture)
+    })
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.display = 'block'
     this.renderer.domElement.style.touchAction = 'none'
@@ -429,6 +435,7 @@ export class Realm {
     this.camera.updateProjectionMatrix()
     // the same screens that get the tall poster (see POSTERS in Sando.tsx)
     this.look.centreTurn = this.camera.aspect < 17 / 18 ? PORTRAIT_TURN : 0
+    this.look.tall = this.camera.aspect < 1
   }
 
   // add a part and refresh the shadow map so it casts
@@ -445,15 +452,49 @@ export class Realm {
     // driver works while the next part is being built
     // with the HDR target bound, as when it is drawn, or every program
     // would be built once for the screen and again for the target
-    if (this.pendingCompile) this.pendingCompile.push(part.object)
-    else this.compile(part.object)
+    if (this.pendingCompile) this.pendingCompile.push(part)
+    else this.prepare(part)
+    this.upload(part.object)
   }
 
-  private compile(object: THREE.Object3D): void {
+  // the part's ready textures go to the GPU now, while the load waits for
+  // the rest, instead of in a pile in the first frames
+  private upload(object: THREE.Object3D): void {
+    const seen = new Set<THREE.Texture>()
+    // pictures and data only: render targets and depth have nothing to upload
+    const add = (v: unknown) => {
+      const t = v as (THREE.Texture & { isDepthTexture?: boolean }) | null
+      if (t?.isTexture && t.version > 0 && t.image && !t.isRenderTargetTexture && !t.isDepthTexture) seen.add(t)
+    }
+    object.traverse((o) => {
+      const mats = (o as THREE.Mesh).material
+      if (!mats) return
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        for (const v of Object.values(m)) add(v)
+        for (const u of Object.values((m as THREE.ShaderMaterial).uniforms ?? {})) add((u as THREE.IUniform).value)
+      }
+    })
+    for (const t of seen) this.renderer.initTexture(t)
+  }
+
+  private compile(object: THREE.Object3D): Promise<unknown> {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
-    this.compiling.push(this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {}))
+    const done = this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {})
+    this.compiling.push(done)
     this.renderer.setRenderTarget(before)
+    return done
+  }
+
+  // compile a part's programs, then let it warm up (see RealmPart.warm)
+  private prepare(part: RealmPart): void {
+    const compiled = this.compile(part.object)
+    if (!part.warm) return
+    this.compiling.push(
+      compiled.then(() => {
+        if (!this.disposed && !this.ready) part.warm?.(this.renderer)
+      }),
+    )
   }
 
   async start(build: (realm: Realm) => Promise<void>): Promise<void> {
@@ -464,21 +505,22 @@ export class Realm {
     this.buildTimes.push(['start at', Math.round(ts)])
     prefetchSets(this.tier)
     prefetchScans(this.tier)
+    this.compiling.push(this.pipeline.precompile().catch(() => {}))
     // the sky loads while the island is built; the build only needs the
     // sun's direction, which comes before the sky's images
     this.pendingCompile = []
-    const sky = buildSky(this.renderer, this.tier, this.sunColor).then((s) => {
+    const sky = buildSky(this.renderer, this.tier, this.sunColor, this.opts.shown).then((s) => {
       if (this.disposed) return
       this.sky = s
       this.buildTimes.push(['sky', Math.round(performance.now() - ts)])
       this.scene.add(s.mesh)
       this.scene.environment = s.environment
-      this.scene.environmentIntensity = 0.38
+      this.scene.environmentIntensity = dress()?.light?.environmentIntensity ?? 0.38
       this.placeSun()
       this.skyResolve(s)
       const pending = this.pendingCompile ?? []
       this.pendingCompile = null
-      for (const o of pending) this.compile(o)
+      for (const p of pending) this.prepare(p)
     })
     await Promise.race([sunKnown, sky])
     if (this.disposed) return
@@ -487,6 +529,11 @@ export class Realm {
     await sky
     if (this.disposed) return
     let t0 = performance.now()
+    // materials that changed after their part was added (the barks take
+    // their scanned maps a moment later) need a new program; compile the
+    // whole scene once more, so those build in parallel too instead of on the
+    // first frame. Programs that are current are only looked up.
+    this.compile(this.scene)
     await Promise.all(this.compiling)
     if (this.disposed) return
     this.buildTimes.push(['compile', Math.round(performance.now() - t0)])
@@ -674,19 +721,6 @@ export class Realm {
     const yaw = pose.yaw - this.parallax.x * 0.025 + sway * breathe
     const pitch = pose.pitch + this.parallax.y * 0.015 + Math.sin(t * 0.43) * 0.003 * breathe
     heading(yaw, pitch, this.dir)
-    // a tall screen sees less across: at the rack, where the plaques must
-    // all be in frame, the lens widens instead (stepping back would walk
-    // into the lantern behind)
-    if (this.camera.aspect < 1) {
-      const wide = Math.min(90, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(26)) / this.camera.aspect)))
-      // eased both ways, so flying home narrows the lens as smoothly
-      this.rackLens += ((this.look.place === 'rack' ? 1 : 0) - this.rackLens) * (1 - Math.exp(-dt * 2.5))
-      const fov = THREE.MathUtils.lerp(this.baseFov, Math.max(this.baseFov, wide), this.rackLens)
-      if (Math.abs(fov - this.camera.fov) > 0.01) {
-        this.camera.fov = fov
-        this.camera.updateProjectionMatrix()
-      }
-    }
     this.aimPoint.copy(this.camera.position).add(this.dir)
     this.camera.up.set(0, 1, 0)
     this.camera.lookAt(this.aimPoint)
@@ -727,10 +761,18 @@ export class Realm {
     realmUniforms.uTime.value = t
     realmUniforms.uGust.value = 0.5 + 0.5 * Math.sin(t * 0.13) * Math.sin(t * 0.07 + 2.0)
 
-    // the sun sinks through the walk
-    this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
+    // the sun sinks through the walk; a season may set its own hour
+    const light = dress()?.light
+    if (light) {
+      light.update?.(this.frame)
+      this.sunColor.copy(light.keyColor)
+      this.sun.intensity = light.keyIntensity
+      this.scene.environmentIntensity = light.environmentIntensity
+    } else {
+      this.sunColor.copy(SUN_EARLY).lerp(SUN_LATE, p)
+      this.sun.intensity = 13 - p * 2.5
+    }
     this.sun.color.copy(this.sunColor)
-    this.sun.intensity = 13 - p * 2.5
 
     this.frame.t = t
     this.frame.dt = dt
@@ -745,13 +787,26 @@ export class Realm {
 
     const pp = this.post
     pp.wake = wake
-    pp.exposure = 0.68 + p * 0.05
-    pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
-    pp.sunFogColor.setRGB(1.0, 0.78, 0.55).multiplyScalar(1.6)
-    pp.sunColor.copy(this.sunColor).multiplyScalar(0.9)
+    if (light) {
+      pp.exposure = light.exposure
+      pp.fogColor.copy(light.fogColor)
+      pp.sunFogColor.copy(light.sunFogColor)
+      pp.sunColor.copy(light.shaftColor)
+      pp.shafts = light.shafts
+      pp.bloom = light.bloom
+      pp.saturation = light.saturation
+      pp.fogDensity = light.fogDensity
+      pp.fogHeight = light.fogHeight ?? pp.fogHeight
+      pp.fogFalloff = light.fogFalloff ?? pp.fogFalloff
+    } else {
+      pp.exposure = 0.68 + p * 0.05
+      pp.fogColor.setRGB(0.55, 0.62, 0.74).lerp(new THREE.Color(0.62, 0.56, 0.52), p * 0.6)
+      pp.sunFogColor.setRGB(1.0, 0.78, 0.55).multiplyScalar(1.6)
+      pp.sunColor.copy(this.sunColor).multiplyScalar(0.9)
+    }
     pp.focusDistance = this.debugView ? this.debugView.from.distanceTo(this.debugView.to) : pose.focus
     pp.focusRange = Math.max(1.5, pp.focusDistance * 0.45)
-    this.pipeline.render(this.scene, this.camera, pp, SUN_DIRECTION, t)
+    this.pipeline.render(this.scene, this.camera, pp, light?.glowDirection ?? SUN_DIRECTION, t)
     this.opts.onProgress?.(p)
   }
 
@@ -794,6 +849,7 @@ export class Realm {
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('popstate', this.onPopState)
     this.ambience.dispose()
+    setUploader(null)
     const el = this.renderer.domElement
     el.removeEventListener('pointermove', this.onPointerMove)
     el.removeEventListener('pointerdown', this.onPointerDown)

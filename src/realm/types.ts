@@ -42,5 +42,8 @@ export interface RealmPart {
   // production build
   readonly kind?: string
   update(frame: Frame): void
+  // once its programs are built and before the first frame: draw whatever
+  // the driver is slow to draw the first time, unseen, while the load waits
+  warm?(renderer: THREE.WebGLRenderer): void
   dispose(): void
 }

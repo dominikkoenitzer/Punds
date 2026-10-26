@@ -533,6 +533,29 @@ export class Pipeline {
     this.maskMat.uniforms.uAspect.value = w / h
   }
 
+  // Builds every pass's program ahead, in parallel where the browser allows,
+  // so the first frames do not build them one after the other. The passes
+  // between draw into targets, the last one to the screen.
+  precompile(): Promise<unknown> {
+    const r = this.renderer
+    const between = new THREE.Scene()
+    const last = new THREE.Scene()
+    const proxy = (m: THREE.Material) => {
+      const mesh = new THREE.Mesh(this.quad.geometry, m)
+      mesh.frustumCulled = false
+      return mesh
+    }
+    for (const m of [this.aoMat, this.aoBlurMat, this.atmosMat, this.downMat, this.upMat, this.maskMat, this.blurMat]) between.add(proxy(m))
+    last.add(proxy(this.finalMat))
+    const before = r.getRenderTarget()
+    r.setRenderTarget(this.atmos)
+    const a = r.compileAsync(between, this.quadCam)
+    r.setRenderTarget(null)
+    const b = r.compileAsync(last, this.quadCam)
+    r.setRenderTarget(before)
+    return Promise.all([a, b])
+  }
+
   private draw(mat: THREE.Material, target: THREE.WebGLRenderTarget | null): void {
     this.quad.material = mat
     this.renderer.setRenderTarget(target)

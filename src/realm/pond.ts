@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { SUN_DIRECTION, realmUniforms } from './atmosphere'
 import { OUTFLOW, POND_BOUNDS, POND_LEVEL, groundHeight, islandSdf, noise2, pondSdf, rng } from './layout'
 import type { Frame, RealmPart, Tier } from './types'
+import { dressFor } from './season'
+import type { PondDress } from './halloween/pond'
 
 // The koi pond: the water surface with its planar reflection and ripple
 // simulation, the koi and the outflow channel that spills off the island. The host's terrain draws the bed; everything wet is here.
@@ -493,6 +495,9 @@ export class Pond implements RealmPart {
   readonly object = new THREE.Group()
 
   private readonly tier: Tier
+  // a season's pond, if one is worn
+  private readonly dress = dressFor<PondDress>('Pond')
+  private readonly rainDrop = (x: number, z: number, radius: number, strength: number): void => this.addDrop(x, z, radius, strength)
   private readonly shapeTex: THREE.DataTexture
   private readonly simSize: number
   private simA: THREE.WebGLRenderTarget
@@ -565,7 +570,7 @@ export class Pond implements RealmPart {
     for (let i = 0; i < MAX_DROPS; i++) this.drops.push(new THREE.Vector4(0, 0, 1, 0))
     this.simMaterial = new THREE.ShaderMaterial({
       vertexShader: SIM_VERT,
-      fragmentShader: SIM_FRAG,
+      fragmentShader: this.dress ? this.dress.sim(SIM_FRAG) : SIM_FRAG,
       uniforms: {
         uState: { value: this.simA.texture },
         uShape: { value: this.shapeTex },
@@ -639,6 +644,7 @@ export class Pond implements RealmPart {
       blendSrcAlpha: THREE.ZeroFactor,
       blendDstAlpha: THREE.OneFactor,
     })
+    this.dress?.water(this.waterMaterial)
     this.water = new THREE.Mesh(this.buildSurface(), this.waterMaterial)
     this.water.name = 'pond-water'
     this.water.renderOrder = 1
@@ -648,7 +654,7 @@ export class Pond implements RealmPart {
       this.buildWetRing(),
       new THREE.ShaderMaterial({
         vertexShader: WET_VERT,
-        fragmentShader: WET_FRAG,
+        fragmentShader: this.dress ? this.dress.wet(WET_FRAG) : WET_FRAG,
         transparent: true,
         premultipliedAlpha: true,
         blending: THREE.MultiplyBlending,
@@ -705,6 +711,7 @@ export class Pond implements RealmPart {
     this.koiMesh.castShadow = false
     this.koiMesh.receiveShadow = true
     this.koiMesh.name = 'koi'
+    this.dress?.koiMesh(this.koiMesh)
     this.object.add(this.koiMesh)
 
     this.koiDepthMaterial = new THREE.ShaderMaterial({
@@ -858,6 +865,7 @@ export class Pond implements RealmPart {
   }
 
   private buildKoiMaterial(): THREE.MeshPhysicalMaterial {
+    const dress = this.dress
     const m = new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
       roughness: 0.32,
@@ -968,8 +976,9 @@ float koiScale = scaleRnd;`,
 if (fin > 0.5) roughnessFactor = 0.45;`,
         )
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = koiMetal;')
+      dress?.koi(shader)
     }
-    m.customProgramCacheKey = () => 'realm-koi'
+    m.customProgramCacheKey = () => (dress ? dress.koiKey : 'realm-koi')
     return m
   }
 
@@ -1118,6 +1127,7 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
     this.hadPointer = this.hasPointer
     this.lastPointer.copy(this.pointer)
     this.updateKoi(frame.dt, frame.motion)
+    this.dress?.update(frame, this.tier, this.rainDrop)
     for (let i = this.dropCount; i < MAX_DROPS; i++) this.drops[i]!.w = 0
     this.simAccum += frame.dt
   }
@@ -1145,12 +1155,14 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
     }
     this.waterMaterial.uniforms.uSim!.value = this.simA.texture
 
-    // koi depth from above
-    renderer.setRenderTarget(this.koiDepthRT)
-    renderer.setClearColor(0x000000, 1)
-    renderer.autoClear = false
-    renderer.clear(true, false, false)
-    renderer.render(this.koiDepthMesh, this.koiDepthCamera)
+    // koi depth from above (a worn pond that hides the bed never reads it)
+    if (!this.dress) {
+      renderer.setRenderTarget(this.koiDepthRT)
+      renderer.setClearColor(0x000000, 1)
+      renderer.autoClear = false
+      renderer.clear(true, false, false)
+      renderer.render(this.koiDepthMesh, this.koiDepthCamera)
+    }
 
     // planar reflection
     renderer.getDrawingBufferSize(this.size)

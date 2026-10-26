@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { getMaxAnisotropy } from './assets'
+import { getMaxAnisotropy, inTurn, SCANS_RANK } from './assets'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf } from './layout'
@@ -35,7 +35,7 @@ const files = new Map<string, ReturnType<GLTFLoader['loadAsync']>>()
 function fetchScan(name: string): ReturnType<GLTFLoader['loadAsync']> {
   let p = files.get(name)
   if (!p) {
-    p = loader.loadAsync(`/realm/models/${name}.glb`)
+    p = inTurn(SCANS_RANK, () => loader.loadAsync(`/realm/models/${name}.glb`))
     files.set(name, p)
   }
   return p

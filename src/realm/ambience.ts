@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { OUTFLOW, POND_BOUNDS } from './layout'
+import { dressFor } from './season'
 
 // Water and wind, made from noise at runtime: no recordings ship. Wind is
 // pink noise through a slowly breathing low-pass, swelling with the gusts.
@@ -41,7 +42,17 @@ function noiseBuffer(ctx: AudioContext, seconds: number, pink: boolean): AudioBu
   return buffer
 }
 
+// What a season adds to the sound: its own layers on the same master, so
+// the switch silences them with the rest.
+export interface AmbienceDress {
+  build(ctx: AudioContext, out: AudioNode, noise: { pink: AudioBuffer; white: AudioBuffer }): void
+  // water: how near the pond is, 0.12 far to 1 beside it
+  update(dt: number, camera: THREE.Vector3, water: number): void
+  dispose(): void
+}
+
 export class Ambience {
+  private dress: AmbienceDress | null = null
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private wind: { gain: GainNode; filter: BiquadFilterNode } | null = null
@@ -133,6 +144,8 @@ export class Ambience {
     drops.gain.value = 0
     drops.connect(master)
     this.drops = drops
+    this.dress = dressFor<AmbienceDress>('Ambience')
+    this.dress?.build(ctx, master, { pink, white })
   }
 
   // the shrine bell: a few inharmonic partials that ring out slowly
@@ -229,9 +242,11 @@ export class Ambience {
       this.drop(water)
       this.dropTimer = 0.05 + Math.random() * (0.5 / water)
     }
+    this.dress?.update(dt, camera, water)
   }
 
   dispose(): void {
+    this.dress?.dispose()
     void this.ctx?.close()
     this.ctx = null
   }

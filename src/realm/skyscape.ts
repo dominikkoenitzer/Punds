@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { loadPbr, pbrMaterial } from './assets'
 import { SUN_DIRECTION, realmUniforms } from './atmosphere'
 import { fbm2, rng } from './layout'
+import { dressFor } from './season'
+import type { CloudDress } from './halloween/storm'
 import type { Frame, RealmPart, Tier } from './types'
 
 // The sky world around the island: a raymarched sea of cumulus far below,
@@ -178,8 +180,9 @@ function worley(x: number, y: number, z: number, p: number, tab: Float64Array): 
 
 // r: billowy base shape (value fbm eroded by cellular fbm), g: fine cellular
 // detail for the edges. Both tile, the shader breaks the period by mixing
-// scales and rotations. The volume is filled a few slices per frame (see
-// Skyscape.update), so building it never holds up the page in one go.
+// scales and rotations. The volume comes whole from a worker; without one
+// it is filled a few slices per frame (see Skyscape.update), so building it
+// never holds up the page in one go.
 interface NoiseTables {
   v4: Float64Array
   v8: Float64Array
@@ -232,6 +235,14 @@ function fillNoiseSlice(data: Uint8Array, z: number, t: NoiseTables): void {
       data[i++] = Math.round(det * 255)
     }
   }
+}
+
+// the whole volume at once, for a worker
+export function noiseVolume(): Uint8Array {
+  const data = new Uint8Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE * 2)
+  const tables = noiseTables()
+  for (let z = 0; z < NOISE_SIZE; z++) fillNoiseSlice(data, z, tables)
+  return data
 }
 
 function noiseTexture(data: Uint8Array): THREE.Data3DTexture {
@@ -1198,8 +1209,12 @@ function buildShrine(s: number): { body: THREE.BufferGeometry; roof: THREE.Buffe
 // distance: the air's fade length in metres, or omitted to read it per
 // vertex from an `aerial` attribute (one material for near and far things)
 function patchAerial(mat: THREE.MeshStandardMaterial, key: string, skyUniforms: Record<string, THREE.IUniform>, distance?: number): void {
+  // a season may regrade the sky the haze is read from
+  const cd = dressFor<CloudDress>('Skyscape')
+  const skyGlsl = cd ? cd.sky(SKY_GLSL) : SKY_GLSL
+  if (cd) key += '-dressed'
   mat.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, skyUniforms)
+    Object.assign(shader.uniforms, skyUniforms, cd?.uniforms())
     const perVertex = distance === undefined
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
@@ -1216,10 +1231,11 @@ vAerialLength = ${perVertex ? 'aerial' : distance.toFixed(1)};`,
       .replace('#include <common>', `#include <common>
 varying vec3 vAerialWorld;
 varying float vAerialLength;
-${SKY_GLSL}`)
+${skyGlsl}`)
       .replace(
         '#include <dithering_fragment>',
         `#include <dithering_fragment>
+        ${cd ? `gl_FragColor.rgb *= ${cd.farLight.toFixed(3)};` : ''}
         vec3 aerialRay = vAerialWorld - cameraPosition;
         float aerialDist = length(aerialRay);
         // clear near air, the haze builds past a few hundred metres
@@ -1233,6 +1249,192 @@ ${SKY_GLSL}`)
   mat.customProgramCacheKey = () => key
 }
 
+// The far islands and ranges as three merged shapes: the scanned cliff,
+// the far ranges and everything else in vertex colours. Pure geometry, so
+// it can be built in a worker.
+export interface FarGeometry {
+  cliff: THREE.BufferGeometry
+  ranges: THREE.BufferGeometry
+  plain: THREE.BufferGeometry
+}
+
+export function farGeometry(tier: Tier): FarGeometry {
+  // per part: colour (null keeps the vertex colours) and fade length
+  const looks: [number | null, number][] = [
+    [null, 1300], // cliff, unused here
+    [null, 1300], // grass
+    [0x1f3320, 1300], // foliage
+    [0x5a2c1e, 1300], // wood
+    [0x2a2a2e, 1300], // roofs
+    [null, 2300], // the far ranges, coloured per vertex: much longer air to the eye
+  ]
+  const tint = new THREE.Color()
+
+  // phones get the far shapes at lower density; they are small on screen
+  const lowPoly = tier === 'phone'
+  const parts: THREE.BufferGeometry[][] = [[], [], [], [], []]
+  for (const isl of FAR_ISLANDS) {
+    const marks = parts.map((l) => l.length)
+    const rand = rng(isl.seed)
+    const depth = isl.r * (isl.deep ?? 1.5 + rand() * 0.8)
+    const bigRock = isl.r > 40
+    const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 40 : bigRock ? 112 : 64, lowPoly ? 16 : bigRock ? 44 : 28, true)
+    under.translate(0, -depth / 2, 0)
+    displaceUnderside(under, isl.r, depth, isl.seed, isl.shape)
+    // planar uvs scaled to metres so the rock grain reads at the right size
+    const pos = under.attributes.position as THREE.BufferAttribute
+    const uv = under.attributes.uv as THREE.BufferAttribute
+    for (let i = 0; i < pos.count; i++) {
+      const a = Math.atan2(pos.getZ(i), pos.getX(i))
+      // the scan runs a little across the face so its layers never line up into stripes
+      const u = (a / (Math.PI * 2)) * isl.r * 0.6
+      uv.setXY(i, u, pos.getY(i) * 0.07 + Math.sin(u * 0.9) * 0.6)
+    }
+    // the rock's lip sits just under the turf, which rolls over onto it
+    under.translate(isl.x, isl.y - isl.r * 0.045, isl.z)
+    parts[0]?.push(under)
+    // smaller crags hang beside the main one so the underside is never a cone
+    const lobes = 2 + Math.floor(rand() * 2)
+    for (let l = 0; l < lobes; l++) {
+      const lr = isl.r * (0.4 + rand() * 0.2)
+      const ld = depth * (0.45 + rand() * 0.35)
+      const lobe = new THREE.CylinderGeometry(1, 0.02, ld, lowPoly ? 20 : bigRock ? 48 : 28, lowPoly ? 8 : bigRock ? 20 : 12, true)
+      lobe.translate(0, -ld / 2, 0)
+      displaceUnderside(lobe, lr, ld, isl.seed + l * 7 + 3)
+      const la = rand() * Math.PI * 2
+      const lo = isl.r * (0.25 + rand() * 0.25)
+      lobe.translate(isl.x + Math.cos(la) * lo, isl.y - depth * 0.04, isl.z + Math.sin(la) * lo)
+      parts[0]?.push(lobe)
+    }
+    const roots = buildHangingRoots(rand, isl.r, isl.seed, Math.round(isl.r * 0.9), Math.min(isl.r, 13) * 0.6)
+    roots.translate(isl.x, isl.y, isl.z)
+    parts[3]?.push(roots)
+    const top = buildTop(isl.r * 1.02, isl.seed)
+    top.translate(isl.x, isl.y, isl.z)
+    parts[1]?.push(top)
+    const ground = isl.y + isl.r * 0.06
+    // trees and buildings keep their real size however big the rock is
+    const ts = Math.min(isl.r, 13)
+    const plant = (tree: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, x: number, z: number): void => {
+      tree.trunk.translate(x, ground, z)
+      tree.leaves.translate(x, ground, z)
+      parts[3]?.push(tree.trunk)
+      parts[2]?.push(tree.leaves)
+    }
+    const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed, ts)
+    shrubs.translate(isl.x, isl.y, isl.z)
+    parts[2]?.push(shrubs)
+    if (isl.crown === 'blossom') {
+      // one ancient tree far larger than the island's others, its crown a
+      // pale cloud of blossom, with a hall beneath it
+      const big = buildBlossom(rand, Math.min(isl.r * 1.4, 42))
+      big.trunk.translate(isl.x - isl.r * 0.1, ground, isl.z)
+      big.crown.translate(isl.x - isl.r * 0.1, ground, isl.z)
+      parts[3]?.push(big.trunk)
+      parts[1]?.push(big.crown)
+      const sh = buildShrine(ts * 0.24)
+      sh.body.rotateY(-0.4)
+      sh.roof.rotateY(-0.4)
+      sh.body.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
+      sh.roof.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
+      parts[3]?.push(sh.body)
+      parts[4]?.push(sh.roof)
+    } else if (isl.crown === 'grove') {
+      // a leaning pine near the edge and a stand of cedars behind it
+      plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
+      // the stand grows with the island, so a big rock carries a real wood
+      const cedars = Math.min(56, 6 + Math.round((isl.r * isl.r) / 70))
+      for (let k = 0; k < cedars; k++) {
+        const a = rand() * Math.PI * 2
+        const d = isl.r * (0.1 + rand() * 0.45)
+        plant(buildCedar(rand, ts * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
+      }
+      if (isl.r > 20) plant(buildPine(rand, ts * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
+    } else if (isl.crown === 'torii') {
+      // a leaning pine near the edge, a gate and two cedars behind
+      plant(buildPine(rand, ts * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
+      const gate = buildTorii(ts * 0.45)
+      gate.rotateY(-0.5)
+      gate.translate(isl.x + isl.r * 0.25, ground, isl.z - isl.r * 0.1)
+      // its own vermilion, carried with the grass, which keeps vertex colours
+      const red = new THREE.Color(0xb23a22)
+      const gc = new Float32Array(gate.attributes.position!.count * 3)
+      for (let k = 0; k < gc.length; k += 3) gc.set([red.r, red.g, red.b], k)
+      gate.setAttribute('color', new THREE.BufferAttribute(gc, 3))
+      parts[1]?.push(gate)
+      plant(buildCedar(rand, ts * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
+      plant(buildCedar(rand, ts * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
+      // a wood of cedars and pines across the back half of a big island
+      const wood = Math.min(36, Math.round((isl.r * isl.r) / 110))
+      for (let k = 0; k < wood; k++) {
+        const a = Math.PI * (0.15 + rand() * 0.9)
+        const d = isl.r * (0.25 + rand() * 0.55)
+        const tree = rand() < 0.75 ? buildCedar(rand, ts * (0.7 + rand() * 0.6)) : buildPine(rand, ts * (0.6 + rand() * 0.4))
+        plant(tree, isl.x + Math.cos(a) * d, isl.z + Math.sin(a) * d)
+      }
+    } else if (isl.crown === 'pine') {
+      plant(buildPine(rand, ts * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
+      plant(buildCedar(rand, ts * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
+    } else {
+      const sh = buildShrine(ts * 0.28)
+      sh.body.rotateY(0.6)
+      sh.roof.rotateY(0.6)
+      sh.body.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
+      sh.roof.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
+      parts[3]?.push(sh.body)
+      parts[4]?.push(sh.roof)
+      plant(buildPine(rand, ts * 0.55), isl.x - isl.r * 0.4, isl.z + isl.r * 0.2)
+      plant(buildCedar(rand, ts * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
+      plant(buildCedar(rand, ts * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
+    }
+    // the air between the eye and this island, read per vertex
+    parts.forEach((l, k) => {
+      for (let m = marks[k] ?? 0; m < l.length; m++) l[m]!.userData.air = isl.air ?? 1300
+    })
+  }
+  // the far ranges
+  const ranges: THREE.BufferGeometry[] = []
+  MASSIFS.forEach(([x, z, r, h, y], k) => {
+    const g = buildMassif(r, h, 101 + k * 17, lowPoly ? 56 : 96)
+    g.translate(x, y, z)
+    ranges.push(g)
+  })
+  parts.push(ranges)
+  const plainParts: THREE.BufferGeometry[] = []
+  const merged: THREE.BufferGeometry[] = []
+  parts.forEach((list, i) => {
+    if (list.length === 0) return
+    const [hex, fadeLength] = looks[i] ?? [null, 1300]
+    if (hex !== null) tint.set(hex)
+    const cleaned = list.map((g) => {
+      const air = (g.userData.air as number | undefined) ?? fadeLength
+      const ng = g.index ? g.toNonIndexed() : g
+      if (ng !== g) g.dispose()
+      for (const name of Object.keys(ng.attributes)) {
+        if (name !== 'position' && name !== 'normal' && name !== 'uv' && name !== 'color') ng.deleteAttribute(name)
+      }
+      const n = ng.attributes.position!.count
+      if (!ng.attributes.color || hex !== null) {
+        const c = new Float32Array(n * 3)
+        for (let k = 0; k < n; k++) c.set(hex !== null ? [tint.r, tint.g, tint.b] : [1, 1, 1], k * 3)
+        ng.setAttribute('color', new THREE.BufferAttribute(c, 3))
+      }
+      if (!ng.attributes.uv) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2))
+      ng.setAttribute('aerial', new THREE.BufferAttribute(new Float32Array(n).fill(air), 1))
+      return ng
+    })
+    if (i === 0 || i === 5) {
+      merged[i] = mergeGeometries(cleaned)
+      cleaned.forEach((g) => g.dispose())
+    } else {
+      plainParts.push(...cleaned)
+    }
+  })
+  const plain = mergeGeometries(plainParts)
+  plainParts.forEach((g) => g.dispose())
+  return { cliff: merged[0]!, ranges: merged[5]!, plain }
+}
+
 // --- the part -----------------------------------------------------------------
 
 export class Skyscape implements RealmPart {
@@ -1240,7 +1442,7 @@ export class Skyscape implements RealmPart {
 
   private readonly settings: TierSettings
   private readonly noise: THREE.Data3DTexture
-  private readonly noiseData = new Uint8Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE * 2)
+  private readonly noiseData: Uint8Array
   private noiseTables: NoiseTables | null = null
   private noiseSlice = 0
   private readonly fallbackSky: THREE.DataTexture
@@ -1305,10 +1507,12 @@ export class Skyscape implements RealmPart {
   private readonly drift = new THREE.Vector2()
   private readonly clearColor = new THREE.Color()
 
-  constructor(opts: { tier: Tier }) {
+  constructor(opts: { tier: Tier; far?: FarGeometry; noise?: Uint8Array }) {
     this.depthCamera.layers.set(DEPTH_LAYER)
     this.depthCamera.matrixWorldAutoUpdate = false
     this.settings = TIERS[opts.tier]
+    this.noiseData = opts.noise ?? new Uint8Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE * 2)
+    if (opts.noise) this.noiseSlice = NOISE_SIZE
     this.noise = noiseTexture(this.noiseData)
 
     // a one texel stand in until the host's sky is seen
@@ -1344,8 +1548,11 @@ export class Skyscape implements RealmPart {
 
     // gold-white on the sunlit tops, soft rose and lilac in the shade: a
     // sunset sea that glows rather than a stormy one
-    const sunColor = new THREE.Color(1.0, 0.87, 0.7).multiplyScalar(3.5)
-    const shadowColor = new THREE.Color(0.66, 0.6, 0.76).multiplyScalar(0.95)
+    // a season may dress the sea: its light, its sky and what happens in it
+    const cd = dressFor<CloudDress>('Skyscape')
+    const dressUniforms = cd?.uniforms()
+    const sunColor = cd ? cd.sunColor : new THREE.Color(1.0, 0.87, 0.7).multiplyScalar(3.5)
+    const shadowColor = cd ? cd.shadowColor : new THREE.Color(0.66, 0.6, 0.76).multiplyScalar(0.95)
     const towers = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, z, r, h))
     const bounds = TOWERS.map(([x, z, r, h]) => new THREE.Vector4(x, -55 + h * 0.55, z, r * 1.45))
 
@@ -1356,8 +1563,9 @@ export class Skyscape implements RealmPart {
     this.marchMaterial = new THREE.RawShaderMaterial({
       glslVersion: THREE.GLSL3,
       vertexShader: MARCH_VERT,
-      fragmentShader: MARCH_FRAG,
+      fragmentShader: cd ? cd.march(MARCH_FRAG) : MARCH_FRAG,
       uniforms: {
+        ...dressUniforms,
         ...this.skyUniforms,
         uNoise: { value: this.noise },
         uDepth: { value: this.depthTarget.depthTexture },
@@ -1494,8 +1702,9 @@ export class Skyscape implements RealmPart {
     quads.forEach((g) => g.dispose())
     this.wispMaterial = new THREE.ShaderMaterial({
       vertexShader: WISP_VERT,
-      fragmentShader: WISP_FRAG,
+      fragmentShader: cd ? cd.wisp(WISP_FRAG) : WISP_FRAG,
       uniforms: {
+        ...dressUniforms,
         ...this.skyUniforms,
         uNoise: { value: this.noise },
         uTime: realmUniforms.uTime,
@@ -1543,188 +1752,14 @@ export class Skyscape implements RealmPart {
     const plainMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 })
     patchAerial(plainMaterial, 'skyscape-far-plain', this.skyUniforms)
     this.islandMaterials.push(this.cliffMaterial, plainMaterial)
-    // per part: colour (null keeps the vertex colours) and fade length
-    const looks: [number | null, number][] = [
-      [null, 1300], // cliff, unused here
-      [null, 1300], // grass
-      [0x1f3320, 1300], // foliage
-      [0x5a2c1e, 1300], // wood
-      [0x2a2a2e, 1300], // roofs
-      [null, 2300], // the far ranges, coloured per vertex: much longer air to the eye
-    ]
-    const tint = new THREE.Color()
-
-    // phones get the far shapes at lower density; they are small on screen
-    const lowPoly = opts.tier === 'phone'
-    const parts: THREE.BufferGeometry[][] = [[], [], [], [], []]
-    for (const isl of FAR_ISLANDS) {
-      const marks = parts.map((l) => l.length)
-      const rand = rng(isl.seed)
-      const depth = isl.r * (isl.deep ?? 1.5 + rand() * 0.8)
-      const bigRock = isl.r > 40
-      const under = new THREE.CylinderGeometry(1, 0.02, depth, lowPoly ? 40 : bigRock ? 112 : 64, lowPoly ? 16 : bigRock ? 44 : 28, true)
-      under.translate(0, -depth / 2, 0)
-      displaceUnderside(under, isl.r, depth, isl.seed, isl.shape)
-      // planar uvs scaled to metres so the rock grain reads at the right size
-      const pos = under.attributes.position as THREE.BufferAttribute
-      const uv = under.attributes.uv as THREE.BufferAttribute
-      for (let i = 0; i < pos.count; i++) {
-        const a = Math.atan2(pos.getZ(i), pos.getX(i))
-        // the scan runs a little across the face so its layers never line up into stripes
-        const u = (a / (Math.PI * 2)) * isl.r * 0.6
-        uv.setXY(i, u, pos.getY(i) * 0.07 + Math.sin(u * 0.9) * 0.6)
-      }
-      // the rock's lip sits just under the turf, which rolls over onto it
-      under.translate(isl.x, isl.y - isl.r * 0.045, isl.z)
-      parts[0]?.push(under)
-      // smaller crags hang beside the main one so the underside is never a cone
-      const lobes = 2 + Math.floor(rand() * 2)
-      for (let l = 0; l < lobes; l++) {
-        const lr = isl.r * (0.4 + rand() * 0.2)
-        const ld = depth * (0.45 + rand() * 0.35)
-        const lobe = new THREE.CylinderGeometry(1, 0.02, ld, lowPoly ? 20 : bigRock ? 48 : 28, lowPoly ? 8 : bigRock ? 20 : 12, true)
-        lobe.translate(0, -ld / 2, 0)
-        displaceUnderside(lobe, lr, ld, isl.seed + l * 7 + 3)
-        const la = rand() * Math.PI * 2
-        const lo = isl.r * (0.25 + rand() * 0.25)
-        lobe.translate(isl.x + Math.cos(la) * lo, isl.y - depth * 0.04, isl.z + Math.sin(la) * lo)
-        parts[0]?.push(lobe)
-      }
-      const roots = buildHangingRoots(rand, isl.r, isl.seed, Math.round(isl.r * 0.9), Math.min(isl.r, 13) * 0.6)
-      roots.translate(isl.x, isl.y, isl.z)
-      parts[3]?.push(roots)
-      const top = buildTop(isl.r * 1.02, isl.seed)
-      top.translate(isl.x, isl.y, isl.z)
-      parts[1]?.push(top)
-      const ground = isl.y + isl.r * 0.06
-      // trees and buildings keep their real size however big the rock is
-      const ts = Math.min(isl.r, 13)
-      const plant = (tree: { trunk: THREE.BufferGeometry; leaves: THREE.BufferGeometry }, x: number, z: number): void => {
-        tree.trunk.translate(x, ground, z)
-        tree.leaves.translate(x, ground, z)
-        parts[3]?.push(tree.trunk)
-        parts[2]?.push(tree.leaves)
-      }
-      const shrubs = buildRimShrubs(rand, isl.r, Math.round(isl.r * 1.2), isl.seed, ts)
-      shrubs.translate(isl.x, isl.y, isl.z)
-      parts[2]?.push(shrubs)
-      if (isl.crown === 'blossom') {
-        // one ancient tree far larger than the island's others, its crown a
-        // pale cloud of blossom, with a hall beneath it
-        const big = buildBlossom(rand, Math.min(isl.r * 1.4, 42))
-        big.trunk.translate(isl.x - isl.r * 0.1, ground, isl.z)
-        big.crown.translate(isl.x - isl.r * 0.1, ground, isl.z)
-        parts[3]?.push(big.trunk)
-        parts[1]?.push(big.crown)
-        const sh = buildShrine(ts * 0.24)
-        sh.body.rotateY(-0.4)
-        sh.roof.rotateY(-0.4)
-        sh.body.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
-        sh.roof.translate(isl.x + isl.r * 0.35, isl.y + isl.r * 0.08, isl.z + isl.r * 0.2)
-        parts[3]?.push(sh.body)
-        parts[4]?.push(sh.roof)
-      } else if (isl.crown === 'grove') {
-        // a leaning pine near the edge and a stand of cedars behind it
-        plant(buildPine(rand, ts * (0.75 + rand() * 0.2)), isl.x + isl.r * 0.45, isl.z + isl.r * 0.1)
-        // the stand grows with the island, so a big rock carries a real wood
-        const cedars = Math.min(56, 6 + Math.round((isl.r * isl.r) / 70))
-        for (let k = 0; k < cedars; k++) {
-          const a = rand() * Math.PI * 2
-          const d = isl.r * (0.1 + rand() * 0.45)
-          plant(buildCedar(rand, ts * (0.7 + rand() * 0.5)), isl.x + Math.cos(a) * d - isl.r * 0.15, isl.z + Math.sin(a) * d)
-        }
-        if (isl.r > 20) plant(buildPine(rand, ts * 0.6), isl.x - isl.r * 0.55, isl.z + isl.r * 0.3)
-      } else if (isl.crown === 'torii') {
-        // a leaning pine near the edge, a gate and two cedars behind
-        plant(buildPine(rand, ts * 0.9), isl.x - isl.r * 0.3, isl.z + isl.r * 0.15)
-        const gate = buildTorii(ts * 0.45)
-        gate.rotateY(-0.5)
-        gate.translate(isl.x + isl.r * 0.25, ground, isl.z - isl.r * 0.1)
-        // its own vermilion, carried with the grass, which keeps vertex colours
-        const red = new THREE.Color(0xb23a22)
-        const gc = new Float32Array(gate.attributes.position!.count * 3)
-        for (let k = 0; k < gc.length; k += 3) gc.set([red.r, red.g, red.b], k)
-        gate.setAttribute('color', new THREE.BufferAttribute(gc, 3))
-        parts[1]?.push(gate)
-        plant(buildCedar(rand, ts * 0.75), isl.x + isl.r * 0.05, isl.z + isl.r * 0.45)
-        plant(buildCedar(rand, ts * 0.6), isl.x + isl.r * 0.4, isl.z + isl.r * 0.35)
-        // a wood of cedars and pines across the back half of a big island
-        const wood = Math.min(36, Math.round((isl.r * isl.r) / 110))
-        for (let k = 0; k < wood; k++) {
-          const a = Math.PI * (0.15 + rand() * 0.9)
-          const d = isl.r * (0.25 + rand() * 0.55)
-          const tree = rand() < 0.75 ? buildCedar(rand, ts * (0.7 + rand() * 0.6)) : buildPine(rand, ts * (0.6 + rand() * 0.4))
-          plant(tree, isl.x + Math.cos(a) * d, isl.z + Math.sin(a) * d)
-        }
-      } else if (isl.crown === 'pine') {
-        plant(buildPine(rand, ts * (0.8 + rand() * 0.3)), isl.x + (rand() - 0.5) * isl.r * 0.6, isl.z + (rand() - 0.5) * isl.r * 0.6)
-        plant(buildCedar(rand, ts * 0.7), isl.x - isl.r * 0.35, isl.z - isl.r * 0.2)
-      } else {
-        const sh = buildShrine(ts * 0.28)
-        sh.body.rotateY(0.6)
-        sh.roof.rotateY(0.6)
-        sh.body.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
-        sh.roof.translate(isl.x + isl.r * 0.15, isl.y + isl.r * 0.1, isl.z)
-        parts[3]?.push(sh.body)
-        parts[4]?.push(sh.roof)
-        plant(buildPine(rand, ts * 0.55), isl.x - isl.r * 0.4, isl.z + isl.r * 0.2)
-        plant(buildCedar(rand, ts * 0.6), isl.x - isl.r * 0.1, isl.z - isl.r * 0.4)
-        plant(buildCedar(rand, ts * 0.5), isl.x + isl.r * 0.1, isl.z - isl.r * 0.45)
-      }
-      // the air between the eye and this island, read per vertex
-      parts.forEach((l, k) => {
-        for (let m = marks[k] ?? 0; m < l.length; m++) l[m]!.userData.air = isl.air ?? 1300
-      })
-    }
-    // the far ranges
-    const ranges: THREE.BufferGeometry[] = []
-    MASSIFS.forEach(([x, z, r, h, y], k) => {
-      const g = buildMassif(r, h, 101 + k * 17, lowPoly ? 56 : 96)
-      g.translate(x, y, z)
-      ranges.push(g)
-    })
-    parts.push(ranges)
-    const plainParts: THREE.BufferGeometry[] = []
-    parts.forEach((list, i) => {
-      if (list.length === 0) return
-      const [hex, fadeLength] = looks[i] ?? [null, 1300]
-      if (hex !== null) tint.set(hex)
-      const cleaned = list.map((g) => {
-        const air = (g.userData.air as number | undefined) ?? fadeLength
-        const ng = g.index ? g.toNonIndexed() : g
-        if (ng !== g) g.dispose()
-        for (const name of Object.keys(ng.attributes)) {
-          if (name !== 'position' && name !== 'normal' && name !== 'uv' && name !== 'color') ng.deleteAttribute(name)
-        }
-        const n = ng.attributes.position!.count
-        if (!ng.attributes.color || hex !== null) {
-          const c = new Float32Array(n * 3)
-          for (let k = 0; k < n; k++) c.set(hex !== null ? [tint.r, tint.g, tint.b] : [1, 1, 1], k * 3)
-          ng.setAttribute('color', new THREE.BufferAttribute(c, 3))
-        }
-        if (!ng.attributes.uv) ng.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2))
-        ng.setAttribute('aerial', new THREE.BufferAttribute(new Float32Array(n).fill(air), 1))
-        return ng
-      })
-      if (i === 0) {
-        const merged = mergeGeometries(cleaned)
-        cleaned.forEach((g) => g.dispose())
-        this.addFar(merged, this.cliffMaterial, true)
-      } else if (i === 5) {
-        // the ranges stay out of the depth copy: the cloud deck is traced
-        // through them and the main pass's depth test settles the overlap, so
-        // their long low silhouettes never cut the clouds at the trace's
-        // coarse resolution
-        const merged = mergeGeometries(cleaned)
-        cleaned.forEach((g) => g.dispose())
-        this.addFar(merged, plainMaterial, false)
-      } else {
-        plainParts.push(...cleaned)
-      }
-    })
-    const plain = mergeGeometries(plainParts)
-    plainParts.forEach((g) => g.dispose())
-    this.addFar(plain, plainMaterial, true)
+    const far = opts.far ?? farGeometry(opts.tier)
+    this.addFar(far.cliff, this.cliffMaterial, true)
+    // the ranges stay out of the depth copy: the cloud deck is traced
+    // through them and the main pass's depth test settles the overlap, so
+    // their long low silhouettes never cut the clouds at the trace's
+    // coarse resolution
+    this.addFar(far.ranges, plainMaterial, false)
+    this.addFar(far.plain, plainMaterial, true)
 
     loadPbr('cliff', opts.tier)
       .then((set) => {
@@ -1782,6 +1817,18 @@ export class Skyscape implements RealmPart {
     const w = realmUniforms.uWind.value
     this.drift.x += w.x * frame.dt * 1.2 * frame.motion
     this.drift.y += w.y * frame.dt * 1.2 * frame.motion
+  }
+
+  // The cloud march is a large shader, and the first time it draws, the
+  // graphics driver spends well over a second on it (measured: one draw, its
+  // program already built). One draw into the still tiny trace target as soon
+  // as the programs exist does that work while the load waits anyway,
+  // instead of in the first frame. The trace is redrawn whole before it shows.
+  warm(renderer: THREE.WebGLRenderer): void {
+    const prev = renderer.getRenderTarget()
+    renderer.setRenderTarget(this.cloudTarget)
+    renderer.render(this.marchScene, this.marchCamera)
+    renderer.setRenderTarget(prev)
   }
 
   prerender(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
@@ -1881,7 +1928,10 @@ export class Skyscape implements RealmPart {
     const ru = this.resolveMaterial.uniforms
     ru.uHistory!.value = this.historyRead.texture
     // phones keep less history: their coarser trace smears sooner
-    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) : 0
+    // a season's sudden light (lightning) lets go of the history for its
+    // moment, so the flash lands in a trace or two instead of fading in
+    const sudden = dressFor<CloudDress>('Skyscape')?.sudden?.() ?? 0
+    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) * (1 - 0.75 * sudden) : 0
     renderer.setRenderTarget(this.historyWrite)
     renderer.render(this.resolveScene, this.marchCamera)
     this.compositeMaterial.uniforms.uCloud!.value = this.historyWrite.texture

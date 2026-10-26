@@ -4,6 +4,7 @@ import { loadPbr } from './assets'
 import { weatheredStone } from './materials'
 import { lathe, merge, transformed, worldUv } from './geo'
 import type { Frame, RealmPart, Tier } from './types'
+import { dress } from './season'
 
 // Kasuga lanterns along the approach, proportioned from a measured shrine
 // lantern: hexagonal from base to roof except the round, banded pillar, each
@@ -126,6 +127,8 @@ export class Lanterns implements RealmPart {
   readonly lights: LanternLight[] = []
   private paperMat: THREE.MeshStandardMaterial
   private paperMats: THREE.MeshStandardMaterial[] = []
+  // how bright a burning window is
+  private glow = 3.2
   private disposables: { dispose(): void }[] = []
 
   static async create(tier: Tier): Promise<Lanterns> {
@@ -188,6 +191,12 @@ export class Lanterns implements RealmPart {
       roughness: 0.9,
       side: THREE.DoubleSide,
     })
+    // under a season's night the flame burns a deeper amber and a little
+    // lower, so it stays warm against the red light rather than clipping white
+    if (dress()?.light) {
+      this.paperMat.emissive.setRGB(1.0, 0.4, 0.09)
+      this.glow = 2.3
+    }
 
     const rand = (i: number) => {
       const s = Math.sin(i * 91.7) * 43758.5453
@@ -235,14 +244,16 @@ export class Lanterns implements RealmPart {
   update(frame: Frame): void {
     // the first lantern catches once the visitor has passed the gate, the
     // last two on the terrace just before the end of the walk
-    this.setLit(THREE.MathUtils.clamp((frame.progress - 0.36) / 0.56, 0, 1) * this.lights.length)
+    // at night (a season's dark hour) they all burn
+    const night = dress()?.light ? 1 : 0
+    this.setLit(Math.max(night, THREE.MathUtils.clamp((frame.progress - 0.36) / 0.56, 0, 1)) * this.lights.length)
     this.lights.forEach((l, i) => {
       // a lantern catches over about a second, then breathes
       l.level += (l.target - l.level) * Math.min(1, frame.dt * 1.6)
       l.flicker += frame.dt * (2.1 + i * 0.13)
       const f = 1 + (Math.sin(l.flicker * 3.1) * 0.04 + Math.sin(l.flicker * 7.7) * 0.03 + Math.sin(l.flicker * 13.3) * 0.02) * frame.motion
       const v = l.level * f
-      this.paperMats[i].emissiveIntensity = v * 3.2
+      this.paperMats[i].emissiveIntensity = v * this.glow
     })
   }
 

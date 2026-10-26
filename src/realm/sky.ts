@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js'
 import { SUN_DIRECTION } from './atmosphere'
+import { BITMAP, SKY_RANK, bitmap, inTurn } from './assets'
+import { dress, type SkyDress } from './season'
 import type { Tier } from './types'
 
 // The sky is a photographed panorama. Two versions of it ship: a small HDR
@@ -63,6 +65,15 @@ void main() {
 }
 `
 
+// A season's sky replaces the afternoon's gradient and sun with its own grade
+// and disc; the afternoon's program stays as it is.
+const SKY_GRADE = SKY_FRAG.slice(SKY_FRAG.indexOf('  // a richer gradient'), SKY_FRAG.indexOf('  gl_FragColor'))
+function dressedFrag(d: SkyDress): string {
+  if (!SKY_GRADE.includes('uSunSize')) throw new Error('sky dress: the dome shader moved')
+  const head = SKY_FRAG.replace('varying vec3 vDir;', ['varying vec3 vDir;', d.glsl, d.domeGlsl].join('\n'))
+  return head.replace(SKY_GRADE, '  col = dressSkyDisc(dressSky(col, dir), col, dir);\n')
+}
+
 export interface SkyResult {
   mesh: THREE.Mesh
   environment: THREE.Texture
@@ -83,7 +94,7 @@ function azimuthOf(x: number, z: number): number {
 let sunKnownResolve: () => void = () => {}
 export const sunKnown = new Promise<void>((resolve) => (sunKnownResolve = resolve))
 
-export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunColor: THREE.Color): Promise<SkyResult> {
+export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunColor: THREE.Color, shown: Promise<void> = Promise.resolve()): Promise<SkyResult> {
   const base = `/realm/sky/${SKY}`
   const info: SkyInfo = await (await fetch(`${base}/bg.json`)).json()
   const [sx, sy, sz] = info.sunDirectionThreeEquirectUv
@@ -98,16 +109,38 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   // image lighting needs little resolution: 1k lights the start view as 2k
   // does (measured) at a quarter of the download; phones take the smallest
   const hdrUrl = `${base}/env_${tier === 'phone' ? '512' : '1k'}.hdr`
-  const [bg, hdr] = await Promise.all([
-    new THREE.TextureLoader().loadAsync(bgUrl),
-    new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl),
+  // the picture is decoded off the main thread and goes to the GPU at once,
+  // not on the first frame
+  const loading = Promise.all([
+    bitmap(bgUrl, 'auto', SKY_RANK),
+    inTurn(SKY_RANK, () => new HDRLoader().setDataType(THREE.FloatType).loadAsync(hdrUrl)),
   ])
+  // The light's prefiltering builds its programs, synchronously, the first
+  // time it runs, and they depend on the panorama's size. Once the start
+  // picture is on screen (the build would hold up its first paint), run it on
+  // a blank panorama of that size while the files download, so the real one
+  // below finds them built. If the files are faster, it just runs once.
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const first = await Promise.race([shown.then(() => 'shown' as const), loading.then(() => 'loaded' as const)])
+  if (first === 'shown') {
+    const envWidth = tier === 'phone' ? 512 : 1024
+    const blank = new THREE.DataTexture(new Float32Array(envWidth * (envWidth / 2) * 4), envWidth, envWidth / 2, THREE.RGBAFormat, THREE.FloatType)
+    blank.mapping = THREE.EquirectangularReflectionMapping
+    blank.needsUpdate = true
+    pmrem.fromEquirectangular(blank).dispose()
+    blank.dispose()
+  }
+  const [image, hdr] = await loading
+  const bg = new THREE.Texture(image)
+  bg.flipY = !BITMAP
+  bg.needsUpdate = true
   bg.colorSpace = THREE.NoColorSpace
   bg.wrapS = THREE.RepeatWrapping
   bg.wrapT = THREE.ClampToEdgeWrapping
   bg.generateMipmaps = true
   bg.minFilter = THREE.LinearMipmapLinearFilter
   bg.anisotropy = renderer.capabilities.getMaxAnisotropy()
+  renderer.initTexture(bg)
 
   // Turn the HDR the same way and clip its sun: the directional light is the
   // sun, and lighting with both would light every shadow from the sun side.
@@ -137,11 +170,12 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
       turned[to + 3] = 1
     }
   }
+  const skyDress = dress()?.sky
+  skyDress?.gradeEnvironment?.(turned, width, height)
   const env = new THREE.DataTexture(turned, width, height, THREE.RGBAFormat, THREE.FloatType)
   env.mapping = THREE.EquirectangularReflectionMapping
   env.colorSpace = THREE.LinearSRGBColorSpace
   env.needsUpdate = true
-  const pmrem = new THREE.PMREMGenerator(renderer)
   const environment = pmrem.fromEquirectangular(env).texture
   pmrem.dispose()
   env.dispose()
@@ -149,8 +183,9 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
 
   const mat = new THREE.ShaderMaterial({
     vertexShader: SKY_VERT,
-    fragmentShader: SKY_FRAG,
+    fragmentShader: skyDress ? dressedFrag(skyDress) : SKY_FRAG,
     uniforms: {
+      ...skyDress?.uniforms,
       tSky: { value: bg },
       uK: { value: info.k },
       uTop: { value: info.elevationTop },
