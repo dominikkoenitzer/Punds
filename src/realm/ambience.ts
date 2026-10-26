@@ -1,13 +1,12 @@
 import * as THREE from 'three'
-import { OUTFLOW, POND_BOUNDS } from './layout'
+import { CASCADE, POND_BOUNDS, POND_LEVEL } from './layout'
 import { dressFor } from './season'
 
 // Water and wind, made from noise at runtime: no recordings ship. Wind is
 // pink noise through a slowly breathing low-pass, swelling with the gusts.
-// The water is two layers: the pond's outflow trickling over stones (band
-// passed noise with small random drops) and, under it, the far rush of the
-// fall. Both follow the camera: the water grows as the visitor nears the pond
-// and the rim. Silent until the visitor turns it on; browsers only start
+// The water is two layers: a trickle over stones (band passed noise with
+// small random drops) and the splash of the cascade into the pond. Both
+// follow the camera: the water grows as the visitor nears the pond. Silent until the visitor turns it on; browsers only start
 // audio from a gesture anyway.
 
 function noiseBuffer(ctx: AudioContext, seconds: number, pink: boolean): AudioBuffer {
@@ -66,7 +65,7 @@ export class Ambience {
   private sleepTimer = 0
   private t = 0
   private pond = new THREE.Vector3((POND_BOUNDS.xMin + POND_BOUNDS.xMax) / 2, 0, (POND_BOUNDS.zMin + POND_BOUNDS.zMax) / 2)
-  private fall = new THREE.Vector3(OUTFLOW.x1, -2, OUTFLOW.z1)
+  private fall = new THREE.Vector3(CASCADE.x, POND_LEVEL + 0.5, CASCADE.z)
 
   get on(): boolean {
     return this.enabled
@@ -120,7 +119,7 @@ export class Ambience {
       src.connect(filter).connect(gain).connect(master)
       this.wind = { gain, filter }
     }
-    // the outflow over stones
+    // water over stones
     {
       const src = loop(white)
       const hp = ctx.createBiquadFilter()
@@ -135,12 +134,12 @@ export class Ambience {
       src.connect(hp).connect(filter).connect(gain).connect(master)
       this.trickle = { gain, filter }
     }
-    // the fall, far below
+    // the cascade into the pond: a splash with body, brighter close up
     {
       const src = loop(pink, 0.6)
       const lp = ctx.createBiquadFilter()
       lp.type = 'lowpass'
-      lp.frequency.value = 380
+      lp.frequency.value = 900
       const gain = ctx.createGain()
       gain.gain.value = 0
       src.connect(lp).connect(gain).connect(master)
@@ -248,7 +247,7 @@ export class Ambience {
       const dFall = camera.distanceTo(this.fall)
       this.trickle.gain.gain.setTargetAtTime(0.05 * water, now, 0.5)
       this.trickle.filter.frequency.setTargetAtTime(2000 + Math.sin(this.t * 1.7) * 400, now, 0.2)
-      this.rush.gain.setTargetAtTime(THREE.MathUtils.clamp(1.3 - dFall / 40, 0.15, 1) * 0.12, now, 0.6)
+      this.rush.gain.setTargetAtTime(THREE.MathUtils.clamp(1.2 - dFall / 28, 0.06, 1) * 0.14, now, 0.6)
       this.drops.gain.setTargetAtTime(1, now, 0.3)
     }
     this.dropTimer -= dt

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { loadPbr, type PbrSet } from './assets'
 import { realmUniforms, WIND_GLSL } from './atmosphere'
-import { CHERRY, MAPLES, OUTFLOW, rng } from './layout'
+import { CHERRY, MAPLES, rng } from './layout'
 import { rimTopPoint, undersideFraction, undersidePoint } from './terrain'
 import type { RealmPart, Tier } from './types'
 
@@ -13,7 +13,6 @@ import type { RealmPart, Tier } from './types'
 // the further they hang from where they hold.
 
 const TAU = Math.PI * 2
-const FALL_ANGLE = Math.atan2(OUTFLOW.z1, OUTFLOW.x1)
 
 interface Strand {
   curve: THREE.CatmullRomCurve3
@@ -24,11 +23,6 @@ interface Strand {
 
 const P = new THREE.Vector3()
 const Q = new THREE.Vector3()
-
-function angleDist(a: number, b: number): number {
-  const d = (((a - b) % TAU) + TAU) % TAU
-  return Math.min(d, TAU - d)
-}
 
 // Hangs a strand from `pts` (whose last point is the hold) for `length`
 // metres. Each step it falls straight, unless the rock below stands out
@@ -108,13 +102,9 @@ function buildGeometry(strands: Strand[], sides: number, perMetre: number): THRE
   return geo
 }
 
-// a bearing on the rim away from the waterfall
+// a bearing on the rim: anywhere, or within spread of around
 function bearing(rand: () => number, around: number | null, spread: number): number {
-  for (let tries = 0; tries < 12; tries++) {
-    const a = around === null ? rand() * TAU : around + (rand() - 0.5) * 2 * spread
-    if (angleDist(a, FALL_ANGLE) > 0.14) return a
-  }
-  return FALL_ANGLE + Math.PI
+  return around === null ? rand() * TAU : around + (rand() - 0.5) * 2 * spread
 }
 
 function makeRoots(tier: Tier): Strand[] {

@@ -15,6 +15,7 @@ import {
   islandSdf,
   pathWeight,
   pondSdf,
+  cascadeLocal,
   rng,
 } from './layout'
 import type { RealmPart, Tier } from './types'
@@ -405,6 +406,9 @@ function fernSpots(rand: () => number, density: number): Spot[] {
   const pondOk = (x: number, z: number) => {
     const d = pondSdf(x, z)
     if (d < 0.3 || d > 1.5) return false
+    // the cascade's stones stand bare
+    const [f, side] = cascadeLocal(x, z)
+    if (Math.hypot((f + 0.8) / 1.5, side / 1.2) < 1) return false
     const cx = x - CHERRY.x
     const cz = z - CHERRY.z
     return cx * cx + cz * cz > 0.5 && clearGround(x, z)

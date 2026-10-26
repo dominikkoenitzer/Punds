@@ -1,38 +1,25 @@
 import * as THREE from 'three'
 import { SUN_DIRECTION, realmUniforms } from './atmosphere'
-import { OUTFLOW, POND_BOUNDS, POND_LEVEL, groundHeight, islandSdf, noise2, pondSdf, rng } from './layout'
+import { POND_BOUNDS, POND_LEVEL, groundHeight, islandSdf, noise2, pondSdf, rng } from './layout'
 import type { Frame, RealmPart, Tier } from './types'
 import { dressFor } from './season'
 import type { PondDress } from './halloween/pond'
 
 // The koi pond: the water surface with its planar reflection and ripple
-// simulation, the koi and the outflow channel that spills off the island. The host's terrain draws the bed; everything wet is here.
+// simulation and the koi. The host's terrain draws the bed; everything wet is here.
 
 const BW = POND_BOUNDS.xMax - POND_BOUNDS.xMin
 const BH = POND_BOUNDS.zMax - POND_BOUNDS.zMin
 const SUN_RADIANCE = new THREE.Vector3(1.0, 0.82, 0.62).multiplyScalar(3.0)
 const SKY_RADIANCE = new THREE.Vector3(0.42, 0.52, 0.68).multiplyScalar(0.55)
-const MAX_DROPS = 12
+const MAX_DROPS = 14
 
-// The koi keep to the open water, out of the channel.
+// The koi keep to the open water.
 function koiSdf(x: number, z: number): number {
-  return Math.max(pondSdf(x, z), -12.2 - x)
+  return pondSdf(x, z)
 }
 
-const OUT_DIR = new THREE.Vector2(OUTFLOW.x1 - OUTFLOW.x0, OUTFLOW.z1 - OUTFLOW.z0)
-const OUT_LEN = OUT_DIR.length()
-OUT_DIR.divideScalar(OUT_LEN)
-
-// where the channel meets the rim
-function findLip(): THREE.Vector3 {
-  let t = 0
-  for (; t < 2; t += 0.005) {
-    if (islandSdf(OUTFLOW.x0 + OUT_DIR.x * OUT_LEN * t, OUTFLOW.z0 + OUT_DIR.y * OUT_LEN * t) <= 0) break
-  }
-  return new THREE.Vector3(OUTFLOW.x0 + OUT_DIR.x * OUT_LEN * t, POND_LEVEL - 0.07, OUTFLOW.z0 + OUT_DIR.y * OUT_LEN * t)
-}
-
-const NOISE_GLSL = /* glsl */ `
+export const NOISE_GLSL = /* glsl */ `
 float pHash(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -102,25 +89,10 @@ void main() {
 
 const WATER_VERT = /* glsl */ `
 uniform vec4 uBounds;
-uniform vec4 uOutflow;
-uniform float uOutHalf;
-uniform vec2 uLip;
 varying vec3 vWorld;
 varying vec2 vUv;
-varying vec2 vChan; // distance along the channel 0..1 (past 1 at the lip), across distance
 void main() {
-  vec3 p = position;
-  vec2 a = uOutflow.xy;
-  vec2 b = uLip;
-  vec2 ab = b - a;
-  float t = dot(p.xz - a, ab) / dot(ab, ab);
-  vec2 q = a + ab * clamp(t, 0.0, 1.0);
-  float across = length(p.xz - q);
-  vChan = vec2(t, across);
-  // the channel water speeds up and drops a little towards the lip
-  float inChan = 1.0 - smoothstep(uOutHalf, uOutHalf + 0.6, across);
-  p.y -= 0.06 * smoothstep(0.55, 1.0, t) * inChan;
-  vec4 world = modelMatrix * vec4(p, 1.0);
+  vec4 world = modelMatrix * vec4(position, 1.0);
   vWorld = world.xyz;
   vUv = (world.xz - uBounds.xy) / uBounds.zw;
   gl_Position = projectionMatrix * viewMatrix * world;
@@ -143,15 +115,11 @@ uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform vec3 uShallow;
 uniform vec3 uDeep;
-uniform float uOutHalf;
-uniform vec4 uOutflow;
-uniform vec2 uLip;
 uniform float uTime;
 uniform vec2 uWind;
 uniform float uGust;
 varying vec3 vWorld;
 varying vec2 vUv;
-varying vec2 vChan;
 ${NOISE_GLSL}
 
 float simH(vec2 uv) { return texture2D(uSim, uv).r; }
@@ -175,14 +143,6 @@ void main() {
   float dist = length(toEye);
   vec3 V = toEye / dist;
 
-  // channel flow: scrolling detail that runs to the lip and speeds up
-  float inChan = (1.0 - smoothstep(uOutHalf - 0.1, uOutHalf + 0.5, vChan.y)) * smoothstep(-0.05, 0.12, vChan.x);
-  float flowT = clamp(vChan.x, 0.0, 1.2);
-  float speed = 0.35 + 1.6 * flowT * flowT;
-  vec2 chanDir = normalize(uLip - uOutflow.xy);
-  vec2 chanSide = vec2(-chanDir.y, chanDir.x);
-  vec2 local = vec2(dot(vWorld.xz - uOutflow.xy, chanDir), dot(vWorld.xz - uOutflow.xy, chanSide));
-
   // ripples from the simulation
   float hl = simH(vUv - vec2(uSimTexel.x, 0.0));
   float hr = simH(vUv + vec2(uSimTexel.x, 0.0));
@@ -198,10 +158,7 @@ void main() {
   float paw = pNoise(vWorld.xz * 0.11 - windDir * uTime * 0.06) * 0.65 + pNoise(vWorld.xz * 0.27 - windDir * uTime * 0.1 + 3.0) * 0.35;
   paw = smoothstep(0.58, 0.82, paw) * (0.35 + 0.65 * uGust);
   vec2 still = broad + detailGrad(vWorld.xz * 0.55 - windDir * uTime * 0.12, uTime) * mix(0.0015, 0.01, paw);
-  vec2 flowP = vec2(local.x * 1.4 - uTime * speed * 1.4, local.y * 3.2);
-  vec2 flowG = pNoised(flowP).yz * 0.5 + pNoised(flowP * 2.3 + 4.0).yz * 0.25;
-  vec2 flowGrad = vec2(flowG.x * chanDir + flowG.y * chanSide) * (0.05 + 0.1 * flowT);
-  vec2 grad = simGrad * 2.5 + mix(still, flowGrad, inChan);
+  vec2 grad = simGrad * 2.5 + still;
   // the detail fades with distance so the far surface does not shimmer
   grad *= mix(1.0, 0.45, smoothstep(10.0, 60.0, dist));
   vec3 N = normalize(vec3(-grad.x, 1.0, -grad.y));
@@ -214,12 +171,13 @@ void main() {
 
   // planar reflection, distorted by the surface normal
   vec4 rc = uReflMatrix * vec4(vWorld, 1.0);
-  vec2 ruv = rc.xy / rc.w + N.xz * 0.06 / (1.0 + dist * 0.04);
-  // On phones the reflection is small; four taps spread a little further
-  // with distance and ripple strength keep its edges from stepping.
-  float spreadPx = uReflBlur * (0.6 + dist * 0.025 + length(simGrad) * 6.0);
-  vec2 o1 = vec2(0.5, 0.2) * uReflTexel * spreadPx;
-  vec2 o2 = vec2(-0.2, 0.5) * uReflTexel * spreadPx;
+  vec2 ruv = rc.xy / rc.w + N.xz * 0.1 / (1.0 + dist * 0.04);
+  // Slopes too fine to see still tilt the mirror, mostly along the line of
+  // sight, so a pond's reflection is drawn out up and down and soft: four
+  // taps stacked vertically, spread wider with distance, ripples and wind.
+  float spreadPx = uReflBlur * (1.0 + dist * 0.06 + length(simGrad) * 6.0 + paw * 2.0);
+  vec2 o1 = vec2(0.12, 0.6) * uReflTexel * spreadPx;
+  vec2 o2 = vec2(-0.1, 1.7) * uReflTexel * spreadPx;
   vec3 refl = (texture2D(uReflection, clamp(ruv + o1, 0.001, 0.999)).rgb +
                texture2D(uReflection, clamp(ruv - o1, 0.001, 0.999)).rgb +
                texture2D(uReflection, clamp(ruv + o2, 0.001, 0.999)).rgb +
@@ -260,18 +218,10 @@ void main() {
   float spec = pow(nh, 1400.0) * 80.0 + pow(nh, 260.0) * 0.5;
   vec3 sun = uSunColor * spec * F * 4.0;
 
-  // foam where the channel water breaks over the lip
-  float lipFoam = smoothstep(0.82, 1.08, vChan.x) * inChan;
-  float streak = pFbm(vec2(local.x * 2.2 - uTime * speed * 2.0, local.y * 7.0));
-  lipFoam *= smoothstep(0.45, 0.75, streak + lipFoam * 0.35);
-  vec3 foam = vec3(0.85, 0.88, 0.86) * (uSkyColor * 1.4 + uSunColor * 0.45);
-
   float edge = smoothstep(0.0, 0.035, bed) * (1.0 - smoothstep(0.02, 0.12, sdf));
   float trans = T * (1.0 - F);
   vec3 col = scatter * (1.0 - T) * (1.0 - F) + refl * F + sun;
   float alpha = 1.0 - trans;
-  col = mix(col, foam, lipFoam * 0.8);
-  alpha = mix(alpha, 1.0, lipFoam * 0.8);
   gl_FragColor = vec4(col * edge, alpha * edge);
 }
 `
@@ -609,8 +559,6 @@ export class Pond implements RealmPart {
     this.koiDepthCamera.lookAt(POND_BOUNDS.xMin + BW / 2, POND_LEVEL - 5, POND_BOUNDS.zMin + BH / 2)
     this.koiDepthCamera.updateMatrixWorld()
 
-    const lip = findLip()
-
     // water surface
     this.waterMaterial = new THREE.ShaderMaterial({
       vertexShader: WATER_VERT,
@@ -622,12 +570,9 @@ export class Pond implements RealmPart {
         uReflection: { value: this.reflectionRT.texture },
         uReflMatrix: { value: this.reflMatrix },
         uReflTexel: { value: new THREE.Vector2(1 / 16, 1 / 16) },
-        uReflBlur: { value: phone ? 1 : 0 },
+        uReflBlur: { value: phone ? 1.4 : 1 },
         uSimTexel: { value: new THREE.Vector2(1 / this.simSize, 1 / this.simSize) },
         uBounds: { value: new THREE.Vector4(POND_BOUNDS.xMin, POND_BOUNDS.zMin, BW, BH) },
-        uOutflow: { value: new THREE.Vector4(OUTFLOW.x0, OUTFLOW.z0, OUTFLOW.x1, OUTFLOW.z1) },
-        uOutHalf: { value: OUTFLOW.halfWidth },
-        uLip: { value: new THREE.Vector2(lip.x, lip.z) },
         uSunDir: { value: SUN_DIRECTION },
         uSunColor: { value: SUN_RADIANCE },
         uSkyColor: { value: SKY_RADIANCE },
@@ -986,6 +931,11 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
   // a click on the water from the bank
   drop(x: number, z: number): void {
     this.addDrop(x, z, 0.35, 0.03)
+  }
+
+  // a steady stir from outside the water (the cascade's plunge)
+  stir(x: number, z: number, radius: number, strength: number): void {
+    this.addDrop(x, z, radius, strength)
   }
 
   private addDrop(x: number, z: number, radius: number, strength: number): void {

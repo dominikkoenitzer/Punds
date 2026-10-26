@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { realmUniforms } from '../atmosphere'
 import { LANTERNS, POND_BOUNDS, POND_LEVEL, groundHeight, pondSdf } from '../layout'
 import type { Frame, Tier } from '../types'
+import type { CascadeDress } from '../cascade'
 import { light } from './light'
 import { hallow } from './state'
 
@@ -51,7 +52,7 @@ function water(material: THREE.ShaderMaterial): void {
   // the surface moves at the pace of a heavy liquid
   f = patch(f, 'uniform float uTime;', 'uniform float uTimeSrc;\n#define uTime (uTimeSrc * 0.5)')
   // the wind barely stirs it; the rings and the koi still do
-  f = patch(f, 'vec2 grad = simGrad * 2.5 + mix(still, flowGrad, inChan);', 'vec2 grad = simGrad * 2.3 + mix(still * 0.45, flowGrad * 0.6, inChan);')
+  f = patch(f, 'vec2 grad = simGrad * 2.5 + still;', 'vec2 grad = simGrad * 2.3 + still * 0.45;')
   // a glossy liquid a little denser than water
   f = patch(f, 'float F = 0.015 + 0.985 * pow(1.0 - cosV, 6.0);', 'float F = 0.022 + 0.978 * pow(1.0 - cosV, 5.0);')
   // Barely translucent: the bed never shows, even in the shallows. The koi
@@ -64,8 +65,6 @@ function water(material: THREE.ShaderMaterial): void {
   // white spark, even where a ripple faces it squarely
   f = patch(f, 'float spec = pow(nh, 1400.0) * 80.0 + pow(nh, 260.0) * 0.5;', 'float spec = pow(nh, 900.0) * 6.0 + pow(nh, 200.0) * 0.15;')
   f = patch(f, 'vec3 sun = uSunColor * spec * F * 4.0;', 'vec3 sun = min(uSunColor * vec3(1.0, 0.3, 0.2) * spec * F * 4.0, vec3(1.5, 0.45, 0.3));')
-  // where it spills over the lip it froths dark, almost clotted
-  f = patch(f, 'vec3 foam = vec3(0.85, 0.88, 0.86)', 'vec3 foam = vec3(0.16, 0.018, 0.014)')
   // it thins and darkens against the bank, where it has stained the stone
   f = patch(
     f,
@@ -272,6 +271,18 @@ function update(frame: Frame, tier: Tier, drop: (x: number, z: number, radius: n
   }
   // after a long pause (a hidden tab) the missed drops do not pour at once
   if (rainClock > nextDrop) nextDrop = rainClock
+}
+
+// The cascade runs with it: dark red, under the moon, its froth a little
+// paler than the pool and never white.
+export const cascade: CascadeDress = {
+  uniforms(u) {
+    u.uSunColor.value = moonRadiance
+    u.uSkyColor.value = new THREE.Vector3(0.1, 0.05, 0.08)
+    u.uBody.value = new THREE.Vector3(0.16, 0.007, 0.006)
+    u.uFoam.value = new THREE.Vector3(0.22, 0.02, 0.017)
+    u.uPace.value = 0.6
+  },
 }
 
 // what the pond wears (read by Pond)

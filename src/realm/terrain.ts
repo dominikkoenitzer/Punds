@@ -16,7 +16,7 @@ import {
   GRAVEL_HALF_WIDTH,
   LANTERNS,
   SHRINE,
-  OUTFLOW,
+  CASCADE,
   rng,
 } from './layout'
 import { loadPbr, type PbrSet } from './assets'
@@ -169,7 +169,9 @@ ${GRAVEL_GLSL}
 
 const SPLAT_MAP = /* glsl */ `
 {
-  vec2 xz = vWorld.xz;
+  // on slopes the ground plane would stretch the scans downhill; shifting
+  // by the height along the slope's facing keeps their scale on the bank
+  vec2 xz = vWorld.xz - normalize(vWorldNormal).xz * vWorld.y;
   vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, d3, n3, a3;
   sampleSet(tSoilD, tSoilN, tSoilA, xz / 2.6, d0, n0, a0);
   sampleSet(tGravelD, tGravelN, tGravelA, xz / 1.6, d1, n1, a1);
@@ -194,6 +196,14 @@ const SPLAT_MAP = /* glsl */ `
   dif *= mix(0.82, 1.12, macro);
   // the floor under the lawn: green-brown, so gaps between blades never read as bare dirt
   dif *= mix(vec3(1.0), uLawnFloor, w.w);
+  // the cascade's cut, behind and under the falling water: dark wet stones
+  vec2 cd = vWorld.xz - vec2(${CASCADE.x.toFixed(3)}, ${CASCADE.z.toFixed(3)});
+  float cf = dot(cd, vec2(${CASCADE.dirX.toFixed(3)}, ${CASCADE.dirZ.toFixed(3)}));
+  float cs = dot(cd, vec2(${(-CASCADE.dirZ).toFixed(3)}, ${CASCADE.dirX.toFixed(3)}));
+  float cut = (1.0 - smoothstep(0.5, 0.75, abs(cs))) * smoothstep(-2.45, -2.25, cf) * (1.0 - smoothstep(-0.35, -0.15, cf));
+  dif = mix(dif, d3 * vec3(0.24, 0.23, 0.21), cut);
+  splatNormal = normalize(mix(splatNormal, n3, cut));
+  splatArm.g = mix(splatArm.g, 0.4, cut);
   // phones draw fewer blades, so their floor is short turf in its own right
   dif = mix(dif, vec3(0.075, 0.115, 0.035) * mix(0.8, 1.2, macro), w.w * uLawnCover);
   diffuseColor.rgb *= dif;
@@ -295,7 +305,6 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
 // the soft layers between them are recessed, darker and damp.
 
 const TAU = Math.PI * 2
-const FALL_ANGLE = Math.atan2(OUTFLOW.z1, OUTFLOW.x1)
 const RIM_CELLS = 64 // blocks around the lip, about two metres each
 const STRATA = 15 // bands from the lip to the point
 const JOINTS = 90 // vertical joints around the island
@@ -346,11 +355,6 @@ function fbm3(x: number, y: number, z: number, octaves: number): number {
   return sum / norm
 }
 
-function angleDist(a: number, b: number): number {
-  const d = (((a - b) % TAU) + TAU) % TAU
-  return Math.min(d, TAU - d)
-}
-
 // what undersidePoint found at the last point it returned: how recessed
 // (soft and damp) the layer is there, and how hard the band is
 export const undersideSample = { soft: 0, hard: 0 }
@@ -380,8 +384,6 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   const rx = c * ISLAND_RX * k
   const rz = s * ISLAND_RZ * k
   const yRim = groundHeight(rx, rz) - RIM_DROP
-  // the water has worn the rock smooth and back under the fall
-  const fall = 1 - smooth(0.05, 0.2, angleDist(a, FALL_ANGLE))
 
   // an undercut just below the lip, then the long bowl-shaped taper
   const body = Math.pow(1 - smooth(0, 1, f), 1.15) * (1 - f * 0.08) * (1 - 0.075 * smooth(0, 0.09, f))
@@ -407,7 +409,7 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   // band splits at its own height so the layers are not evenly spaced
   const split = 0.35 + hash3(band, 4.4, 1.9) * 0.45
   const slab = smooth(0, 0.06, t) * (1 - smooth(split, split + 0.16, t))
-  const reach = smooth(0.006, 0.05, f) * (1 - 0.92 * smooth(0.45, 0.85, f)) * (1 - fall * 0.85)
+  const reach = smooth(0.006, 0.05, f) * (1 - 0.92 * smooth(0.45, 0.85, f))
   const strata = (slab * hard - 0.2) * 0.08 * reach
 
   const n = fbm3(c * 2.2 + 11, s * 2.2, f * 6, 4)
@@ -423,7 +425,7 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   const h1 = hash3(id, 1.7, 3.1)
   const h2 = hash3(id, 9.2, 0.4)
   const crack = 1 - smooth(0, 0.14, Math.min(cl, 1 - cl))
-  const fb = (0.01 + h1 * h1 * 0.085) * (1 - 0.65 * crack) * (0.8 + noise3(c * 24, s * 24, 1.3) * 0.4) * (1 - fall * 0.6)
+  const fb = (0.01 + h1 * h1 * 0.085) * (1 - 0.65 * crack) * (0.8 + noise3(c * 24, s * 24, 1.3) * 0.4)
   const lean = 0.004 + h2 * h2 * 0.045
   const cap = (1 - lean * smooth(0, fb, f) - crack * 0.028 * smooth(0, 0.008, f)) * (1 - smooth(fb, fb + 0.012, f))
   sc = Math.max(sc, cap, 0.004)
