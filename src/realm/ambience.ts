@@ -46,8 +46,9 @@ function noiseBuffer(ctx: AudioContext, seconds: number, pink: boolean): AudioBu
 // the switch silences them with the rest.
 export interface AmbienceDress {
   build(ctx: AudioContext, out: AudioNode, noise: { pink: AudioBuffer; white: AudioBuffer }): void
-  // water: how near the pond is, 0.12 far to 1 beside it
-  update(dt: number, camera: THREE.Vector3, water: number): void
+  // water: how near the pond is, 0.12 far to 1 beside it; steer: whether to
+  // move the layers' levels this frame, a few times a second
+  update(dt: number, camera: THREE.Vector3, water: number, steer: boolean): void
   dispose(): void
 }
 
@@ -61,6 +62,8 @@ export class Ambience {
   private drops: GainNode | null = null
   private enabled = false
   private dropTimer = 0
+  private steerTimer = 0
+  private sleepTimer = 0
   private t = 0
   private pond = new THREE.Vector3((POND_BOUNDS.xMin + POND_BOUNDS.xMax) / 2, 0, (POND_BOUNDS.zMin + POND_BOUNDS.zMax) / 2)
   private fall = new THREE.Vector3(OUTFLOW.x1, -2, OUTFLOW.z1)
@@ -75,10 +78,13 @@ export class Ambience {
     if (on && !this.ctx) this.build()
     const ctx = this.ctx
     if (!ctx || !this.master) return
+    window.clearTimeout(this.sleepTimer)
     if (on) void ctx.resume()
     const now = ctx.currentTime
     this.master.gain.cancelScheduledValues(now)
     this.master.gain.setTargetAtTime(on ? 1 : 0, now, on ? 0.8 : 0.25)
+    // once faded out the graph sleeps, so a muted garden costs the phone nothing
+    if (!on) this.sleepTimer = window.setTimeout(() => void ctx.suspend(), 1500)
   }
 
   private build(): void {
@@ -227,25 +233,34 @@ export class Ambience {
     if (!this.enabled || !this.ctx || !this.wind || !this.trickle || !this.rush || !this.drops) return
     this.t += dt
     const now = this.ctx.currentTime
-    const breathe = 0.5 + 0.5 * Math.sin(this.t * 0.23) * Math.sin(this.t * 0.11 + 1)
-    this.wind.gain.gain.setTargetAtTime(0.16 + gust * 0.22 + breathe * 0.06, now, 0.6)
-    this.wind.filter.frequency.setTargetAtTime(320 + gust * 700 + breathe * 200, now, 0.8)
     const dPond = camera.distanceTo(this.pond)
-    const dFall = camera.distanceTo(this.fall)
     const water = THREE.MathUtils.clamp(1.4 - dPond / 18, 0.12, 1)
-    this.trickle.gain.gain.setTargetAtTime(0.05 * water, now, 0.5)
-    this.trickle.filter.frequency.setTargetAtTime(2000 + Math.sin(this.t * 1.7) * 400, now, 0.2)
-    this.rush.gain.setTargetAtTime(THREE.MathUtils.clamp(1.3 - dFall / 40, 0.15, 1) * 0.12, now, 0.6)
-    this.drops.gain.setTargetAtTime(1, now, 0.3)
+    // the levels glide over a good part of a second, so steering them ten
+    // times a second sounds the same as every frame and keeps each param's
+    // list of scheduled changes short
+    this.steerTimer -= dt
+    const steer = this.steerTimer <= 0
+    if (steer) {
+      this.steerTimer = 0.1
+      const breathe = 0.5 + 0.5 * Math.sin(this.t * 0.23) * Math.sin(this.t * 0.11 + 1)
+      this.wind.gain.gain.setTargetAtTime(0.16 + gust * 0.22 + breathe * 0.06, now, 0.6)
+      this.wind.filter.frequency.setTargetAtTime(320 + gust * 700 + breathe * 200, now, 0.8)
+      const dFall = camera.distanceTo(this.fall)
+      this.trickle.gain.gain.setTargetAtTime(0.05 * water, now, 0.5)
+      this.trickle.filter.frequency.setTargetAtTime(2000 + Math.sin(this.t * 1.7) * 400, now, 0.2)
+      this.rush.gain.setTargetAtTime(THREE.MathUtils.clamp(1.3 - dFall / 40, 0.15, 1) * 0.12, now, 0.6)
+      this.drops.gain.setTargetAtTime(1, now, 0.3)
+    }
     this.dropTimer -= dt
     if (this.dropTimer <= 0) {
       this.drop(water)
       this.dropTimer = 0.05 + Math.random() * (0.5 / water)
     }
-    this.dress?.update(dt, camera, water)
+    this.dress?.update(dt, camera, water, steer)
   }
 
   dispose(): void {
+    window.clearTimeout(this.sleepTimer)
     this.dress?.dispose()
     void this.ctx?.close()
     this.ctx = null

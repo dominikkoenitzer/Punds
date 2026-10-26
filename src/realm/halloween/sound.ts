@@ -141,20 +141,22 @@ class NightSound implements AmbienceDress {
     o.stop(now + 0.07)
   }
 
-  update(dt: number, _camera: THREE.Vector3, water: number): void {
+  update(dt: number, _camera: THREE.Vector3, water: number, steer: boolean): void {
     const ctx = this.ctx
     if (!ctx || !this.bed || !this.hiss || !this.onWater || !this.patter) return
     this.t += dt
     const now = ctx.currentTime
     const rain = hallow.uRain.value
     // the rain comes and goes a little in long slow waves
-    const swell = 0.85 + 0.15 * Math.sin(this.t * 0.07) * Math.sin(this.t * 0.031 + 2)
-    this.bed.gain.setTargetAtTime(0.085 * rain * swell, now, 0.8)
-    this.hiss.gain.setTargetAtTime(0.018 * rain * swell, now, 0.8)
     const near = THREE.MathUtils.smoothstep(water, 0.2, 1)
-    this.onWater.gain.gain.setTargetAtTime(0.05 * rain * near, now, 0.6)
-    this.onWater.filter.frequency.setTargetAtTime(2600 + Math.sin(this.t * 1.3) * 300, now, 0.3)
-    this.patter.gain.setTargetAtTime(1, now, 0.3)
+    if (steer) {
+      const swell = 0.85 + 0.15 * Math.sin(this.t * 0.07) * Math.sin(this.t * 0.031 + 2)
+      this.bed.gain.setTargetAtTime(0.085 * rain * swell, now, 0.8)
+      this.hiss.gain.setTargetAtTime(0.018 * rain * swell, now, 0.8)
+      this.onWater.gain.gain.setTargetAtTime(0.05 * rain * near, now, 0.6)
+      this.onWater.filter.frequency.setTargetAtTime(2600 + Math.sin(this.t * 1.3) * 300, now, 0.3)
+      this.patter.gain.setTargetAtTime(1, now, 0.3)
+    }
     this.patterTimer -= dt
     if (this.patterTimer <= 0) {
       if (near > 0.05) this.drop(near * rain)
