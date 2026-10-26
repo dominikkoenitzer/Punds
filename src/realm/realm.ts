@@ -329,9 +329,10 @@ export class Realm {
       }
     }
     // at the shrine a click by the bell rope, in the middle of the hall's
-    // front, rings the bell (with sound on); anywhere else goes home
+    // front, rings the bell (heard with sound on); anywhere else goes home
     if (at === 'shrine' && Math.abs(this.pointerNdc.x) < 0.22 && this.pointerNdc.y > -0.45) {
       this.ambience.bell()
+      this.findPart<{ ring(motion: number): void }>('Shrine')?.ring(this.frame.motion)
       return
     }
     // any other click in a close view goes home
