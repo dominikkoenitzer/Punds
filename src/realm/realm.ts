@@ -518,7 +518,10 @@ export class Realm {
   private compile(object: THREE.Object3D): Promise<unknown> {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
+    const t0 = performance.now()
     const done = this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {})
+    const ms = performance.now() - t0
+    if (ms > 50) this.buildTimes.push([`compile ${object.type} at ${Math.round(t0)}`, Math.round(ms)])
     this.compiling.push(done)
     this.renderer.setRenderTarget(before)
     return done
@@ -530,7 +533,10 @@ export class Realm {
     if (!part.warm) return
     this.compiling.push(
       compiled.then(() => {
-        if (!this.disposed && !this.ready) part.warm?.(this.renderer)
+        if (this.disposed || this.ready) return
+        const t0 = performance.now()
+        part.warm?.(this.renderer)
+        this.buildTimes.push([`warm ${(part as { label?: string }).label ?? part.constructor.name} at ${Math.round(t0)}`, Math.round(performance.now() - t0)])
       }),
     )
   }
