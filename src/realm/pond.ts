@@ -546,6 +546,7 @@ export class Pond implements RealmPart {
   private readonly clip = new THREE.Vector4()
   private readonly q = new THREE.Vector4()
   private readonly size = new THREE.Vector2()
+  private readonly frustum = new THREE.Frustum()
   private readonly prevClear = new THREE.Color()
 
   constructor(opts: { tier: Tier }) {
@@ -1154,6 +1155,17 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
       if (s === 0) for (let i = 0; i < MAX_DROPS; i++) this.drops[i]!.w = 0
     }
     this.waterMaterial.uniforms.uSim!.value = this.simA.texture
+
+    // the koi from above and the reflection only show on the water: with the
+    // pond out of view they would cost a phone a whole scene render for nothing
+    camera.updateMatrixWorld()
+    this.m4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    if (!this.frustum.setFromProjectionMatrix(this.m4).intersectsObject(this.water)) {
+      renderer.setRenderTarget(prevTarget)
+      renderer.autoClear = prevAutoClear
+      renderer.setClearColor(this.prevClear, prevAlpha)
+      return
+    }
 
     // koi depth from above (a worn pond that hides the bed never reads it)
     if (!this.dress) {
