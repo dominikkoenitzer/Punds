@@ -6,7 +6,7 @@
   "packageManager": "bun@1.4.2",
   "scripts": {
     "dev": "vite --port 1000",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/check-csp.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
