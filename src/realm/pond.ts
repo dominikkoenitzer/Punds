@@ -118,6 +118,7 @@ uniform vec3 uDeep;
 uniform float uTime;
 uniform vec2 uWind;
 uniform float uGust;
+uniform vec4 uChurn;
 varying vec3 vWorld;
 varying vec2 vUv;
 ${NOISE_GLSL}
@@ -159,6 +160,23 @@ void main() {
   paw = smoothstep(0.58, 0.82, paw) * (0.35 + 0.65 * uGust);
   vec2 still = broad + detailGrad(vWorld.xz * 0.55 - windDir * uTime * 0.12, uTime) * mix(0.0015, 0.01, paw);
   vec2 grad = simGrad * 2.5 + still;
+  // Below a fall the surface is torn into short steep chop, and rings run
+  // out from the plunge across the pond, uneven and fading, so the fall's
+  // reflection breaks into bands instead of mirroring cleanly.
+  vec2 fromFall = vWorld.xz - uChurn.xy;
+  float fallDist = length(fromFall);
+  float churn = 1.0 - smoothstep(0.0, uChurn.z, fallDist);
+  churn *= churn * step(0.001, uChurn.w);
+  if (churn > 0.001) grad += detailGrad(vWorld.xz * 6.0, uTime * 5.0) * 0.8 * churn;
+  float rings = (1.0 - smoothstep(uChurn.z * 0.3, uChurn.w, fallDist)) * step(0.001, uChurn.w);
+  if (rings > 0.001) {
+    float phase = fallDist * 38.0 - uTime * 6.0;
+    float uneven = pNoise(vWorld.xz * 1.6 + vec2(uTime * 0.15, -uTime * 0.1));
+    grad += fromFall / max(fallDist, 1e-3) * (sin(phase) + 0.45 * sin(phase * 1.83 + 2.1)) * 0.07 * rings * uneven;
+    // rings alone tilt the mirror along the line of sight only, which keeps
+    // the fall's strands upright in it; a crossing chop wobbles them sideways
+    grad += detailGrad(vWorld.xz * 2.4, uTime * 2.0) * 0.12 * rings * rings;
+  }
   // the detail fades with distance so the far surface does not shimmer
   grad *= mix(1.0, 0.45, smoothstep(10.0, 60.0, dist));
   vec3 N = normalize(vec3(-grad.x, 1.0, -grad.y));
@@ -175,7 +193,7 @@ void main() {
   // Slopes too fine to see still tilt the mirror, mostly along the line of
   // sight, so a pond's reflection is drawn out up and down and soft: four
   // taps stacked vertically, spread wider with distance, ripples and wind.
-  float spreadPx = uReflBlur * (1.0 + dist * 0.06 + length(simGrad) * 6.0 + paw * 2.0);
+  float spreadPx = uReflBlur * (1.0 + dist * 0.06 + length(simGrad) * 6.0 + paw * 2.0 + churn * 6.0 + rings * 1.5);
   vec2 o1 = vec2(0.12, 0.6) * uReflTexel * spreadPx;
   vec2 o2 = vec2(-0.1, 1.7) * uReflTexel * spreadPx;
   vec3 refl = (texture2D(uReflection, clamp(ruv + o1, 0.001, 0.999)).rgb +
@@ -581,6 +599,7 @@ export class Pond implements RealmPart {
         uTime: realmUniforms.uTime,
         uWind: realmUniforms.uWind,
         uGust: realmUniforms.uGust,
+        uChurn: { value: new THREE.Vector4(0, 0, 1, 0) },
       },
       transparent: true,
       depthWrite: true,
@@ -931,6 +950,11 @@ if (fin > 0.5) roughnessFactor = 0.45;`,
   // a click on the water from the bank
   drop(x: number, z: number): void {
     this.addDrop(x, z, 0.35, 0.03)
+  }
+
+  // where a fall plunges in, how far its chop reaches and its rings run
+  churn(x: number, z: number, chop: number, rings: number): void {
+    this.waterMaterial.uniforms.uChurn!.value.set(x, z, chop, rings)
   }
 
   // a steady stir from outside the water (the cascade's plunge)
