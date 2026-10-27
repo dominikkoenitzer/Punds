@@ -1,4 +1,4 @@
-import { EMA_RACK, groundHeight, pathWeight, STEPS, TERRACE_FRONT_Z, TERRACE_Y } from '../layout'
+import { EMA_RACK, groundHeight, pathWeight, STEPS, TERRACE_FRONT_Z, TERRACE_Y } from '../../layout'
 
 // Where the night's things stand, and the height of whatever they stand on:
 // the paving, a stair tread, the terrace or the lawn.

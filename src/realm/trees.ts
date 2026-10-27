@@ -5,7 +5,20 @@ import { loadPbr } from './assets'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { CEDARS, CHERRY, MAPLES, groundHeight, islandSdf, noise2, PATH_HALF_WIDTH, pondSdf, POND_LEVEL, rng } from './layout'
 import { dressFor } from './season'
-import type { BlossomDress } from './halloween/garden'
+
+// What a season may do to the cherry's blossom, crown and fallen petals
+// apart: how much light the petals let through, its tint, and a colour that
+// multiplies the painted petals.
+export interface BlossomTone {
+  trans: number
+  transTint: THREE.Color
+  // multiplies the painted petals
+  color: THREE.Color
+}
+export interface BlossomDress {
+  crown: BlossomTone
+  petals: BlossomTone
+}
 
 type Rand = () => number
 

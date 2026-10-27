@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { AmbienceDress } from '../ambience'
+import type { AmbienceDress } from '../../ambience'
 import { onFlash, hallow } from './state'
 
 // The night's sound, behind the sound switch: a soft bed of rain on leaves

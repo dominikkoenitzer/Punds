@@ -1,4 +1,4 @@
-import type { Dress } from '../season'
+import type { Dress } from '../../season'
 import { blossom } from './garden'
 import { light } from './light'
 import { sky } from './sky'

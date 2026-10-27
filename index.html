@@ -30,16 +30,39 @@
          than serve a 404 for it. -->
     <!-- the start view, shown while the scene loads (see Sando.tsx), in the
          season's dress: the same choice as src/realm/season.ts, made before
-         the first paint so the preload matches the picture that follows (its
-         hash is allowed in vercel.json's script-src) -->
+         the first paint so the preload matches the picture that follows, and
+         left on the root element for season.ts to take. The build fills the
+         data block with every season's calendar (tools/seasons.mjs), so this
+         script, and its hash in vercel.json's script-src, never change when a
+         season is added. -->
+    <script type="application/json" id="seasons">{}</script>
     <script>
       (function () {
+        var seasons = {}
+        try {
+          seasons = JSON.parse(document.getElementById('seasons').textContent)
+        } catch (e) {}
+        var has = function (name) {
+          return Object.prototype.hasOwnProperty.call(seasons, name)
+        }
         var asked = new URLSearchParams(location.search).get('season')
         var now = new Date()
-        var m = now.getMonth()
-        var d = now.getDate()
-        var halloween = asked === 'halloween' || (asked !== 'none' && ((m === 9 && d >= 27) || (m === 10 && d === 1)))
-        var dir = halloween ? '/realm/halloween/' : '/realm/'
+        var day = (now.getMonth() + 1) * 100 + now.getDate()
+        var worn = null
+        if (asked !== 'none') {
+          if (asked !== null && has(asked)) worn = asked
+          else {
+            Object.keys(seasons).sort().forEach(function (name) {
+              var c = seasons[name]
+              var start = c.from[0] * 100 + c.from[1]
+              var end = c.to[0] * 100 + c.to[1]
+              var within = start <= end ? day >= start && day <= end : day >= start || day <= end
+              if (within && (worn === null || c.priority > seasons[worn].priority)) worn = name
+            })
+          }
+        }
+        document.documentElement.setAttribute('data-season', worn === null ? 'none' : worn)
+        var dir = worn !== null && seasons[worn].poster ? '/realm/seasons/' + worn + '/' : '/realm/'
         var wide = document.createElement('link')
         wide.rel = 'preload'
         wide.as = 'image'

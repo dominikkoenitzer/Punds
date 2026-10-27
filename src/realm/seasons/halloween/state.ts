@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { SUN_DIRECTION } from '../atmosphere'
+import { SUN_DIRECTION } from '../../atmosphere'
 
 // What the night's pieces share: the moon, the lightning out in the cloud sea
 // and the rain. The storm moves these once per frame; the sky, the clouds, the

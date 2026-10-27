@@ -3,7 +3,17 @@ import type { Frame, RealmPart, Tier } from './types'
 import { ISLAND_RX, ISLAND_RZ, AZALEAS, CHERRY, LANTERNS, MAPLES, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
 import { WIND_GLSL, realmUniforms } from './atmosphere'
 import { dressFor } from './season'
-import type { GrassDress } from './halloween/props-pumpkins'
+
+// What a season may give the lawn: GLSL spliced into the blades' program
+// (declarations, then statements, for each stage) and the uniforms it reads,
+// so a light of its own can climb the blades.
+export interface GrassDress {
+  uniforms: Record<string, THREE.IUniform>
+  vertexPars: string
+  vertex: string
+  fragmentPars: string
+  fragment: string
+}
 
 // The lawn: instanced geometry blades in square tiles, so the renderer can cull
 // whole tiles against the frustum. Every blade is a curved, tapered strip whose

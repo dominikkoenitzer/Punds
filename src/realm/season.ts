@@ -1,35 +1,68 @@
 import type * as THREE from 'three'
+import seasons from 'virtual:seasons'
 import type { Frame, RealmPart, Tier } from './types'
 
 // What the garden wears. The season is decided once, at load, from the
-// visitor's local date; `?season=halloween` or `?season=none` overrides it.
+// visitor's local date; `?season=<name>` or `?season=none` overrides it.
 // Nothing else in the code reads the date: each part asks for its dress here,
 // and a season's code and shaders load only while it is worn, so a visitor
 // outside it downloads and compiles nothing of it.
+//
+// Each season is a folder in seasons/ with its dress (index.ts) and its dates
+// (calendar.json); this file names none of them. See docs/seasons.md.
 
-export type SeasonName = 'halloween'
+export type SeasonName = string
 
-// Halloween: from the 27th of October up to and including the 1st of November
-const HALLOWEEN_FROM: [number, number] = [9, 27] // month index, day
-const HALLOWEEN_TO: [number, number] = [10, 1]
-
-function within(date: Date, from: [number, number], to: [number, number]): boolean {
-  const m = date.getMonth()
-  const d = date.getDate()
-  const after = m > from[0] || (m === from[0] && d >= from[1])
-  const before = m < to[0] || (m === to[0] && d <= to[1])
-  return after && before
+// when a season is worn: months 1 to 12, from and to both included, and the
+// range may run over the new year; where two overlap, the higher priority
+// wins, then the name first in order. `poster` is true when the season has
+// its own start pictures in public/realm/seasons/<name>/.
+export interface Calendar {
+  from: [number, number]
+  to: [number, number]
+  priority: number
+  poster: boolean
 }
 
-export function pickSeason(date: Date, search: string): SeasonName | null {
+// every season, by name, as tools/seasons.mjs read them at build
+export const SEASONS: Readonly<Record<SeasonName, Calendar>> = seasons
+
+const dresses = import.meta.glob<Dress | undefined>('./seasons/*/index.ts', { import: 'dress' })
+
+function within(date: Date, { from, to }: Calendar): boolean {
+  const day = (date.getMonth() + 1) * 100 + date.getDate()
+  const start = from[0] * 100 + from[1]
+  const end = to[0] * 100 + to[1]
+  return start <= end ? day >= start && day <= end : day >= start || day <= end
+}
+
+// keep in step with the poster script in index.html (season.test.ts runs both)
+export function pickSeason(date: Date, search: string, registry: Readonly<Record<SeasonName, Calendar>> = SEASONS): SeasonName | null {
   const asked = new URLSearchParams(search).get('season')
   if (asked === 'none') return null
-  if (asked === 'halloween') return 'halloween'
-  if (within(date, HALLOWEEN_FROM, HALLOWEEN_TO)) return 'halloween'
-  return null
+  if (asked !== null && Object.hasOwn(registry, asked)) return asked
+  let best: SeasonName | null = null
+  for (const name of Object.keys(registry).sort()) {
+    if (within(date, registry[name]) && (best === null || registry[name].priority > registry[best].priority)) best = name
+  }
+  return best
 }
 
-export const SEASON: SeasonName | null = typeof location === 'undefined' ? null : pickSeason(new Date(), location.search)
+// The poster script in index.html already chose before the first paint and
+// left its choice on the root element; take it, so the start picture and the
+// dress agree even when the page loads across midnight.
+export function wornSeason(chosen: string | undefined, date: Date, search: string, registry: Readonly<Record<SeasonName, Calendar>> = SEASONS): SeasonName | null {
+  if (chosen === 'none') return null
+  if (chosen !== undefined && Object.hasOwn(registry, chosen)) return chosen
+  return pickSeason(date, search, registry)
+}
+
+export const SEASON: SeasonName | null = typeof document === 'undefined' ? null : wornSeason(document.documentElement.dataset.season, new Date(), location.search)
+
+// the folder of the start pictures for the season worn
+export function posterFolder(season: SeasonName | null = SEASON, registry: Readonly<Record<SeasonName, Calendar>> = SEASONS): string {
+  return season !== null && registry[season]?.poster ? `/realm/seasons/${season}` : '/realm'
+}
 
 // The light of the hour the season sets: the key light (the sun, or a moon
 // standing where the sun stood), the sky's share of the light, the frame's
@@ -89,10 +122,23 @@ export interface Dress {
 let worn: Dress | null = null
 let loading: Promise<Dress | null> | null = null
 
+// a season's dress from its loader; when there is none, or it fails to load,
+// the garden goes undressed rather than not at all
+export async function fetchDress(season: SeasonName, load: (() => Promise<Dress | undefined>) | undefined): Promise<Dress | null> {
+  try {
+    const found = await load?.()
+    if (found) return found
+    console.warn(`season ${season}: no dress`)
+  } catch (err) {
+    console.warn(`season ${season}: the dress did not load`, err)
+  }
+  return null
+}
+
 // loads the season's code, once; resolves to null outside a season
 export function loadDress(): Promise<Dress | null> {
-  if (!SEASON) return Promise.resolve(null)
-  loading ??= import('./halloween').then((m) => (worn = m.dress))
+  if (SEASON === null) return Promise.resolve(null)
+  loading ??= fetchDress(SEASON, dresses[`./seasons/${SEASON}/index.ts`]).then((found) => (worn = found))
   return loading
 }
 

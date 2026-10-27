@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import type { LightDress } from '../season'
-import type { Frame } from '../types'
+import type { LightDress } from '../../season'
+import type { Frame } from '../../types'
 import { discDirection } from './sky'
 import { hallow } from './state'
 

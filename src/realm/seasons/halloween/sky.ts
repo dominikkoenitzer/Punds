@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { SkyDress } from '../season'
+import type { SkyDress } from '../../season'
 import { hallow } from './state'
 
 // The night sky over the island: the photographed sky regraded, stars and
