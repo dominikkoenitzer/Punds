@@ -407,7 +407,7 @@ function foliageMaterial(o: FoliageOpts): THREE.MeshStandardMaterial {
       // card sits at partial coverage (which would dither into a checker).
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <alphatest_fragment>',
-        `float aw = clamp(fwidth(diffuseColor.a) * 0.5, 0.004, 0.05);
+        `float aw = max(fwidth(diffuseColor.a) * 0.5, 0.004);
         diffuseColor.a = smoothstep(alphaTest - aw, alphaTest + aw, diffuseColor.a);
         if (diffuseColor.a < 0.02) discard;`,
       )
