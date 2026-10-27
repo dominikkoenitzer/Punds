@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { LightDress } from '../season'
 import type { Frame } from '../types'
-import { discDirection } from './sky'
+import { discDirection, moonFlame } from './sky'
 import { hallow } from './state'
 
 // The blood-moon night: the moon is the key light, red-orange and strong
@@ -32,6 +32,8 @@ export const light: LightDress = {
   glowDirection: new THREE.Vector3(),
   update(frame: Frame) {
     this.glowDirection?.copy(discDirection())
+    // the flame in the moon breathes only while things may move
+    moonFlame.uMoonMotion.value = frame.motion
     // a flash lights the whole garden for its moment: the key and the sky's
     // fill jump together and cool toward the lightning's white, and the
     // frame opens a little, so the kick is felt everywhere and not only out
