@@ -42,7 +42,7 @@ describe('the lantern face on the moon', () => {
   })
 
   it('leaves solid shell between the eyes, the nose and the grin', () => {
-    // between the eye's outer corner and the grin's corner, under the nose, between the eyes
+    // the narrow bridge from the eye's outer corner to the grin's corner, then under the nose, between the eyes and beside the nose
     expect(faceDistance(0.756, 0.037)).toBeGreaterThan(0.02)
     for (const [x, y] of [[0, -0.3], [0, 0.15], [0.232, -0.014]] as const) expect(faceDistance(x, y)).toBeGreaterThan(0.08)
   })

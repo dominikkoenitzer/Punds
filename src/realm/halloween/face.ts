@@ -1,16 +1,11 @@
-// The lantern face carved into the blood moon, in the disc's own frame
-// (radius 1, x to the right, y up). The shape is kept as data so the shader
-// and the tests read the same face; the shader is the one that draws it.
-//
-// The face is mirrored about x = 0: only its right half is given.
+// The lantern face cut into the blood moon, in disc units with y up; only the right half is given, mirrored about x = 0
 
 type P = readonly [number, number]
 // a triangle, its corners counterclockwise
 type Tri = readonly [P, P, P]
 
 export const FACE = {
-  // the right eye, a slanted triangle with its lower edge bitten out by a
-  // circle, so the eye narrows into a squint
+  // the right eye: a slanted triangle with a circle bitten out of its lower edge, so it squints
   eye: [
     [0.171, 0.171],
     [0.781, 0.122],
@@ -26,8 +21,7 @@ export const FACE = {
   // the grin: the band below one circle and outside a higher, larger one
   mouthOuter: { c: [0, 0] as P, r: 0.732 },
   mouthInner: { c: [0, 0.47] as P, r: 0.854 },
-  // teeth left standing in the grin: from the upper lip down and from the
-  // lower lip up, staggered so the cut zigzags
+  // teeth left standing in the grin, from both lips and staggered so the cut zigzags
   teeth: [
     [
       [-0.11, -0.366],

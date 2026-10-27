@@ -34,8 +34,7 @@ export function discDirection(): THREE.Vector3 {
   return disc.applyAxisAngle(side, DISC_RISE).normalize()
 }
 
-// the flame inside the moon breathes with the clock; 0 under reduced motion,
-// set by the light each frame
+// how much the moon's flame may breathe, set by the light each frame from the motion setting
 export const moonFlame = { uMoonMotion: { value: 1 } }
 
 const GRADE_GLSL = /* glsl */ `
@@ -115,8 +114,7 @@ vec3 nightStarLayer(vec3 dir, float px, float cells, float share, float size, fl
 }
 uniform float uMoonTime;
 uniform float uMoonMotion;
-// the moon's light, linear; the frame's curve pales anything bright, so the
-// shell stays low to stay red and the cuts carry the brightness
+// the moon's light, linear: the tone curve pales anything bright, so the shell stays low and red and the cuts carry the brightness
 #define MOON_SHELL 0.45
 #define MOON_INNER 0.2
 #define MOON_BLEED 0.4
@@ -152,8 +150,7 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
   // any resolution
   vec3 o = dir - uSkyMoonDisc;
   float x = length(o) / ${R};
-  // the soft wide halo in the haze, as the sky has always had it; nearer the
-  // limb a glow of deep red, and a corona hugging it
+  // the soft wide halo in the haze as before, then a deep red glow and a corona hugging the limb
   float halo = 0.025 / (1.0 + x * x * 0.1);
   float glow = MOON_GLOW * exp(-x * 0.7);
   float corona = exp(-max(x - 1.0, 0.0) * 4.0) * MOON_CORONA;
@@ -170,16 +167,14 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
     // the shell: blood red, falling away to a dark limb
     float limb = pow(mu, 0.7);
     vec3 tone = mix(vec3(0.85, 0.006, 0.004), vec3(1.0, 0.016, 0.005), smoothstep(-1.0, 1.0, p.y));
-    // the flame inside shines through the shell, most near itself and
-    // around each cut, where the shell is thin
+    // the flame shines through the shell, most near itself and around each cut where the shell is thin
     vec2 f = p - vec2(${FACE.flame[0].toFixed(3)}, ${FACE.flame[1].toFixed(3)});
     float near = exp(-dot(f, f) * 0.9);
     float d = moonFace(p);
     float thin = exp(-max(d, 0.0) * 16.0);
     vec3 shell = tone * MOON_SHELL * surface * limb;
     shell += vec3(1.0, 0.03, 0.005) * (near * MOON_INNER + thin * MOON_BLEED * (0.4 + 0.6 * near)) * limb * breath;
-    // through a cut: the shell's lit inner wall along the top edge, which
-    // faces the flame, and past it the far side, hottest by the flame
+    // through a cut: the lit inner wall under its top edge, and past it the far side, hottest by the flame
     float wall = clamp(0.5 + moonFace(p + vec2(0.0, 0.06)) / pw, 0.0, 1.0);
     vec3 far = mix(MOON_EMBER, MOON_HOT, near * near);
     vec3 cut = mix(far, MOON_WALL * (0.6 + 0.4 * near), wall) * breath;
