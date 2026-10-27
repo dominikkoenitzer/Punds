@@ -57,6 +57,21 @@ describe('the lantern face on the moon', () => {
     }
   })
 
+  it('roots every tooth in a lip, so none floats loose in the grin', () => {
+    const band = (x: number, y: number) =>
+      Math.max(Math.hypot(x - FACE.mouthOuter.c[0], y - FACE.mouthOuter.c[1]) - FACE.mouthOuter.r, FACE.mouthInner.r - Math.hypot(x - FACE.mouthInner.c[0], y - FACE.mouthInner.c[1]))
+    for (const [a, b, c] of FACE.teeth) {
+      let root = -Infinity
+      for (let u = 0; u <= 1; u += 0.02)
+        for (let v = 0; u + v <= 1; v += 0.02) {
+          const x = a[0] + (b[0] - a[0]) * u + (c[0] - a[0]) * v
+          const y = a[1] + (b[1] - a[1]) * u + (c[1] - a[1]) * v
+          root = Math.max(root, band(x, y))
+        }
+      expect(root).toBeGreaterThan(0.01)
+    }
+  })
+
   it('is a true distance at its edges, so one pixel of blending is one pixel', () => {
     const h = 1e-4
     let edges = 0
