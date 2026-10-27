@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+      - halloween
+      - christmas
+      - spring
+      - summer
+      - autumn
   pull_request:
   # On a timer as well as on every push. Nothing here changes between those
   # runs; what changes underneath it does. A new toolchain, a new runner
@@ -42,3 +47,16 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  # A season branch may change only its own folders (docs/seasons.md).
+  scope:
+    if: github.event_name == 'pull_request' || github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Season stays in its folders
+        run: node tools/season-scope.mjs

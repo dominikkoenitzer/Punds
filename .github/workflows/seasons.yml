@@ -1,0 +1,66 @@
+name: Seasons
+
+# Merges every push to main into the season branches (docs/seasons.md). A
+# merge that conflicts leaves that branch as it was and opens an issue naming
+# the files; nothing here resolves a conflict.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# One sync at a time, in push order: a newer one never cuts an older one off
+# halfway through the branches.
+concurrency:
+  group: seasons
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Merge main into each season
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          node tools/season-sync.mjs --out "$RUNNER_TEMP/seasons.json" --issues "$RUNNER_TEMP/issues"
+
+      # A push made with this token starts no workflow, so CI is started here.
+      - name: Check the merged seasons
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f "$RUNNER_TEMP/seasons.json" ] || exit 0
+          for branch in $(jq -r '.[] | select(.status == "merged") | .branch' "$RUNNER_TEMP/seasons.json"); do
+            gh workflow run ci.yml --ref "$branch"
+          done
+
+      - name: Open an issue for each season left behind
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -d "$RUNNER_TEMP/issues" ] || exit 0
+          for file in "$RUNNER_TEMP"/issues/*.md; do
+            [ -f "$file" ] || continue
+            title=$(head -n 1 "$file")
+            open=$(gh issue list --state open --search "in:title \"$title\"" --json title --jq '.[].title')
+            if printf '%s\n' "$open" | grep -Fxq -- "$title"; then
+              echo "already open: $title"
+            else
+              tail -n +2 "$file" > "$RUNNER_TEMP/body.md"
+              gh issue create --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            fi
+          done
