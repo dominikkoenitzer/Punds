@@ -728,6 +728,7 @@ uniform mat4 uCamWorld;
 uniform mat4 uTraceViewProj;
 uniform float uMaxFront;
 uniform float uMaxScene;
+uniform vec2 uDepthTexel;
 
 // depth aware upsample: the four nearest texels, weighted by how well the
 // surface each was traced against matches the distance asked for, relative
@@ -780,6 +781,15 @@ vec4 upsample(vec2 cuv, float dist, out float front) {
   return c;
 }
 
+// distance to the scene along a ray, from the depth copy; k turns view depth
+// into distance along this pixel's ray
+float sceneDist(vec2 uv, float k) {
+  float d = texture2D(uSceneDepth, uv).r;
+  if (d >= 0.99999) return 60000.0;
+  float r = uProj[3][2] / (d * 2.0 - 1.0 + uProj[2][2]) * k;
+  return r > uMaxScene ? 60000.0 : min(r, 60000.0);
+}
+
 void main() {
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(v.xyz / v.w);
@@ -797,6 +807,33 @@ void main() {
   }
   float front;
   vec4 c = upsample(cuv, dist, front);
+  // A pixel on a silhouette holds two surfaces but its depth names one, so
+  // the veil would step from pixel to pixel along the edge while the edge
+  // itself is smooth. Where the neighbourhood holds a second surface, mix in
+  // the veil traced against it by its share of the neighbourhood.
+  float k = -1.0 / dir.z;
+  float dn[9];
+  float other = dist;
+  float gap = 0.0;
+  for (int n = 0; n < 9; n++) {
+    vec2 o = vec2(float(n - (n / 3) * 3 - 1), float(n / 3 - 1));
+    dn[n] = n == 4 ? dist : sceneDist(vUv + o * uDepthTexel, k);
+    float g = abs(log(max(dn[n], 0.01) / max(dist, 0.01)));
+    if (g > gap) { gap = g; other = dn[n]; }
+  }
+  if (gap > 0.2) {
+    float share = 0.0;
+    for (int n = 0; n < 9; n++) {
+      vec2 o = vec2(float(n - (n / 3) * 3 - 1), float(n / 3 - 1));
+      float w = (2.0 - abs(o.x)) * (2.0 - abs(o.y));
+      float e = max(dn[n], 0.01);
+      if (abs(log(e / max(other, 0.01))) < abs(log(e / max(dist, 0.01)))) share += w;
+    }
+    float front2;
+    vec4 c2 = upsample(cuv, other, front2);
+    c = mix(c, c2, share / 16.0);
+    front = min(front, front2);
+  }
   if (c.a < 0.002) discard;
   // the cloud front still takes part in the depth test, for things the depth
   // pass leaves out (grass)
@@ -1666,6 +1703,7 @@ export class Skyscape implements RealmPart {
         uMaxFront: { value: 1e6 },
         uMaxScene: { value: 1e6 },
         uSceneDepth: { value: this.depthTarget.depthTexture },
+        uDepthTexel: { value: new THREE.Vector2(1, 1) },
       },
       transparent: true,
       premultipliedAlpha: true,
@@ -1883,6 +1921,7 @@ export class Skyscape implements RealmPart {
     if (this.depthTarget.width !== dw || this.depthTarget.height !== dh) {
       this.depthTarget.setSize(dw, dh)
     }
+    ;(this.compositeMaterial.uniforms.uDepthTexel!.value as THREE.Vector2).set(1 / dw, 1 / dh)
 
     camera.updateMatrixWorld()
     const u = this.marchMaterial.uniforms
