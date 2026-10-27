@@ -728,6 +728,58 @@ uniform mat4 uCamWorld;
 uniform mat4 uTraceViewProj;
 uniform float uMaxFront;
 uniform float uMaxScene;
+
+// depth aware upsample: the four nearest texels, weighted by how well the
+// surface each was traced against matches the distance asked for, relative
+// to the best match, so where none matches well they still blend instead of
+// the nearest one standing out as a block
+vec4 upsample(vec2 cuv, float dist, out float front) {
+  vec2 size = 1.0 / uTexel;
+  vec2 p = cuv * size - 0.5;
+  vec2 b = floor(p);
+  vec2 f = p - b;
+  vec4 cs[4];
+  vec2 fs[4];
+  float rs[4];
+  float bestR = 1e9;
+  for (int i = 0; i < 4; i++) {
+    vec2 o = vec2(float(i - (i / 2) * 2), float(i / 2));
+    vec2 uv = (b + o + 0.5) * uTexel;
+    cs[i] = texture2D(uCloud, uv);
+    fs[i] = texture2D(uFront, uv).rg;
+    rs[i] = abs(log(max(fs[i].g, 0.01) / max(dist, 0.01)));
+    bestR = min(bestR, rs[i]);
+  }
+  vec4 sum = vec4(0.0);
+  float wsum = 0.0;
+  front = 60000.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 o = vec2(float(i - (i / 2) * 2), float(i / 2));
+    float bil = (o.x > 0.5 ? f.x : 1.0 - f.x) * (o.y > 0.5 ? f.y : 1.0 - f.y);
+    float match = exp(-(rs[i] - bestR) * 14.0);
+    float w = (bil + 1e-3) * match;
+    sum += cs[i] * w;
+    wsum += w;
+    if (match > 0.1) front = min(front, fs[i].r);
+  }
+  vec4 c = sum / wsum;
+  // against open sky nothing in front can bleed, so the edge of a bank is
+  // filtered over a wider tent: a soft rim instead of a staircase of texels
+  if (dist > 59999.0) {
+    vec4 wide = vec4(0.0);
+    float ws = 0.0;
+    for (int j = -1; j <= 1; j++) {
+      for (int i = -1; i <= 1; i++) {
+        float w = (2.0 - abs(float(i))) * (2.0 - abs(float(j)));
+        wide += texture2D(uCloud, cuv + vec2(float(i), float(j)) * uTexel * 0.75) * w;
+        ws += w;
+      }
+    }
+    c = mix(c, wide / ws, 0.85);
+  }
+  return c;
+}
+
 void main() {
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(v.xyz / v.w);
@@ -743,47 +795,8 @@ void main() {
     dist = min(length(sp.xyz / sp.w), 60000.0);
     if (dist > uMaxScene) dist = 60000.0;
   }
-  // depth aware upsample: the four nearest texels, weighted by how well the
-  // surface each was traced against matches this pixel
-  vec2 size = 1.0 / uTexel;
-  vec2 p = cuv * size - 0.5;
-  vec2 b = floor(p);
-  vec2 f = p - b;
-  vec4 sum = vec4(0.0);
-  float wsum = 0.0;
-  float bestR = 1e9;
-  vec4 bestC = vec4(0.0);
-  float bestF = 60000.0;
-  float front = 60000.0;
-  for (int i = 0; i < 4; i++) {
-    vec2 o = vec2(float(i - (i / 2) * 2), float(i / 2));
-    vec2 uv = (b + o + 0.5) * uTexel;
-    vec4 c = texture2D(uCloud, uv);
-    vec2 fs = texture2D(uFront, uv).rg;
-    float r = abs(log(max(fs.g, 0.01) / max(dist, 0.01)));
-    float bil = (o.x > 0.5 ? f.x : 1.0 - f.x) * (o.y > 0.5 ? f.y : 1.0 - f.y);
-    float w = bil * exp(-r * 14.0);
-    sum += c * w;
-    wsum += w;
-    if (w > 1e-4) front = min(front, fs.r);
-    if (r < bestR) { bestR = r; bestC = c; bestF = fs.r; }
-  }
-  vec4 c = wsum > 1e-3 ? sum / wsum : bestC;
-  if (wsum <= 1e-3) front = bestF;
-  // against open sky nothing in front can bleed, so the edge of a bank is
-  // filtered over a wider tent: a soft rim instead of a staircase of texels
-  if (dist > 59999.0) {
-    vec4 wide = vec4(0.0);
-    float ws = 0.0;
-    for (int j = -1; j <= 1; j++) {
-      for (int i = -1; i <= 1; i++) {
-        float w = (2.0 - abs(float(i))) * (2.0 - abs(float(j)));
-        wide += texture2D(uCloud, cuv + vec2(float(i), float(j)) * uTexel * 0.75) * w;
-        ws += w;
-      }
-    }
-    c = mix(c, wide / ws, 0.85);
-  }
+  float front;
+  vec4 c = upsample(cuv, dist, front);
   if (c.a < 0.002) discard;
   // the cloud front still takes part in the depth test, for things the depth
   // pass leaves out (grass)
