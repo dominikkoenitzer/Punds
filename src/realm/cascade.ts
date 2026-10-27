@@ -88,29 +88,32 @@ void main() {
   // rides down with the water and stretches as the water speeds up
   float age = (uTime - vFlow.y) * uPace;
   float seed = uLayer * 17.3;
-  // streaks: a few centimetres across and as long as the fall, swaying a
-  // little. Value noise sits mostly near its middle, so each octave is
-  // stretched to full contrast before it is used.
-  float sway = pNoise(vec2(s * 3.0 + seed, age * 0.8)) * 0.6;
-  float a1 = clamp((pNoise(vec2(s * 34.0 + sway * 4.0 + seed, age * 1.1)) - 0.5) * 2.4 + 0.5, 0.0, 1.0);
-  float a2 = clamp((pNoise(vec2(s * 83.0 - seed, age * 2.2 + a1)) - 0.5) * 2.4 + 0.5, 0.0, 1.0);
-  float streak = a1 * 0.7 + a2 * 0.3;
-  // clumps of white water riding down the streaks, quicker than the sheet
-  float clump = clamp((pNoise(vec2(s * 12.0 - seed, age * 7.0)) - 0.5) * 2.4 + 0.5, 0.0, 1.0);
+  // The sheet's grain: broad ropes of water a hand wide that sway, a finer
+  // grain over them, all keyed to the water's age so it rides down. Value
+  // noise sits near its middle, so the sum is stretched before use.
+  float sway = pNoise(vec2(s * 2.5 + seed, age * 0.6)) * 0.6;
+  float rope = pNoise(vec2(s * 9.0 + sway * 2.0 + seed, age * 0.9));
+  float a1 = pNoise(vec2(s * 22.0 + sway * 3.0 + seed, age * 1.4));
+  float a2 = pNoise(vec2(s * 60.0 - seed, age * 2.6 + a1));
+  float streak = clamp((rope * 0.55 + a1 * 0.3 + a2 * 0.15 - 0.5) * 1.9 + 0.5, 0.0, 1.0);
+  // clumps of white water riding down the ropes, quicker than the sheet
+  float clump = clamp((pNoise(vec2(s * 12.0 - seed, age * 7.0)) - 0.5) * 2.0 + 0.5, 0.0, 1.0);
 
-  // air is drawn in as it falls: a few white streaks at the lip, half the
-  // sheet near the bottom; the curtain behind stays mostly glassy
+  // Air is drawn in as it falls: a few white ropes at the lip, most of the
+  // front sheet near the bottom, with a white haze between the ropes so the
+  // fall has body; the curtain behind stays mostly glassy.
   float aerate = fall * mix(0.45, 1.0, uLayer);
-  float th = mix(0.78, 0.42, aerate) + mix(0.12, 0.0, uLayer);
+  float th = mix(0.8, 0.38, aerate) + mix(0.12, 0.0, uLayer);
   float v = streak + (clump - 0.5) * 0.3 * fall;
-  float foam = smoothstep(th, th + 0.05, v);
-  // the white is never one flat tone
-  float tone = 0.62 + 0.5 * a2 * (0.6 + 0.4 * clump);
+  float foam = max(smoothstep(th - 0.2, th + 0.12, v), aerate * uLayer * 0.4);
+  // the white is never one flat tone; the sheet is thickest down its middle
+  float tone = (0.66 + 0.34 * a2 + 0.18 * (clump - 0.5)) * (0.82 + 0.18 * (1.0 - e * e));
 
-  // ragged edges, and lower down the sheet parts into strands
+  // ragged edges, and near the bottom the sides part into strands
   float rag = pNoise(vec2(s * 6.0 + 3.1, age * 2.7));
   float edge = 1.0 - smoothstep(0.62 - 0.3 * rag * fall, 1.0, e);
-  float strands = smoothstep(fall * e * 0.5, fall * e * 0.5 + 0.12, streak);
+  float part = fall * fall * e * 0.6;
+  float strands = smoothstep(part, part + 0.2, streak);
   // the sheet thickens out of the run on the stone
   float start = smoothstep(-1.0, -0.6, prog);
 
@@ -127,7 +130,7 @@ void main() {
   // clear water: the body's colour, the sky in its face, glints of the sun
   vec3 R = reflect(-V, N);
   float glint = pow(max(dot(R, uSunDir), 0.0), 180.0) * 3.0;
-  vec3 glassCol = (uBody * (uSkyColor + uSunColor * 0.25) * (1.0 - F) + uSkyColor * 2.2 * F + uSunColor * glint * F) * (0.6 + 0.8 * a1);
+  vec3 glassCol = (uBody * (uSkyColor + uSunColor * 0.25) * (1.0 - F) + uSkyColor * 2.2 * F + uSunColor * glint * F) * (0.7 + 0.6 * rope);
   float glassA = (0.4 + 0.5 * F) * mix(1.0, 0.25, uLayer);
 
   vec3 col = mix(glassCol, foamCol * tone, foam);
@@ -138,13 +141,23 @@ void main() {
 `
 
 // foam that spreads on the surface where a fall lands, carried off
-// downstream; vLocal is (across, along the flow) in metres from the landing
+// downstream; vLocal is (across, along the flow) in metres from the landing.
+// The water heaves up in a low boil where the fall drives in.
 const FOAM_VERT = /* glsl */ `
 attribute vec2 aLocal;
+uniform float uTime;
+uniform float uPace;
+uniform float uSize;
 varying vec2 vLocal;
 void main() {
   vLocal = aLocal;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec2 q = aLocal - vec2(0.0, uSize * 0.25);
+  float r = length(q / vec2(1.0, 1.35)) / uSize;
+  float t = uTime * uPace;
+  float heave = 0.75 + 0.25 * sin(t * 5.0 + aLocal.x * 9.0 / uSize) * sin(t * 3.7 - aLocal.y * 7.0 / uSize);
+  float boil = max(1.0 - r, 0.0);
+  vec3 p = position + vec3(0.0, uSize * 0.14 * boil * boil * heave, 0.0);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
 `
 
@@ -157,6 +170,7 @@ uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform vec3 uFoam;
+uniform vec3 uSunLocal;
 varying vec2 vLocal;
 ${NOISE_GLSL}
 void main() {
@@ -165,16 +179,25 @@ void main() {
   float r = length(q / vec2(1.0, 1.35)) / uSize;
   // carried off downstream
   float t = uTime * uPace;
-  float out1 = pNoise(q * 7.0 / uSize - vec2(0.0, t * 1.2));
-  float out2 = pNoise(q * 15.0 / uSize + vec2(4.0 - t * 0.2, 1.0 - t * 2.0));
-  float n = out1 * 0.6 + out2 * 0.4;
+  vec3 o1 = pNoised(q * 7.0 / uSize - vec2(0.0, t * 1.2));
+  vec3 o2 = pNoised(q * 15.0 / uSize + vec2(4.0 - t * 0.2, 1.0 - t * 2.0));
+  vec3 o3 = pNoised(q * 34.0 / uSize + vec2(t * 0.7, -t * 3.1));
+  float n = o1.x * 0.6 + o2.x * 0.4;
   // dense at the boil, lacy further out, gone at the rim
   float cover = smoothstep(1.0, 0.15, r);
   float foam = smoothstep(1.0 - cover * 0.9, 1.08 - cover * 0.75, n + cover * 0.35);
   // nothing behind the falling sheet, where the bank is
   foam *= smoothstep(-0.25, 0.0, vLocal.y / uSize);
-  vec3 col = uFoam * (uSkyColor * 1.5 + uSunColor * max(uSunDir.y, 0.0) * 0.55) * (0.7 + 0.4 * out2);
-  float alpha = foam * mix(0.55, 0.9, cover);
+  // Foam is a heap of bubbles, not a sheet: its lumps catch the light on
+  // one side and shade on the other, and the hollows between them sit in
+  // shadow. The slope comes from the same noise that places the foam.
+  vec2 slope = (o1.yz * 7.0 * 0.6 + o2.yz * 15.0 * 0.4 + o3.yz * 34.0 * 0.12) / uSize * 0.06;
+  vec3 n3 = normalize(vec3(-slope.x, 1.0, -slope.y));
+  float lit = clamp((dot(n3, uSunLocal) + 0.5) / 1.5, 0.0, 1.0);
+  float hollow = mix(0.45, 1.0, smoothstep(0.35, 0.75, n + o3.x * 0.25));
+  // lit as the falling foam is, so the boil is as white as the water feeding it
+  vec3 col = uFoam * (uSkyColor * 1.5 + uSunColor * (0.12 + 0.5 * lit)) * hollow * (0.75 + 0.35 * o2.x) * (0.9 + 0.2 * cover);
+  float alpha = foam * mix(0.55, 0.92, cover);
   if (alpha < 0.004) discard;
   gl_FragColor = vec4(col, alpha);
 }
@@ -214,7 +237,7 @@ void main() {
   float r = length(vCorner);
   float puff = smoothstep(1.0, 0.0, r);
   puff *= puff;
-  float alpha = puff * sin(3.14159 * vLife) * 0.04;
+  float alpha = puff * sin(3.14159 * vLife) * 0.08;
   if (alpha < 0.002) discard;
   gl_FragColor = vec4(uFoam * (uSkyColor * 1.6 + uSunColor * 0.4), alpha);
 }
@@ -282,11 +305,13 @@ export class Cascade implements RealmPart {
     // foam where each fall lands
     const at = { x: 0, y: 0, z: 0 }
     const flow = new THREE.Vector3(CASCADE.dirX, 0, CASCADE.dirZ)
+    // the sun in the foam's own frame (across, up, along the flow)
+    const sunLocal = new THREE.Vector3(-CASCADE.dirZ * SUN_DIRECTION.x + CASCADE.dirX * SUN_DIRECTION.z, SUN_DIRECTION.y, flow.dot(SUN_DIRECTION))
     for (const [f, h, size] of [[ledgeAt, ledge + 0.015, 0.32], [poolAt, 0.006, 0.75]] as const) {
       const material = new THREE.ShaderMaterial({
         vertexShader: FOAM_VERT,
         fragmentShader: FOAM_FRAG,
-        uniforms: { ...shared, uSize: { value: size } },
+        uniforms: { ...shared, uSize: { value: size }, uSunLocal: { value: sunLocal } },
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
@@ -295,7 +320,7 @@ export class Cascade implements RealmPart {
         polygonOffsetUnits: -4,
       })
       cascadePoint(f, 0, h, at)
-      const geometry = foamDisc(at, size * 1.4, phone ? 24 : 40)
+      const geometry = foamDisc(at, size * 1.4, phone ? 24 : 40, phone ? 4 : 7)
       const mesh = new THREE.Mesh(geometry, material)
       mesh.name = 'cascade-foam'
       mesh.renderOrder = 2
@@ -345,6 +370,9 @@ export class Cascade implements RealmPart {
       cascadePoint(poolAt + df, 0, 0, at)
       this.stirs.push({ x: at.x, z: at.z, spread })
     }
+    // the chop spreads from just downstream of the landing
+    cascadePoint(poolAt + 0.2, 0, 0, at)
+    this.pond.churn(at.x, at.z, 1.6, 5.5)
     // the phone's coarser ripple grid needs a wider stir to ring cleanly
     this.stirRadius = phone ? 0.16 : 0.1
   }
@@ -441,19 +469,31 @@ function sheet(fall: Fall, rows: number, cols: number, offset: number): THREE.Bu
   return geometry
 }
 
-// a flat disc on the surface at `centre`; aLocal is (across, along the flow)
-function foamDisc(centre: { x: number; y: number; z: number }, radius: number, segments: number): THREE.BufferGeometry {
+// a disc on the surface at `centre`, in rings so the boil can rise in its
+// middle; aLocal is (across, along the flow)
+function foamDisc(centre: { x: number; y: number; z: number }, radius: number, segments: number, rings: number): THREE.BufferGeometry {
   const positions: number[] = [centre.x, centre.y, centre.z]
   const locals: number[] = [0, 0]
-  for (let i = 0; i <= segments; i++) {
-    const a = (i / segments) * Math.PI * 2
-    const s = Math.cos(a) * radius
-    const f = Math.sin(a) * radius
-    positions.push(centre.x + CASCADE.dirX * f - CASCADE.dirZ * s, centre.y, centre.z + CASCADE.dirZ * f + CASCADE.dirX * s)
-    locals.push(s, f)
+  for (let k = 1; k <= rings; k++) {
+    const reach = (k / rings) * radius
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2
+      const s = Math.cos(a) * reach
+      const f = Math.sin(a) * reach
+      positions.push(centre.x + CASCADE.dirX * f - CASCADE.dirZ * s, centre.y, centre.z + CASCADE.dirZ * f + CASCADE.dirX * s)
+      locals.push(s, f)
+    }
   }
   const index: number[] = []
-  for (let i = 1; i <= segments; i++) index.push(0, i + 1, i)
+  for (let i = 0; i < segments; i++) index.push(0, 1 + ((i + 1) % segments), 1 + i)
+  for (let k = 1; k < rings; k++) {
+    const inner = 1 + (k - 1) * segments
+    const outer = inner + segments
+    for (let i = 0; i < segments; i++) {
+      const j = (i + 1) % segments
+      index.push(inner + i, inner + j, outer + i, inner + j, outer + j, outer + i)
+    }
+  }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setAttribute('aLocal', new THREE.Float32BufferAttribute(locals, 2))
