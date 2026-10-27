@@ -1,5 +1,7 @@
 import * as THREE from 'three'
+import { realmUniforms } from '../atmosphere'
 import type { SkyDress } from '../season'
+import { FACE, FACE_GLSL } from './face'
 import { hallow } from './state'
 
 // The night sky over the island: the photographed sky regraded, stars and
@@ -31,6 +33,10 @@ export function discDirection(): THREE.Vector3 {
   side.crossVectors(disc, UP).normalize()
   return disc.applyAxisAngle(side, DISC_RISE).normalize()
 }
+
+// the flame inside the moon breathes with the clock; 0 under reduced motion,
+// set by the light each frame
+export const moonFlame = { uMoonMotion: { value: 1 } }
 
 const GRADE_GLSL = /* glsl */ `
 // where the photographed sun stood (the light's direction), and the moon
@@ -107,8 +113,30 @@ vec3 nightStarLayer(vec3 dir, float px, float cells, float share, float size, fl
   float b = exp(-dot(o, o) / (s * s)) * energy * bright * pow(h.y, 4.0);
   return b * mix(vec3(1.0, 0.8, 0.64), vec3(0.8, 0.85, 1.0), h.z);
 }
+uniform float uMoonTime;
+uniform float uMoonMotion;
+// the moon's light, linear; the frame's curve pales anything bright, so the
+// shell stays low to stay red and the cuts carry the brightness
+#define MOON_SHELL 0.45
+#define MOON_INNER 0.2
+#define MOON_BLEED 0.4
+#define MOON_GLOW 0.05
+#define MOON_CORONA 0.3
+#define MOON_EMBER vec3(1.3, 0.34, 0.005)
+#define MOON_HOT vec3(4.0, 1.9, 0.08)
+#define MOON_WALL vec3(2.4, 0.8, 0.01)
+${FACE_GLSL}
+// the flame's slow breath, still under reduced motion
+float moonBreath() {
+  float n = nightNoise(vec2(uMoonTime * 0.45, 3.7)) * 0.65 + nightNoise(vec2(uMoonTime * 1.1, 9.1)) * 0.35;
+  return 1.0 + (n - 0.5) * 0.1 * uMoonMotion;
+}
 vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
   float px = length(fwidth(dir));
+  // one screen pixel in the disc's own units, for the carved edges
+  vec3 ddx = dFdx(dir);
+  vec3 ddy = dFdy(dir);
+  float pw = sqrt(0.5 * (dot(ddx, ddx) + dot(ddy, ddy))) / ${R};
   // stars only in the photograph's clear sky, fading down into the glow and
   // near the moon
   float r = nightCover(photo, dir);
@@ -124,22 +152,39 @@ vec3 dressSkyDisc(vec3 col, vec3 photo, vec3 dir) {
   // any resolution
   vec3 o = dir - uSkyMoonDisc;
   float x = length(o) / ${R};
-  // a soft wide halo in the haze, and a faint corona hugging the limb
-  float halo = 0.025 / (1.0 + x * x * 0.1) + 0.03 * exp(-x * 0.7);
-  float corona = exp(-max(x - 1.0, 0.0) * 5.0) * 0.18;
-  col += vec3(1.0, 0.16, 0.05) * halo + vec3(1.0, 0.22, 0.07) * corona;
+  // the soft wide halo in the haze, as the sky has always had it; nearer the
+  // limb a glow of deep red, and a corona hugging it
+  float halo = 0.025 / (1.0 + x * x * 0.1);
+  float glow = MOON_GLOW * exp(-x * 0.7);
+  float corona = exp(-max(x - 1.0, 0.0) * 4.0) * MOON_CORONA;
+  col += vec3(1.0, 0.16, 0.05) * halo + vec3(1.0, 0.05, 0.015) * glow + vec3(1.0, 0.07, 0.02) * corona;
   if (x < 1.1) {
     vec3 right = normalize(cross(uSkyMoonDisc, vec3(0.0, 1.0, 0.0)));
     vec3 upv = cross(right, uSkyMoonDisc);
     vec2 p = vec2(dot(o, right), dot(o, upv)) / ${R};
-    // the dark seas and the brighter highlands, a broad pattern with fine grain
+    float breath = moonBreath();
+    // a faint grain of seas and highlands, so the shell is not a flat red
     float seas = nightNoise(p * 2.2 + 3.1) * 0.62 + nightNoise(p * 5.0 - 1.7) * 0.28 + nightNoise(p * 11.0) * 0.1;
-    float surface = mix(1.0, 0.6, smoothstep(0.4, 0.66, seas));
+    float surface = mix(1.0, 0.84, smoothstep(0.4, 0.66, seas));
     float mu = sqrt(max(1.0 - x * x, 0.0));
-    float limb = 0.62 + 0.38 * sqrt(mu);
-    // deeper red toward its lower limb, where its light crosses more air
-    vec3 tone = mix(vec3(1.0, 0.05, 0.01), vec3(1.0, 0.13, 0.03), smoothstep(-1.0, 1.0, p.y));
-    vec3 face = tone * 1.05 * surface * limb;
+    // the shell: blood red, falling away to a dark limb
+    float limb = pow(mu, 0.7);
+    vec3 tone = mix(vec3(0.85, 0.006, 0.004), vec3(1.0, 0.016, 0.005), smoothstep(-1.0, 1.0, p.y));
+    // the flame inside shines through the shell, most near itself and
+    // around each cut, where the shell is thin
+    vec2 f = p - vec2(${FACE.flame[0].toFixed(3)}, ${FACE.flame[1].toFixed(3)});
+    float near = exp(-dot(f, f) * 0.9);
+    float d = moonFace(p);
+    float thin = exp(-max(d, 0.0) * 16.0);
+    vec3 shell = tone * MOON_SHELL * surface * limb;
+    shell += vec3(1.0, 0.03, 0.005) * (near * MOON_INNER + thin * MOON_BLEED * (0.4 + 0.6 * near)) * limb * breath;
+    // through a cut: the shell's lit inner wall along the top edge, which
+    // faces the flame, and past it the far side, hottest by the flame
+    float wall = clamp(0.5 + moonFace(p + vec2(0.0, 0.06)) / pw, 0.0, 1.0);
+    vec3 far = mix(MOON_EMBER, MOON_HOT, near * near);
+    vec3 cut = mix(far, MOON_WALL * (0.6 + 0.4 * near), wall) * breath;
+    float carved = clamp(0.5 - d / pw, 0.0, 1.0);
+    vec3 face = mix(shell, cut, carved);
     float edge = px / ${R};
     float inside = 1.0 - smoothstep(1.0 - edge, 1.0 + edge, x);
     col = mix(col, face, inside);
@@ -218,6 +263,8 @@ export const sky: SkyDress = {
   domeGlsl: DOME_GLSL,
   uniforms: {
     uSkyMoonDir: hallow.uMoonDir,
+    uMoonTime: realmUniforms.uTime,
+    uMoonMotion: moonFlame.uMoonMotion,
     // read each frame, so it follows the light's direction once the sky sets it
     uSkyMoonDisc: {
       get value() {
