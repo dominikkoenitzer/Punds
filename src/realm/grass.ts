@@ -110,7 +110,7 @@ function longness(x: number, z: number): number {
   const e = islandSdf(x, z)
   const rim = smooth(0.9, 1.8, e) * (1 - smooth(2.4, 3.8, e))
   const pd = pondSdf(x, z)
-  const bank = smooth(0.15, 0.45, pd) * (1 - smooth(1.1, 1.7, pd))
+  const bank = smooth(0.45, 0.8, pd) * (1 - smooth(1.3, 1.9, pd))
   let near = 0
   for (const l of LANTERNS) {
     const d = Math.hypot(x - l.x, z - l.z)

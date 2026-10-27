@@ -16,7 +16,7 @@ import {
   GRAVEL_HALF_WIDTH,
   LANTERNS,
   SHRINE,
-  OUTFLOW,
+  CASCADE,
   rng,
 } from './layout'
 import { loadPbr, type PbrSet } from './assets'
@@ -165,35 +165,91 @@ void sampleSet(sampler2D d, sampler2D n, sampler2D a, vec2 uv, out vec3 cd, out 
   ca = mix(texture2D(a, uv).rgb, texture2D(a, uv2).rgb, m);
 }
 ${GRAVEL_GLSL}
-`
 
-const SPLAT_MAP = /* glsl */ `
-{
-  vec2 xz = vWorld.xz;
-  vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, d3, n3, a3;
-  sampleSet(tSoilD, tSoilN, tSoilA, xz / 2.6, d0, n0, a0);
-  sampleSet(tGravelD, tGravelN, tGravelA, xz / 1.6, d1, n1, a1);
-  gravelDetail(xz, d1, n1, a1);
-  sampleSet(tMossD, tMossN, tMossA, xz / 2.2, d2, n2, a2);
+// the scans laid onto one plane: uv in metres, w the splat weights; the
+// normal comes out in the plane's (u, v, up) frame
+void groundAt(vec2 uv, vec4 w, out vec3 dif, out vec3 tn, out vec3 arm, out vec3 d3, out vec3 n3) {
+  vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, a3;
+  sampleSet(tSoilD, tSoilN, tSoilA, uv / 2.6, d0, n0, a0);
+  sampleSet(tGravelD, tGravelN, tGravelA, uv / 1.6, d1, n1, a1);
+  gravelDetail(uv, d1, n1, a1);
+  sampleSet(tMossD, tMossN, tMossA, uv / 2.2, d2, n2, a2);
   // the scan is a forest floor with moss among the leaves: keep its detail
   // as brightness and colour it the deep, quiet green of garden moss
   d2 = vec3(dot(d2, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.4, 0.55, 0.24) * 1.55;
-  sampleSet(tPebD, tPebN, tPebA, xz / 1.4, d3, n3, a3);
-  vec4 w = vSplat;
+  sampleSet(tPebD, tPebN, tPebA, uv / 1.4, d3, n3, a3);
   float soil = max(1.0 - w.x - w.y - w.z, 0.0);
   // height-sharpened blend: crevices (dark ambient occlusion) lose first
   vec4 h = vec4(soil * (0.4 + a0.r), w.x * (0.4 + a1.r), w.y * (0.4 + a2.r), w.z * (0.4 + a3.r));
   float hm = max(max(h.x, h.y), max(h.z, h.w));
   h = max(h - hm + 0.18, 0.0);
   h /= max(h.x + h.y + h.z + h.w, 1e-4);
-  vec3 dif = d0 * h.x + d1 * h.y + d2 * h.z + d3 * h.w;
-  splatNormal = normalize(n0 * h.x + n1 * h.y + n2 * h.z + n3 * h.w + vec3(0.0, 0.0, 1e-3));
-  splatArm = a0 * h.x + a1 * h.y + a2 * h.z + a3 * h.w;
+  dif = d0 * h.x + d1 * h.y + d2 * h.z + d3 * h.w;
+  tn = n0 * h.x + n1 * h.y + n2 * h.z + n3 * h.w + vec3(0.0, 0.0, 1e-3);
+  arm = a0 * h.x + a1 * h.y + a2 * h.z + a3 * h.w;
+}
+
+// axis 1 is the ground plane (x, z) the lawn and gravel are laid on; 0 and 2
+// stand upright, across the face and up
+void planeOf(int axis, vec3 p, out vec2 uv, out vec3 u, out vec3 v) {
+  if (axis == 1) { uv = p.xz; u = vec3(1.0, 0.0, 0.0); v = vec3(0.0, 0.0, 1.0); }
+  else if (axis == 0) { uv = p.zy; u = vec3(0.0, 0.0, 1.0); v = vec3(0.0, 1.0, 0.0); }
+  else { uv = p.xy; u = vec3(1.0, 0.0, 0.0); v = vec3(0.0, 1.0, 0.0); }
+}
+
+vec3 planeNormal(vec3 tn, vec3 N, vec3 u, vec3 v) {
+  vec3 T = u - N * dot(N, u);
+  vec3 B = v - N * dot(N, v);
+  T *= inversesqrt(max(dot(T, T), 1e-8));
+  B *= inversesqrt(max(dot(B, B), 1e-8));
+  return T * tn.x - B * tn.y + N * tn.z;
+}
+`
+
+const SPLAT_MAP = /* glsl */ `
+{
+  // Biplanar: the face's two strongest axes each get the scans on their own
+  // plane, so steep banks and mounds show them at true scale instead of
+  // stretched down the slope. Flat ground uses the ground plane alone.
+  vec3 N = normalize(vWorldNormal);
+  vec3 an = abs(N);
+  int ma = an.x > an.y && an.x > an.z ? 0 : (an.y > an.z ? 1 : 2);
+  int mi = an.x < an.y && an.x < an.z ? 0 : (an.y < an.z ? 1 : 2);
+  int me = 3 - ma - mi;
+  vec2 bw = clamp((vec2(an[ma], an[me]) - 0.5773) / (1.0 - 0.5773), 0.0, 1.0);
+  bw /= max(bw.x + bw.y, 1e-4);
+  vec2 uv; vec3 pu, pv, tn, d3, n3;
+  vec3 dif, arm, wn, wn3;
+  planeOf(ma, vWorld, uv, pu, pv);
+  groundAt(uv, vSplat, dif, tn, arm, d3, n3);
+  wn = planeNormal(tn, N, pu, pv) * bw.x;
+  wn3 = planeNormal(n3, N, pu, pv) * bw.x;
+  dif *= bw.x; arm *= bw.x; d3 *= bw.x;
+  if (bw.y > 0.01) {
+    vec3 difB, armB, d3B, n3B;
+    planeOf(me, vWorld, uv, pu, pv);
+    groundAt(uv, vSplat, difB, tn, armB, d3B, n3B);
+    wn += planeNormal(tn, N, pu, pv) * bw.y;
+    wn3 += planeNormal(n3B, N, pu, pv) * bw.y;
+    dif += difB * bw.y; arm += armB * bw.y; d3 += d3B * bw.y;
+  }
+  vec2 xz = vWorld.xz;
+  vec4 w = vSplat;
+  splatNormal = normalize(wn);
+  splatArm = arm;
   // a broad tonal variation so the lawn floor never reads as one tile
   float macro = tNoise(xz * 0.07) * 0.6 + tNoise(xz * 0.23) * 0.4;
   dif *= mix(0.82, 1.12, macro);
   // the floor under the lawn: green-brown, so gaps between blades never read as bare dirt
   dif *= mix(vec3(1.0), uLawnFloor, w.w);
+  // the cascade's cut, behind and under the falling water: dark wet stones
+  vec2 cd = vWorld.xz - vec2(${CASCADE.x.toFixed(3)}, ${CASCADE.z.toFixed(3)});
+  float cf = dot(cd, vec2(${CASCADE.dirX.toFixed(3)}, ${CASCADE.dirZ.toFixed(3)}));
+  float cs = dot(cd, vec2(${(-CASCADE.dirZ).toFixed(3)}, ${CASCADE.dirX.toFixed(3)}));
+  float cut = (1.0 - smoothstep(0.5, 0.75, abs(cs))) * smoothstep(-2.45, -2.25, cf) * (1.0 - smoothstep(-0.35, -0.15, cf));
+  dif = mix(dif, d3 * vec3(0.24, 0.23, 0.21), cut);
+  splatNormal = normalize(mix(splatNormal, normalize(wn3), cut));
+  splatArm.g = mix(splatArm.g, 0.4, cut);
   // phones draw fewer blades, so their floor is short turf in its own right
   dif = mix(dif, vec3(0.075, 0.115, 0.035) * mix(0.8, 1.2, macro), w.w * uLawnCover);
   diffuseColor.rgb *= dif;
@@ -202,11 +258,7 @@ const SPLAT_MAP = /* glsl */ `
 
 const SPLAT_NORMAL = /* glsl */ `
 {
-  vec3 N = normalize(vWorldNormal);
-  vec3 T = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
-  vec3 B = cross(T, N);
-  vec3 wn = normalize(T * splatNormal.x - B * splatNormal.y + N * splatNormal.z);
-  normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
+  normal = normalize((viewMatrix * vec4(splatNormal, 0.0)).xyz);
 }
 `
 
@@ -295,7 +347,6 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
 // the soft layers between them are recessed, darker and damp.
 
 const TAU = Math.PI * 2
-const FALL_ANGLE = Math.atan2(OUTFLOW.z1, OUTFLOW.x1)
 const RIM_CELLS = 64 // blocks around the lip, about two metres each
 const STRATA = 15 // bands from the lip to the point
 const JOINTS = 90 // vertical joints around the island
@@ -346,11 +397,6 @@ function fbm3(x: number, y: number, z: number, octaves: number): number {
   return sum / norm
 }
 
-function angleDist(a: number, b: number): number {
-  const d = (((a - b) % TAU) + TAU) % TAU
-  return Math.min(d, TAU - d)
-}
-
 // what undersidePoint found at the last point it returned: how recessed
 // (soft and damp) the layer is there, and how hard the band is
 export const undersideSample = { soft: 0, hard: 0 }
@@ -380,8 +426,6 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   const rx = c * ISLAND_RX * k
   const rz = s * ISLAND_RZ * k
   const yRim = groundHeight(rx, rz) - RIM_DROP
-  // the water has worn the rock smooth and back under the fall
-  const fall = 1 - smooth(0.05, 0.2, angleDist(a, FALL_ANGLE))
 
   // an undercut just below the lip, then the long bowl-shaped taper
   const body = Math.pow(1 - smooth(0, 1, f), 1.15) * (1 - f * 0.08) * (1 - 0.075 * smooth(0, 0.09, f))
@@ -407,7 +451,7 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   // band splits at its own height so the layers are not evenly spaced
   const split = 0.35 + hash3(band, 4.4, 1.9) * 0.45
   const slab = smooth(0, 0.06, t) * (1 - smooth(split, split + 0.16, t))
-  const reach = smooth(0.006, 0.05, f) * (1 - 0.92 * smooth(0.45, 0.85, f)) * (1 - fall * 0.85)
+  const reach = smooth(0.006, 0.05, f) * (1 - 0.92 * smooth(0.45, 0.85, f))
   const strata = (slab * hard - 0.2) * 0.08 * reach
 
   const n = fbm3(c * 2.2 + 11, s * 2.2, f * 6, 4)
@@ -423,7 +467,7 @@ export function undersidePoint(a: number, f: number, out: THREE.Vector3): THREE.
   const h1 = hash3(id, 1.7, 3.1)
   const h2 = hash3(id, 9.2, 0.4)
   const crack = 1 - smooth(0, 0.14, Math.min(cl, 1 - cl))
-  const fb = (0.01 + h1 * h1 * 0.085) * (1 - 0.65 * crack) * (0.8 + noise3(c * 24, s * 24, 1.3) * 0.4) * (1 - fall * 0.6)
+  const fb = (0.01 + h1 * h1 * 0.085) * (1 - 0.65 * crack) * (0.8 + noise3(c * 24, s * 24, 1.3) * 0.4)
   const lean = 0.004 + h2 * h2 * 0.045
   const cap = (1 - lean * smooth(0, fb, f) - crack * 0.028 * smooth(0, 0.008, f)) * (1 - smooth(fb, fb + 0.012, f))
   sc = Math.max(sc, cap, 0.004)

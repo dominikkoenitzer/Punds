@@ -126,9 +126,30 @@ const POND_LOBES = [
   { x: -6.1, z: 5.2, rx: 2.1, rz: 1.7 },
 ]
 
-// the outflow: a channel from the pond's west lobe to the rim, where the water
-// falls off the island
-export const OUTFLOW = { x0: -12.6, z0: -1.0, x1: -16.4, z1: -1.6, halfWidth: 0.75 }
+// The cascade: a spring drops over two stone ledges into a plunge pool on the
+// pond's east lobe, under the cherry, facing the pond view. (x, z): the foot
+// of the lower fall; dir: the way the water runs, into the pond. Heights are
+// above the water: the upper lip, and the ledge the upper fall lands on.
+// Along dir, lip1 and lip2 are where each fall leaves its stone.
+export const CASCADE = { x: -5.3, z: 6.95, dirX: -0.47, dirZ: -0.88, upper: 1.62, ledge: 0.77, lip1: -1.25, lip2: -0.85 }
+
+// a point in the cascade's frame: f along dir, s across it (to the right
+// looking downstream), h above the water
+export function cascadePoint(f: number, s: number, h: number, out: { x: number; y: number; z: number }): void {
+  out.x = CASCADE.x + CASCADE.dirX * f - CASCADE.dirZ * s
+  out.y = POND_LEVEL + h
+  out.z = CASCADE.z + CASCADE.dirZ * f + CASCADE.dirX * s
+}
+
+// (f, s) of a world point in the cascade's frame
+export function cascadeLocal(x: number, z: number): [number, number] {
+  const dx = x - CASCADE.x
+  const dz = z - CASCADE.z
+  return [dx * CASCADE.dirX + dz * CASCADE.dirZ, -dx * CASCADE.dirZ + dz * CASCADE.dirX]
+}
+
+// the mound the cascade falls from, built up behind its lip
+const MOUND = { x: -4.9, z: 7.9, r: 2.3, h: 1.35 }
 
 function smin(a: number, b: number, k: number): number {
   const h = Math.max(k - Math.abs(a - b), 0) / k
@@ -146,14 +167,10 @@ export function pondSdf(x: number, z: number): number {
   }
   // a wobble so the shore is not a sum of ellipses
   d += (fbm2(x * 0.35 + 9.1, z * 0.35 - 3.7, 3) - 0.5) * 0.7
-  // the channel
-  const cx = OUTFLOW.x1 - OUTFLOW.x0
-  const cz = OUTFLOW.z1 - OUTFLOW.z0
-  const t = Math.max(0, Math.min(1, ((x - OUTFLOW.x0) * cx + (z - OUTFLOW.z0) * cz) / (cx * cx + cz * cz)))
-  const px = OUTFLOW.x0 + cx * t - x
-  const pz = OUTFLOW.z0 + cz * t - z
-  const channel = Math.sqrt(px * px + pz * pz) - OUTFLOW.halfWidth
-  return smin(d, channel, 0.8)
+  // the plunge pool the cascade has worn into the bank
+  const [f, side] = cascadeLocal(x, z)
+  const plunge = Math.hypot((f + 0.15) / 1.1, side / 0.85) - 0.6
+  return smin(d, plunge, 0.4)
 }
 
 export const POND_BOUNDS = { xMin: -17, xMax: -2.5, zMin: -4.5, zMax: 8 }
@@ -237,12 +254,32 @@ export function groundHeight(x: number, z: number): number {
     const stair = TERRACE_Y * t - 0.05
     h = Math.min(h, stair + (h - stair) * smooth(0, 0.3, sx))
   }
-  // the pond basin: a bowl below the water line, with a soft bank
+  // the mound behind the cascade
+  const md = Math.hypot(x - MOUND.x, z - MOUND.z) / MOUND.r
+  if (md < 1) h += MOUND.h * smooth(1, 0.25, md) * (0.85 + 0.3 * fbm2(x * 0.8, z * 0.8, 2))
+  // The pond basin. The lawn stands clear of the water and drops to it in a
+  // short steep face, so the shore reads as cut earth, and the bed falls
+  // away under the water line.
   const pd = pondSdf(x, z)
-  if (pd < 1.2) {
-    const bank = smooth(1.2, -0.2, pd)
-    const bowl = POND_LEVEL - 0.08 - POND_DEPTH * smooth(0, -2.8, pd)
-    h = h + (Math.min(h, bowl) - h) * bank
+  if (pd < 2.5) {
+    const lawn = h + (Math.max(h, POND_LEVEL + 0.34) - h) * smooth(2.5, 0.9, pd)
+    const shore = POND_LEVEL - 0.1
+    if (pd >= 0.85) h = lawn
+    else if (pd >= 0) {
+      const t = pd / 0.85
+      h = shore + (lawn - shore) * (1 - (1 - t) * (1 - t))
+    } else h = shore - (POND_DEPTH - 0.1) * smooth(0, -2.4, pd)
+  }
+  // The cascade's bed, cut stepwise into the bank: the run to the upper
+  // lip, the ledge, the plunge pool. Its stones (rocks.ts) line the cut.
+  const [f, side] = cascadeLocal(x, z)
+  if (f > -2.6 && f < 0.6 && Math.abs(side) < 1.2) {
+    const run = CASCADE.upper - 0.08
+    const step1 = smooth(CASCADE.lip1 - 0.1, CASCADE.lip1 + 0.1, f)
+    const step2 = smooth(CASCADE.lip2 - 0.1, CASCADE.lip2 + 0.1, f)
+    const bed = run + (CASCADE.ledge - 0.2 - run) * step1 + (-0.1 - CASCADE.ledge + 0.2) * step2
+    const wall = smooth(0.45, 0.75, Math.abs(side)) * 3 + smooth(-2.0, -2.6, f) * 3
+    h = Math.min(h, POND_LEVEL + bed + wall)
   }
   return h
 }
@@ -278,9 +315,15 @@ export function gravelWeight(x: number, z: number): number {
 // building or too close to the rim.
 export function lawnWeight(x: number, z: number): number {
   const rim = smooth(0.2, 1.2, islandSdf(x, z))
-  const water = smooth(0.15, 0.9, pondSdf(x, z))
+  // the bank's face is bare, wet earth: the grass starts at its top
+  const water = smooth(0.4, 0.75, pondSdf(x, z))
   const hard = 1 - Math.max(pathWeight(x, z), gravelWeight(x, z))
   let w = rim * water * hard
+  // the cascade's stones and its wet spray fan carry no grass
+  {
+    const [f, side] = cascadeLocal(x, z)
+    w *= smooth(0.6, 1.0, Math.hypot((f + 0.9) / 1.5, side / 1.25))
+  }
   // nothing grows on the steps or the retaining wall face
   if (Math.abs(z - TERRACE_FRONT_Z) < 0.5) w *= smooth(0.0, 0.5, Math.abs(z - TERRACE_FRONT_Z))
   // trodden bare in front of and under the plaque rack

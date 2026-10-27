@@ -7,8 +7,8 @@ import { prefetchSets, setMaxAnisotropy, setUploader, upgradeTextures } from './
 import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
-import { GpuTimer } from './gpuTimer'
-import { initialQualityState, stepQuality, type QualityState } from './qualityStepper'
+import { FrameTimer, GpuTimer } from './gpuTimer'
+import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, stepScale, type ScaleState } from './quality'
 import { dress } from './season'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
@@ -29,6 +29,9 @@ export interface RealmOptions {
   // the device cannot carry the scene even at the lowest step: the page
   // should drop it for the still picture and the written links
   onTooSlow?: () => void
+  // the GPU took the scene away and has not given it back: the page should
+  // build it again
+  onLost?: () => void
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
@@ -126,9 +129,18 @@ export class Realm {
   private wakeT = 0
   private dpr = 1
   private dprScale = 1
-  private quality: QualityState = initialQualityState('high')
-  private fpsAccum = 0
-  private fpsFrames = 0
+  private quality: ScaleState = initialScaleState(1)
+  private frameTimer: FrameTimer | null = null
+  // per frame: the GPU's time where there is a timer, else the cost of every fourth frame
+  private costs: number[] = []
+  private windowStart = 0
+  private lastWindow = { p75: 0, budget: 0, timed: false }
+  private calibration = { ms: 0, scale: 1 }
+  private calibrating: number[] | null = null
+  private drawStart = 0
+  private drawn = 0
+  private windowCalm = false
+  private pixel = new Uint8Array(4)
   private lastDraw = 0
   private lastInput = 0
   private readyAt = 0
@@ -137,6 +149,8 @@ export class Realm {
   private soundWhenShown = false
   private calm = false
   private tooSlow = 0
+  private lost = false
+  private lostTimer = 0
   private visibleObs: IntersectionObserver
   private pointerNdc = new THREE.Vector2()
   private pointerActive = false
@@ -174,6 +188,7 @@ export class Realm {
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.shadowMap.autoUpdate = false
     this.tier = opts.tier ?? detectTier(this.renderer)
+    this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
     setMaxAnisotropy(Math.min(this.renderer.capabilities.getMaxAnisotropy(), this.tier === 'phone' ? 4 : 16))
     setUploader((texture) => {
       if (!this.disposed) this.renderer.initTexture(texture)
@@ -235,6 +250,7 @@ export class Realm {
     el.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointerleave', this.onPointerLeave)
     el.addEventListener('webglcontextlost', this.onContextLost)
+    el.addEventListener('webglcontextrestored', this.onContextRestored)
     this.resizeObs = new ResizeObserver(() => this.resize())
     this.resizeObs.observe(container)
     this.resize()
@@ -260,13 +276,34 @@ export class Realm {
       cancelAnimationFrame(this.raf)
       this.soundWhenShown = this.ambience.on
       if (this.soundWhenShown) this.ambience.setEnabled(false)
-    } else if (!this.disposed) {
+    } else if (!this.disposed && !this.lost) {
       this.raf = requestAnimationFrame(this.tick)
       if (this.soundWhenShown) this.ambience.setEnabled(true)
     }
   }
 
-  private onContextLost = (e: Event) => e.preventDefault()
+  // a phone short of memory may take the GPU away; three.js uploads
+  // everything again once it is back, and if it stays gone the page builds
+  // the scene anew rather than leave an empty canvas
+  private onContextLost = (e: Event) => {
+    e.preventDefault()
+    this.lost = true
+    cancelAnimationFrame(this.raf)
+    window.clearTimeout(this.lostTimer)
+    this.lostTimer = window.setTimeout(() => {
+      if (this.lost && !this.disposed) this.opts.onLost?.()
+    }, 4000)
+  }
+
+  private onContextRestored = () => {
+    window.clearTimeout(this.lostTimer)
+    this.lost = false
+    this.pipeline.timer = null
+    // queries of the lost context never answer
+    this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
+    this.costs = []
+    if (this.shown && !this.disposed) this.raf = requestAnimationFrame(this.tick)
+  }
 
   private onPointerMove = (e: PointerEvent) => {
     const r = this.renderer.domElement.getBoundingClientRect()
@@ -329,9 +366,10 @@ export class Realm {
       }
     }
     // at the shrine a click by the bell rope, in the middle of the hall's
-    // front, rings the bell (with sound on); anywhere else goes home
+    // front, rings the bell (heard with sound on); anywhere else goes home
     if (at === 'shrine' && Math.abs(this.pointerNdc.x) < 0.22 && this.pointerNdc.y > -0.45) {
       this.ambience.bell()
+      this.findPart<{ ring(motion: number): void }>('Shrine')?.ring(this.frame.motion)
       return
     }
     // any other click in a close view goes home
@@ -480,7 +518,10 @@ export class Realm {
   private compile(object: THREE.Object3D): Promise<unknown> {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
+    const t0 = performance.now()
     const done = this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {})
+    const ms = performance.now() - t0
+    if (ms > 50) this.buildTimes.push([`compile ${object.type} at ${Math.round(t0)}`, Math.round(ms)])
     this.compiling.push(done)
     this.renderer.setRenderTarget(before)
     return done
@@ -492,7 +533,10 @@ export class Realm {
     if (!part.warm) return
     this.compiling.push(
       compiled.then(() => {
-        if (!this.disposed && !this.ready) part.warm?.(this.renderer)
+        if (this.disposed || this.ready) return
+        const t0 = performance.now()
+        part.warm?.(this.renderer)
+        this.buildTimes.push([`warm ${(part as { label?: string }).label ?? part.constructor.name} at ${Math.round(t0)}`, Math.round(performance.now() - t0)])
       }),
     )
   }
@@ -549,12 +593,15 @@ export class Realm {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       if (this.disposed) return
     }
+    await this.calibrate()
+    if (this.disposed) return
     this.warming = false
     this.buildTimes.push(['warm-up', Math.round(performance.now() - t0)])
     this.buildTimes.push(['programs', this.renderer.info.programs?.length ?? 0])
     this.buildTimes.push(['ready at', Math.round(performance.now())])
     this.ready = true
     this.readyAt = performance.now()
+    this.windowStart = this.readyAt
     this.opts.onLoad?.(1)
     this.opts.onReady?.()
     // the plaques sway once, so the eye finds the rack without a word
@@ -570,6 +617,52 @@ export class Realm {
     // the 2k close-up textures, one upload per frame, now that it shows
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     void upgradeTextures(this.tier, frame).then(() => this.buildTimes.push(['2k done at', Math.round(performance.now())]))
+  }
+
+  // The first number for quality.ts: a few frames of the start view at
+  // scale 1, each waited for until the GPU is done, while the screen is still
+  // dark. A frame costs the GPU's own time where there is a timer; else the
+  // larger of the processor's part and the wait for the GPU after it, since
+  // the two overlap in a running loop. The first frames may still carry
+  // first-use work.
+  private async calibrate(): Promise<void> {
+    this.calibrating = []
+    for (let i = 0; i < 8; i++) await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const ms = this.calibrating.slice(2)
+    this.calibrating = null
+    if (this.disposed || !ms.length) return
+    // the lower quarter: a frame that also waited on a late upload or a
+    // clock still rising says less about this device than the quick ones
+    const cost = percentile(ms, 0.25)
+    const budget = this.frameBudget(true)
+    const scale = initialScale(cost, budget)
+    this.calibration = { ms: Math.round(cost * 10) / 10, scale }
+    this.buildTimes.push(['frame at scale 1', this.calibration.ms], ['scale', Math.round(scale * 1000) / 1000])
+    this.quality = initialScaleState(scale)
+    if (scale !== this.dprScale) {
+      this.dprScale = scale
+      this.resize()
+    }
+  }
+
+  // what one frame may take: phones and a still screen run at the calm rate;
+  // the GPU's own time is held to the full rate on a computer either way,
+  // so it is ready the moment the visitor moves
+  private frameBudget(timed: boolean): number {
+    return 1000 / (this.tier === 'phone' || (this.calm && !timed) ? CALM_FPS : MAX_FPS)
+  }
+
+  // how the frame cost is known: the GPU's timer, every fourth frame waited
+  // for where there is none, or only the time between frames while the
+  // section timer of `?debug&gpu` holds the queries
+  private get costSource(): 'timer' | 'fence' | 'gaps' {
+    if (this.pipeline.timer?.available) return 'gaps'
+    return this.frameTimer?.available ? 'timer' : 'fence'
+  }
+
+  // the measured quality, for `?debug` and headless checks
+  get qualityInfo(): { tier: Tier; scale: number; dpr: number; calibration: { ms: number; scale: number }; window: { p75: number; budget: number; timed: boolean }; cost: 'timer' | 'fence' | 'gaps' } {
+    return { tier: this.tier, scale: this.dprScale, dpr: this.dpr, calibration: this.calibration, window: this.lastWindow, cost: this.costSource }
   }
 
   private placeSun(): void {
@@ -673,7 +766,7 @@ export class Realm {
   }
 
   private tick = () => {
-    if (this.disposed) return
+    if (this.disposed || this.lost) return
     this.raf = requestAnimationFrame(this.tick)
     const now = performance.now()
     if (this.ready && !UNCAPPED) {
@@ -691,7 +784,7 @@ export class Realm {
     const raw = this.clock.getDelta()
     const dt = Math.min(raw, 1 / 20)
     const t = this.clock.getElapsed()
-    this.sampleFps(raw)
+    this.sampleFrame(raw)
 
     // Until the island is built and its programs compiled draw only a warm
     // dark. Drawing the scene now would
@@ -777,8 +870,12 @@ export class Realm {
     this.frame.t = t
     this.frame.dt = dt
     this.frame.progress = p
+    this.drawStart = performance.now()
     for (const part of this.parts) part.update(this.frame)
     this.ambience.update(dt, this.camera.position, realmUniforms.uGust.value)
+    const source = this.costSource
+    const timer = source === 'timer' ? this.frameTimer : null
+    timer?.begin()
     for (const part of this.parts) {
       if (!hasPrerender(part)) continue
       this.pipeline.timer?.begin((part as { label?: string }).label ?? part.constructor.name)
@@ -807,33 +904,59 @@ export class Realm {
     pp.focusDistance = this.debugView ? this.debugView.from.distanceTo(this.debugView.to) : pose.focus
     pp.focusRange = Math.max(1.5, pp.focusDistance * 0.45)
     this.pipeline.render(this.scene, this.camera, pp, light?.glowDirection ?? SUN_DIRECTION, t)
+    timer?.end()
+    // without a timer, frame gaps at the calm cap cannot show how close the
+    // GPU is to its limit: wait for every fourth frame to finish instead
+    const fence = this.ready && !UNCAPPED && source === 'fence' && ++this.drawn % 4 === 0
+    if (this.calibrating || fence) {
+      const cpu = performance.now() - this.drawStart
+      const gl = this.renderer.getContext()
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pixel)
+      const total = performance.now() - this.drawStart
+      const gpu: number[] = []
+      if (this.calibrating) timer?.collect(gpu)
+      const ms = gpu.length ? Math.max(cpu, gpu[gpu.length - 1]!) : Math.max(cpu, total - cpu)
+      if (this.calibrating) this.calibrating.push(ms)
+      else this.costs.push(ms)
+    }
     this.opts.onProgress?.(p)
   }
 
-  private sampleFps(raw: number): void {
+  private sampleFrame(raw: number): void {
     // a stall from a hidden tab or a background hitch says nothing about the GPU
     if (raw > 0.25) return
     this.frameTimes.push(raw * 1000)
     if (this.frameTimes.length > 240) this.frameTimes.shift()
-    this.fpsAccum += raw
-    this.fpsFrames++
-    if (this.fpsAccum < 1.5) return
-    const fps = this.fpsFrames / this.fpsAccum
-    this.fpsAccum = 0
-    this.fpsFrames = 0
-    if (!this.ready) return
-    // at the calm rate a frame that keeps up is neither slow nor spare
-    const rate = this.calm ? (fps >= CALM_FPS * 0.9 ? 45 : fps) : fps
-    const next = stepQuality(this.quality, rate)
-    // still far too slow at the lowest step in the first half minute: this
+    if (!this.ready || UNCAPPED) return
+    const source = this.costSource
+    // fenced frames add their own cost as they are drawn
+    if (source === 'timer') this.frameTimer!.collect(this.costs)
+    else if (source === 'gaps') this.costs.push(raw * 1000)
+    const timed = source !== 'gaps'
+    // frame gaps at the calm rate say nothing about the full rate
+    if (!timed && this.calm && this.tier !== 'phone') this.windowCalm = true
+    const now = performance.now()
+    // a slow device fences few frames: the window waits until it has enough
+    if (now - this.windowStart < WINDOW_SECONDS * 1000 || this.costs.length < 8) return
+    this.windowStart = now
+    const costs = this.costs
+    const calm = this.windowCalm
+    this.costs = []
+    this.windowCalm = false
+    if (calm) return
+    const budget = this.frameBudget(timed)
+    const p75 = percentile(costs, 0.75)
+    this.lastWindow = { p75: Math.round(p75 * 100) / 100, budget: Math.round(budget * 100) / 100, timed }
+    const next = stepScale(this.quality, this.lastWindow)
+    // still far too slow at the lowest scale in the first half minute: this
     // device should not be asked to carry the scene at all
-    if (next.tier === 'low' && this.quality.tier === 'low' && fps < 14 && performance.now() - this.readyAt < 30000) {
+    if (next.scale <= MIN_SCALE + 1e-9 && this.quality.scale <= MIN_SCALE + 1e-9 && p75 > 1000 / 14 && now - this.readyAt < 30000) {
       this.tooSlow++
       if (this.tooSlow >= 2) this.opts.onTooSlow?.()
     }
-    if (next.tier !== this.quality.tier) {
-      // the tiers here only scale the resolution; the look stays the same
-      this.dprScale = next.tier === 'low' ? 0.72 : next.tier === 'high' ? 1 : 1
+    if (next.scale !== this.quality.scale) {
+      // the steps only scale the resolution; the look stays the same
+      this.dprScale = next.scale
       this.resize()
     }
     this.quality = next
@@ -856,8 +979,11 @@ export class Realm {
     el.removeEventListener('pointerup', this.onPointerUp)
     el.removeEventListener('pointerleave', this.onPointerLeave)
     el.removeEventListener('webglcontextlost', this.onContextLost)
+    el.removeEventListener('webglcontextrestored', this.onContextRestored)
+    window.clearTimeout(this.lostTimer)
     for (const part of this.parts) part.dispose()
     this.sky?.dispose()
+    this.frameTimer?.dispose()
     this.pipeline.dispose()
     this.renderer.dispose()
     this.renderer.forceContextLoss()

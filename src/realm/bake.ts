@@ -21,6 +21,8 @@ interface Job {
 }
 
 const jobs = new Map<string, Job>()
+// how long each job took in its worker, and when it was handed over, for headless checks
+export const bakeTimes: [string, number][] = []
 const queue: Job[] = []
 
 function key(name: JobName, tier: Tier): string {
@@ -29,6 +31,7 @@ function key(name: JobName, tier: Tier): string {
 
 export function startBakes(tier: Tier): void {
   if (typeof Worker === 'undefined') return
+  bakeTimes.push(['bakes start at', Math.round(performance.now())])
   for (const name of ORDER) {
     if (jobs.has(key(name, tier))) continue
     let resolve: (v: unknown) => void = () => {}
@@ -66,8 +69,9 @@ export function startBakes(tier: Tier): void {
   try {
     for (let i = 0; i < count; i++) {
       const w = new Worker(new URL('./bake.worker.ts', import.meta.url), { type: 'module' })
-      w.onmessage = (e: MessageEvent<{ id: number; result?: unknown; error?: string }>) => {
+      w.onmessage = (e: MessageEvent<{ id: number; result?: unknown; error?: string; ms?: number; end?: number }>) => {
         const job = running.get(e.data.id)
+        if (job) bakeTimes.push([`bake ${job.name}`, Math.round(e.data.ms ?? 0)], [`bake ${job.name} at`, Math.round(performance.now())], [`bake ${job.name} sent`, Math.round((e.data.end ?? 0) - performance.timeOrigin)])
         running.delete(e.data.id)
         if (e.data.error !== undefined) job?.reject(new Error(e.data.error))
         else job?.resolve(e.data.result)

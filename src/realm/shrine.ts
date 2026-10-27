@@ -4,7 +4,8 @@ import { loadPbr, pbrMaterial, type PbrSet } from './assets'
 import { weatheredStone } from './materials'
 import { bevelBox, lathe, merge, tint, transformed, weather, worldUv } from './geo'
 import { realmUniforms, WIND_GLSL } from './atmosphere'
-import type { RealmPart, Tier } from './types'
+import type { Frame, RealmPart, Tier } from './types'
+import { BellSwing } from './bellSwing'
 
 // The worship hall in the nagare style of small shrines: a raised floor on a
 // cut granite plinth, a veranda with a railing on three sides, vermilion
@@ -501,7 +502,7 @@ export class Shrine implements RealmPart {
     this.buildPlinth(stones)
     this.buildBody(red, gold, wood, walls, inside)
     this.buildRoof(cu, red, ochre, gold, walls)
-    this.buildFront(red, gold, dark, inside)
+    this.buildFront(red, gold, dark)
 
     const redMat = this.redMaterial(paint)
     const goldMat = new THREE.MeshStandardMaterial({
@@ -534,14 +535,21 @@ export class Shrine implements RealmPart {
     this.addMesh(stones, stoneMat, 1.1, [])
     this.addMesh(cu, copperMat, 0, [])
     this.addMesh(inside, interiorMat, 1, [])
+    this.addMesh(this.bellGold, goldMat, 0.5, [], false, this.ringer)
+    this.addMesh(this.bellInside, interiorMat, 1, [], false, this.ringer)
 
     this.buildRopes()
+    this.ringer.position.copy(this.hangPoint)
+    this.ropeArm.position.copy(this.ropeTop).sub(this.hangPoint)
+    this.ringer.add(this.ropeArm)
+    this.object.add(this.ringer)
 
     this.object.position.set(SHRINE.x, TERRACE_Y, SHRINE.z)
     this.object.rotation.y = SHRINE.rotation
   }
 
-  private addMesh(parts: Geo[], mat: THREE.Material, uvScale: number, attrs: string[], edgeWear = false): void {
+  // parts that swing go into their own group, drawn about its origin
+  private addMesh(parts: Geo[], mat: THREE.Material, uvScale: number, attrs: string[], edgeWear = false, group?: THREE.Group): void {
     for (const g of parts) {
       if (uvScale > 0 && !g.userData.keepUv) worldUv(g, uvScale)
       // round parts carry their own wear; only boxed and swept timber
@@ -561,10 +569,11 @@ export class Shrine implements RealmPart {
       }
     }
     const geo = merge(parts)
+    if (group) geo.translate(-this.hangPoint.x, -this.hangPoint.y, -this.hangPoint.z)
     const mesh = new THREE.Mesh(geo, mat)
     mesh.castShadow = true
     mesh.receiveShadow = true
-    this.object.add(mesh)
+    ;(group ?? this.object).add(mesh)
     this.disposables.push(geo, mat)
   }
 
@@ -1107,7 +1116,7 @@ export class Shrine implements RealmPart {
 
   // the long front slope's own posts, its beam back to the body, the offering
   // box at the foot of the stair
-  private buildFront(red: Geo[], gold: Geo[], dark: Geo[], inside: Geo[]): void {
+  private buildFront(red: Geo[], gold: Geo[], dark: Geo[]): void {
     const plateTop = (x: number) => lowChord(x, KOHAI_Z) - RH
     const plateH = 0.15
     const kTop = plateTop(HW) - plateH - STACK
@@ -1160,7 +1169,11 @@ export class Shrine implements RealmPart {
     const bellZ = 4.3
     const hang = under(bellZ) - RH
     gold.push(transformed(bevelBox(0.3, 0.02, 0.08, 0.004, 1), 0, hang - 0.01, bellZ))
-    gold.push(rod(v3(0, hang - 0.01, bellZ), v3(0, hang - 0.17, bellZ), 0.008, 8))
+    // what swings when the rope is pulled hangs from here, apart from the
+    // merged hall
+    this.hangPoint.set(0, hang - 0.02, bellZ)
+    const bellGold = this.bellGold
+    bellGold.push(rod(v3(0, hang - 0.01, bellZ), v3(0, hang - 0.17, bellZ), 0.008, 8))
     const by = hang - 0.32
     const R = 0.13
     const prof: P2[] = []
@@ -1171,16 +1184,23 @@ export class Shrine implements RealmPart {
       if (Math.abs(y) < 0.012) r += 0.007
       prof.push([r, y])
     }
-    gold.push(transformed(lathe(prof, 28), 0, by, bellZ))
-    gold.push(transformed(new THREE.TorusGeometry(0.03, 0.009, 8, 18), 0, by + R + 0.025, bellZ))
+    bellGold.push(transformed(lathe(prof, 28), 0, by, bellZ))
+    bellGold.push(transformed(new THREE.TorusGeometry(0.03, 0.009, 8, 18), 0, by + R + 0.025, bellZ))
     // the bell's mouth: a dark slot across the lower half
-    inside.push(transformed(bevelBox(0.12, 0.04, 0.016, 0.004, 1), 0, by - 0.116, bellZ))
+    this.bellInside.push(transformed(bevelBox(0.12, 0.04, 0.016, 0.004, 1), 0, by - 0.116, bellZ))
     this.ropeTop = v3(0, by - R + 0.01, bellZ)
     this.ropeY = tY - 0.03
   }
 
   private ropeTop = new THREE.Vector3()
   private ropeY = 0
+  private hangPoint = new THREE.Vector3()
+  private bellGold: Geo[] = []
+  private bellInside: Geo[] = []
+  // the bell on its hanger, and in it the rope from the bell's foot
+  private readonly ringer = new THREE.Group()
+  private readonly ropeArm = new THREE.Group()
+  private readonly swing = new BellSwing()
 
   private buildRopes(): void {
     // shimenawa across the front posts, straw tassels and paper streamers
@@ -1265,6 +1285,7 @@ export class Shrine implements RealmPart {
     // the bell rope: a fine braid of red, white and purple, strands crossing
     // both ways round a core, a cloth tail at the bottom
     const top = this.ropeTop
+    const bellRope: Geo[] = []
     const len = top.y - 0.95
     const cols: [number, number, number][] = [
       [0.42, 0.025, 0.02],
@@ -1281,7 +1302,7 @@ export class Shrine implements RealmPart {
         const r = 0.012 + 0.002 * Math.cos(th * 3)
         pts.push(v3(top.x + Math.cos(th) * r + 0.02 * t * t, top.y - len * t, top.z + Math.sin(th) * r))
       }
-      ropeParts.push(paintAll(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 560, 0.0085, 6, false), cols[s % 3]))
+      bellRope.push(paintAll(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 560, 0.0085, 6, false), cols[s % 3]))
     }
     const tail = lathe(
       [
@@ -1293,14 +1314,19 @@ export class Shrine implements RealmPart {
       ],
       14,
     )
-    ropeParts.push(paintAll(transformed(tail, top.x + 0.02, 0.95 - 0.18, top.z), cols[0]))
+    bellRope.push(paintAll(transformed(tail, top.x + 0.02, 0.95 - 0.18, top.z), cols[0]))
     const strawMat = this.strawMaterial()
     const ropeGeo = merge(ropeParts)
     const rope = new THREE.Mesh(ropeGeo, strawMat)
     rope.castShadow = true
     rope.receiveShadow = true
     this.object.add(rope)
-    this.disposables.push(ropeGeo, strawMat)
+    const bellRopeGeo = merge(bellRope).translate(-top.x, -top.y, -top.z)
+    const pull = new THREE.Mesh(bellRopeGeo, strawMat)
+    pull.castShadow = true
+    pull.receiveShadow = true
+    this.ropeArm.add(pull)
+    this.disposables.push(ropeGeo, bellRopeGeo, strawMat)
   }
 
   // shu paint over timber: bleached and chalky where it faces the sky, grimy
@@ -1499,7 +1525,17 @@ export class Shrine implements RealmPart {
     return mat
   }
 
-  update(): void {}
+  // a pull on the bell rope
+  ring(motion: number): void {
+    this.swing.ring(motion)
+  }
+
+  update(frame: Frame): void {
+    if (!this.swing.moving) return
+    this.swing.step(frame.dt)
+    this.ringer.rotation.z = this.swing.bell
+    this.ropeArm.rotation.z = this.swing.rope - this.swing.bell
+  }
 
   dispose(): void {
     for (const d of this.disposables) d.dispose()

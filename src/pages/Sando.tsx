@@ -57,6 +57,8 @@ export default function Sando() {
   // the one hint: shown once the garden is there, gone at the first look
   const [cue, setCue] = useState<'waiting' | 'shown' | 'gone'>('waiting')
   const [load, setLoad] = useState(0)
+  // counts the times the scene was built again after the GPU dropped it
+  const [rebuilds, setRebuilds] = useState(0)
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
   // a picture of the start view while the scene loads (see .sando-poster)
   const [poster] = useState(() => (typeof window === 'undefined' ? null : POSTERS.find((p) => window.matchMedia(p.media).matches) ?? null))
@@ -121,6 +123,11 @@ export default function Sando() {
           onTooSlow: () => {
             if (!cancelled) setNoScene(true)
           },
+          onLost: () => {
+            if (cancelled) return
+            setSound(false)
+            setRebuilds((n) => n + 1)
+          },
           onReady: () => {
             window.setTimeout(() => setCue((c) => (c === 'waiting' ? 'shown' : c)), 1200)
           },
@@ -143,7 +150,7 @@ export default function Sando() {
       realm?.dispose()
       realmRef.current = null
     }
-  }, [noScene, poster])
+  }, [noScene, poster, rebuilds])
 
   return (
     <div className="sando-root">

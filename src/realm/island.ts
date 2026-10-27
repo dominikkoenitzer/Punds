@@ -13,9 +13,10 @@ import { Skyscape } from './skyscape'
 import { Rocks } from './rocks'
 import { Roots } from './roots'
 import { Pond } from './pond'
+import { Cascade } from './cascade'
 import { Plants } from './plants'
 import { CedarGrove, CherryTree, MapleTree, Petals, provideAtlas } from './trees'
-import { baked, startBakes } from './bake'
+import { bakeTimes, baked, startBakes } from './bake'
 import { dress } from './season'
 import { cherryOpts, mapleOpts, unpackFar, unpackGrove, unpackTree, type PackedTree } from './bakeJobs'
 
@@ -133,6 +134,7 @@ export function prepareIsland(tier: Realm['tier']): void {
 export async function buildIsland(realm: Realm): Promise<void> {
   const tier = realm.tier
   let maples: PackedTree[] | null = null
+  let pond: Pond | null = null
   const pointer = new PointerGround()
   realm.add(pointer)
   const hiddenFromClouds: THREE.Object3D[] = []
@@ -186,10 +188,16 @@ export async function buildIsland(realm: Realm): Promise<void> {
       return grass
     },
     () => {
-      const pond = new Pond({ tier })
+      pond = new Pond({ tier })
       pointer.listenWater(pond)
       hiddenFromClouds.push(pond.object)
       return new Sheltered(pond, hiddenFromPond)
+    },
+    () => {
+      const cascade = new Cascade({ tier, pond: pond! })
+      hiddenFromClouds.push(cascade.object)
+      hiddenFromPond.push(...cascade.unreflected)
+      return cascade
     },
     // what the season adds
     ...(dress()?.parts ?? []).map((make) => () => make(tier)),
@@ -202,7 +210,10 @@ export async function buildIsland(realm: Realm): Promise<void> {
     await yieldToMain()
     const t0 = performance.now()
     const part = await make()
+    const t1 = performance.now()
     realm.add(part)
-    realm.buildTimes.push([part.constructor.name, Math.round(performance.now() - t0)])
+    realm.buildTimes.push([`${index} ${part.constructor.name}`, Math.round(t1 - t0)])
+    realm.buildTimes.push([`${index} add`, Math.round(performance.now() - t1)])
   }
+  realm.buildTimes.push(...bakeTimes)
 }

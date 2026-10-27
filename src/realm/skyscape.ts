@@ -457,24 +457,37 @@ void marchStep(vec3 p, float t, float dt, float phase, float warm, vec3 haze, ve
   // mip level of the base shape for this pixel's footprint at distance t
   float lod = log2(max(1.0, t * uPixelAngle * (64.0 / 210.0)));
   float detail = clamp(1.0 - t / 1300.0, 0.0, 1.0);
-  float dTop;
-  float tower;
-  float dens = density(p, detail, lod, dTop, tower);
-  if (dens <= 0.001) return;
-  if (front > 1e4 && dens > 0.02) front = t;
+  float dTop = 0.0;
+  float tower = 0.0;
+  float dens = 0.0;
   float od = 0.0;
   float ls = 4.0;
   float lt = 0.0;
-  float dl;
-  float tl2;
   // far samples take a single light step: their shading is mostly haze
   int lightSteps = t > 1500.0 ? 1 : uLightSteps;
-  for (int j = 0; j < 4; j++) {
-    if (j >= lightSteps) break;
-    lt += ls * 0.5;
-    od += density(p + uSunDir * lt, 0.0, lod, dl, tl2) * ls;
-    lt += ls * 0.5;
-    ls *= 2.3;
+  // The sample and its steps towards the sun share one call to density, so
+  // the compiler builds its body once; two call sites doubled the program
+  // and its compile time.
+  for (int j = 0; j < 5; j++) {
+    if (j > lightSteps) break;
+    bool here = j == 0;
+    if (!here) lt += ls * 0.5;
+    vec3 sp = p + uSunDir * lt;
+    float sd;
+    float dl;
+    float tl2;
+    sd = density(sp, here ? detail : 0.0, lod, dl, tl2);
+    if (here) {
+      dens = sd;
+      dTop = dl;
+      tower = tl2;
+      if (dens <= 0.001) return;
+      if (front > 1e4 && dens > 0.02) front = t;
+    } else {
+      od += sd * ls;
+      lt += ls * 0.5;
+      ls *= 2.3;
+    }
   }
   // light is shadowed harder than the eye sees through: deep valleys
   float tl = exp(-od * SIGMA * mix(1.7, 1.3, clamp(t / 1500.0, 0.0, 1.0)));

@@ -1,0 +1,134 @@
+/**
+ * How sharp the garden is drawn, decided only by what this device measures.
+ *
+ * A scale of 1 is the tier's own resolution (see resize in realm.ts); the
+ * steps only go down from there and back up to it. A few synchronised frames
+ * in the dark warm-up give the first number; after that the render loop
+ * reports the cost of its frames (GPU time where the browser offers a timer,
+ * else every fourth frame waited for until the GPU is done) and the
+ * resolution follows it in 10% steps. Nothing here looks at the GPU's name,
+ * the OS, touch or the screen size. Kept as plain functions so a synthetic
+ * frame trace can drive it in a test.
+ */
+
+/** One step is 10% fewer pixels per side. */
+export const STEP = 0.9
+/** The lowest scale: about half the tier's pixels per side. */
+export const MIN_SCALE = STEP ** 6
+/** Seconds of frames per decision window. */
+export const WINDOW_SECONDS = 2
+/** A window is slow when its 75th percentile frame is this far over the budget. */
+export const SLOW_RATIO = 1.12
+/**
+ * With a GPU timer, the predicted cost of the next step up must stay under
+ * this share of the budget. Part of a frame does not grow with the pixels
+ * (shadows, the cloud march at its own size), so a quarter is taken as fixed.
+ */
+export const ROOM_RATIO = 0.9
+export const PIXEL_SHARE = 0.75
+/** Good windows in a row before a step up is tried (about six seconds). */
+export const GOOD_TO_STEP_UP = 3
+/** Windows to wait after any change, while new targets settle. */
+export const SETTLE_WINDOWS = 1
+/** After a step up that failed, wait this many windows before trying again; doubles each time. */
+export const FIRST_BACKOFF = 8
+export const MAX_BACKOFF = 64
+
+export interface ScaleState {
+  scale: number
+  /** good windows in a row at this scale */
+  good: number
+  /** windows left before the next decision */
+  settle: number
+  /** the scale a step up last failed at, and how long to stay below it */
+  failedAt: number
+  backoff: number
+  wait: number
+  /** the last step was an upward try, still on probation */
+  probing: boolean
+}
+
+export const initialScaleState = (scale = 1): ScaleState => ({
+  scale: snapScale(scale),
+  good: 0,
+  settle: SETTLE_WINDOWS,
+  failedAt: Infinity,
+  backoff: FIRST_BACKOFF,
+  wait: 0,
+  probing: false,
+})
+
+/** The nearest step at or below `s`, within [MIN_SCALE, 1]. */
+export function snapScale(s: number): number {
+  if (!(s < 1)) return 1
+  const n = Math.min(6, Math.ceil(Math.log(s) / Math.log(STEP) - 1e-9))
+  return STEP ** n
+}
+
+/**
+ * The first scale from a measured frame cost at full resolution. The pixel
+ * work scales with the area, so the side scales with the square root; aim a
+ * little under the budget so the first seconds are smooth. Taking all of
+ * the cost as pixel work errs low; the live steps climb back from there.
+ */
+export function initialScale(costMs: number, budgetMs: number): number {
+  if (!(costMs > 0)) return 1
+  return snapScale(Math.sqrt((budgetMs * 0.9) / costMs))
+}
+
+export function percentile(values: readonly number[], p: number): number {
+  if (!values.length) return 0
+  const a = [...values].sort((x, y) => x - y)
+  return a[Math.min(a.length - 1, Math.floor(a.length * p))]!
+}
+
+export interface Window {
+  /** 75th percentile cost of the window's frames, in milliseconds */
+  p75: number
+  /** the time one frame may take at the current frame cap */
+  budget: number
+  /** the cost is the GPU's own (timer query), not the time between frames */
+  timed: boolean
+}
+
+/**
+ * Advance one window. Down quickly when slow, up slowly and only with
+ * evidence: with a GPU timer the cost of the next step is predicted; without
+ * one a step up is tried, and if it fails the same step waits twice as long
+ * before the next try, so a borderline device settles instead of flickering.
+ */
+export function stepScale(state: ScaleState, w: Window): ScaleState {
+  if (state.settle > 0) return { ...state, settle: state.settle - 1 }
+  const wait = Math.max(0, state.wait - 1)
+  if (w.p75 > w.budget * SLOW_RATIO) {
+    if (state.scale <= MIN_SCALE) return { ...state, good: 0, wait, probing: false }
+    // with the GPU's own time the right scale can be computed; frame gaps
+    // only say "too slow": one step, or two when far over
+    const target = w.timed
+      ? Math.min(state.scale * STEP, snapScale(state.scale * Math.sqrt((w.budget * 0.85) / w.p75)))
+      : state.scale * (w.p75 > w.budget * 2 ? STEP * STEP : STEP)
+    const scale = Math.max(MIN_SCALE, snapScale(target + 1e-9))
+    const failed = state.probing
+    return {
+      scale,
+      good: 0,
+      settle: SETTLE_WINDOWS,
+      failedAt: failed ? state.scale : state.failedAt,
+      backoff: failed ? Math.min(MAX_BACKOFF, state.backoff * 2) : state.backoff,
+      wait: failed ? state.backoff : wait,
+      probing: false,
+    }
+  }
+  if (state.scale >= 1) return { ...state, good: 0, wait, probing: false }
+  // one step up draws 1 / 0.81 as many pixels: with the GPU's time the cost
+  // there must still fit; frame gaps cannot show room, only that frames keep up
+  const roomy = w.timed ? w.p75 * (1 - PIXEL_SHARE + PIXEL_SHARE / (STEP * STEP)) < w.budget * ROOM_RATIO : w.p75 <= w.budget * SLOW_RATIO
+  const good = roomy ? state.good + 1 : 0
+  const next = snapScale(state.scale / STEP + 1e-9)
+  const blocked = wait > 0 && next >= state.failedAt - 1e-9
+  if (good >= GOOD_TO_STEP_UP && !blocked) {
+    return { ...state, scale: next, good: 0, settle: SETTLE_WINDOWS, wait, probing: true }
+  }
+  // a step that held for a full window is no longer on probation
+  return { ...state, good, wait, probing: false }
+}
