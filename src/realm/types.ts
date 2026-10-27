@@ -27,6 +27,8 @@ export interface Frame {
 export interface RealmSound {
   // wood on wood: level 0..1 by the speed of the blow, pan -1..1
   knock(level: number, pan: number): void
+  // the shrine bell struck: level 0..1 by the speed of the swing
+  bell(level: number): void
 }
 
 // parts the visitor can point at and click
