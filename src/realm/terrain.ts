@@ -165,32 +165,78 @@ void sampleSet(sampler2D d, sampler2D n, sampler2D a, vec2 uv, out vec3 cd, out 
   ca = mix(texture2D(a, uv).rgb, texture2D(a, uv2).rgb, m);
 }
 ${GRAVEL_GLSL}
-`
 
-const SPLAT_MAP = /* glsl */ `
-{
-  // on slopes the ground plane would stretch the scans downhill; shifting
-  // by the height along the slope's facing keeps their scale on the bank
-  vec2 xz = vWorld.xz - normalize(vWorldNormal).xz * vWorld.y;
-  vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, d3, n3, a3;
-  sampleSet(tSoilD, tSoilN, tSoilA, xz / 2.6, d0, n0, a0);
-  sampleSet(tGravelD, tGravelN, tGravelA, xz / 1.6, d1, n1, a1);
-  gravelDetail(xz, d1, n1, a1);
-  sampleSet(tMossD, tMossN, tMossA, xz / 2.2, d2, n2, a2);
+// the scans laid onto one plane: uv in metres, w the splat weights; the
+// normal comes out in the plane's (u, v, up) frame
+void groundAt(vec2 uv, vec4 w, out vec3 dif, out vec3 tn, out vec3 arm, out vec3 d3, out vec3 n3) {
+  vec3 d0, n0, a0, d1, n1, a1, d2, n2, a2, a3;
+  sampleSet(tSoilD, tSoilN, tSoilA, uv / 2.6, d0, n0, a0);
+  sampleSet(tGravelD, tGravelN, tGravelA, uv / 1.6, d1, n1, a1);
+  gravelDetail(uv, d1, n1, a1);
+  sampleSet(tMossD, tMossN, tMossA, uv / 2.2, d2, n2, a2);
   // the scan is a forest floor with moss among the leaves: keep its detail
   // as brightness and colour it the deep, quiet green of garden moss
   d2 = vec3(dot(d2, vec3(0.2126, 0.7152, 0.0722))) * vec3(0.4, 0.55, 0.24) * 1.55;
-  sampleSet(tPebD, tPebN, tPebA, xz / 1.4, d3, n3, a3);
-  vec4 w = vSplat;
+  sampleSet(tPebD, tPebN, tPebA, uv / 1.4, d3, n3, a3);
   float soil = max(1.0 - w.x - w.y - w.z, 0.0);
   // height-sharpened blend: crevices (dark ambient occlusion) lose first
   vec4 h = vec4(soil * (0.4 + a0.r), w.x * (0.4 + a1.r), w.y * (0.4 + a2.r), w.z * (0.4 + a3.r));
   float hm = max(max(h.x, h.y), max(h.z, h.w));
   h = max(h - hm + 0.18, 0.0);
   h /= max(h.x + h.y + h.z + h.w, 1e-4);
-  vec3 dif = d0 * h.x + d1 * h.y + d2 * h.z + d3 * h.w;
-  splatNormal = normalize(n0 * h.x + n1 * h.y + n2 * h.z + n3 * h.w + vec3(0.0, 0.0, 1e-3));
-  splatArm = a0 * h.x + a1 * h.y + a2 * h.z + a3 * h.w;
+  dif = d0 * h.x + d1 * h.y + d2 * h.z + d3 * h.w;
+  tn = n0 * h.x + n1 * h.y + n2 * h.z + n3 * h.w + vec3(0.0, 0.0, 1e-3);
+  arm = a0 * h.x + a1 * h.y + a2 * h.z + a3 * h.w;
+}
+
+// axis 1 is the ground plane (x, z) the lawn and gravel are laid on; 0 and 2
+// stand upright, across the face and up
+void planeOf(int axis, vec3 p, out vec2 uv, out vec3 u, out vec3 v) {
+  if (axis == 1) { uv = p.xz; u = vec3(1.0, 0.0, 0.0); v = vec3(0.0, 0.0, 1.0); }
+  else if (axis == 0) { uv = p.zy; u = vec3(0.0, 0.0, 1.0); v = vec3(0.0, 1.0, 0.0); }
+  else { uv = p.xy; u = vec3(1.0, 0.0, 0.0); v = vec3(0.0, 1.0, 0.0); }
+}
+
+vec3 planeNormal(vec3 tn, vec3 N, vec3 u, vec3 v) {
+  vec3 T = u - N * dot(N, u);
+  vec3 B = v - N * dot(N, v);
+  T *= inversesqrt(max(dot(T, T), 1e-8));
+  B *= inversesqrt(max(dot(B, B), 1e-8));
+  return T * tn.x - B * tn.y + N * tn.z;
+}
+`
+
+const SPLAT_MAP = /* glsl */ `
+{
+  // Biplanar: the face's two strongest axes each get the scans on their own
+  // plane, so steep banks and mounds show them at true scale instead of
+  // stretched down the slope. Flat ground uses the ground plane alone.
+  vec3 N = normalize(vWorldNormal);
+  vec3 an = abs(N);
+  int ma = an.x > an.y && an.x > an.z ? 0 : (an.y > an.z ? 1 : 2);
+  int mi = an.x < an.y && an.x < an.z ? 0 : (an.y < an.z ? 1 : 2);
+  int me = 3 - ma - mi;
+  vec2 bw = clamp((vec2(an[ma], an[me]) - 0.5773) / (1.0 - 0.5773), 0.0, 1.0);
+  bw /= max(bw.x + bw.y, 1e-4);
+  vec2 uv; vec3 pu, pv, tn, d3, n3;
+  vec3 dif, arm, wn, wn3;
+  planeOf(ma, vWorld, uv, pu, pv);
+  groundAt(uv, vSplat, dif, tn, arm, d3, n3);
+  wn = planeNormal(tn, N, pu, pv) * bw.x;
+  wn3 = planeNormal(n3, N, pu, pv) * bw.x;
+  dif *= bw.x; arm *= bw.x; d3 *= bw.x;
+  if (bw.y > 0.01) {
+    vec3 difB, armB, d3B, n3B;
+    planeOf(me, vWorld, uv, pu, pv);
+    groundAt(uv, vSplat, difB, tn, armB, d3B, n3B);
+    wn += planeNormal(tn, N, pu, pv) * bw.y;
+    wn3 += planeNormal(n3B, N, pu, pv) * bw.y;
+    dif += difB * bw.y; arm += armB * bw.y; d3 += d3B * bw.y;
+  }
+  vec2 xz = vWorld.xz;
+  vec4 w = vSplat;
+  splatNormal = normalize(wn);
+  splatArm = arm;
   // a broad tonal variation so the lawn floor never reads as one tile
   float macro = tNoise(xz * 0.07) * 0.6 + tNoise(xz * 0.23) * 0.4;
   dif *= mix(0.82, 1.12, macro);
@@ -202,7 +248,7 @@ const SPLAT_MAP = /* glsl */ `
   float cs = dot(cd, vec2(${(-CASCADE.dirZ).toFixed(3)}, ${CASCADE.dirX.toFixed(3)}));
   float cut = (1.0 - smoothstep(0.5, 0.75, abs(cs))) * smoothstep(-2.45, -2.25, cf) * (1.0 - smoothstep(-0.35, -0.15, cf));
   dif = mix(dif, d3 * vec3(0.24, 0.23, 0.21), cut);
-  splatNormal = normalize(mix(splatNormal, n3, cut));
+  splatNormal = normalize(mix(splatNormal, normalize(wn3), cut));
   splatArm.g = mix(splatArm.g, 0.4, cut);
   // phones draw fewer blades, so their floor is short turf in its own right
   dif = mix(dif, vec3(0.075, 0.115, 0.035) * mix(0.8, 1.2, macro), w.w * uLawnCover);
@@ -212,11 +258,7 @@ const SPLAT_MAP = /* glsl */ `
 
 const SPLAT_NORMAL = /* glsl */ `
 {
-  vec3 N = normalize(vWorldNormal);
-  vec3 T = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
-  vec3 B = cross(T, N);
-  vec3 wn = normalize(T * splatNormal.x - B * splatNormal.y + N * splatNormal.z);
-  normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
+  normal = normalize((viewMatrix * vec4(splatNormal, 0.0)).xyz);
 }
 `
 
