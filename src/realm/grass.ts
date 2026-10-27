@@ -3,6 +3,7 @@ import type { Frame, RealmPart, Tier } from './types'
 import { ISLAND_RX, ISLAND_RZ, AZALEAS, CHERRY, LANTERNS, MAPLES, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
 import { WIND_GLSL, realmUniforms } from './atmosphere'
 import { dressFor } from './season'
+import { surfaceHeight } from './surface'
 import type { GrassDress } from './halloween/props-pumpkins'
 
 // The lawn: instanced geometry blades in square tiles, so the renderer can cull
@@ -516,6 +517,11 @@ export function grassTiles(tier: Tier): GrassTile[] {
   const z0 = -ISLAND_RZ * 1.2
   const nx = Math.ceil((ISLAND_RX * 2.4) / size)
   const nz = Math.ceil((ISLAND_RZ * 2.4) / size)
+  // blades stand on the ground as drawn, which rounds down over the lip
+  const ground = (x: number, z: number) => {
+    const h = surfaceHeight(tier, x, z)
+    return Number.isNaN(h) ? groundHeight(x, z) : h
+  }
 
   // The visitor stays on the path, so the lawn near it gets more of the
   // budget than the far margins.
@@ -614,7 +620,7 @@ export function grassTiles(tier: Tier): GrassTile[] {
       const tz = z0 + iz * size
       const cx = tx + size / 2
       const cz = tz + size / 2
-      const cy = groundHeight(cx, cz)
+      const cy = ground(cx, cz)
       const roots = new Float32Array(target * 4)
       const shapes = new Float32Array(target * 4)
       const tones = new Float32Array(target * 4)
@@ -663,7 +669,7 @@ export function grassTiles(tier: Tier): GrassTile[] {
           // stopping at full height
           const fade = inset(bx, bz)
           if (bw <= 0.02 || rand() > Math.min(1, bw * (1 + 1.5 * long)) * (0.2 + 0.8 * fade)) continue
-          const by = groundHeight(bx, bz) - 0.012
+          const by = ground(bx, bz) - 0.012
           const height = Math.min(0.5, tuftHeight * (0.75 + rand() * 0.5) * (0.35 + 0.65 * fade))
           const yaw = tuft === 1 ? rand() * Math.PI * 2 : a + (rand() - 0.5) * 1.2
           const width = (0.0055 + rand() * 0.0045) * (1 + height * 1.6) * (1 + loose * 0.3) * s.widen * (s.cover + (1 - s.cover) * loose)
