@@ -1,6 +1,6 @@
 // fails when an inline script in the built index.html is not allowed by its
 // hash in vercel.json's script-src, so the page never ships with a blocked
-// script (a checkout with CRLF line ends changes the hash)
+// script; hashed as browsers hash it, after the parser turns CRLF into LF
 // usage: node scripts/check-csp.mjs [dist folder]
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -13,9 +13,9 @@ const allowed = policy.match(/script-src [^;]*/)?.[0] ?? ''
 let blocked = 0
 for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
   if (/\bsrc=/.test(attrs) || /type="application\/ld\+json"/.test(attrs)) continue
-  const hash = `'sha256-${createHash('sha256').update(body, 'utf8').digest('base64')}'`
+  const hash = `'sha256-${createHash('sha256').update(body.replace(/\r\n?/g, '\n'), 'utf8').digest('base64')}'`
   if (!allowed.includes(hash)) {
-    console.error(`inline script not allowed by vercel.json's script-src: ${hash}${body.includes('\r') ? ' (it has CRLF line ends)' : ''}`)
+    console.error(`inline script not allowed by vercel.json's script-src: ${hash}`)
     blocked++
   }
 }

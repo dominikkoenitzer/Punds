@@ -85,8 +85,8 @@ describe('the start picture script in index.html', () => {
   })
 
   it('is allowed by its hash in the content policy', async () => {
-    // hashed as checked out: a CRLF checkout would ship a blocked script
-    const body = new TextEncoder().encode(inline)
+    // browsers hash the script after the parser turns CRLF into LF
+    const body = new TextEncoder().encode(inline.replace(/\r\n?/g, '\n'))
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body))
     const hash = `'sha256-${btoa(String.fromCharCode(...digest))}'`
     const policy = (JSON.parse(vercel) as { headers: { headers: { key: string; value: string }[] }[] }).headers
