@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
 import { LINKS } from '../links'
 import { SEASON, loadDress } from '../realm/season'
+import { pressSound } from '../realm/soundSwitch'
 import './Sando.css'
 
 // The page is the realm: a full-screen canvas that fades straight into the
@@ -88,20 +89,14 @@ export default function Sando() {
     }
   }, [])
 
-  const toggleSound = () => {
-    const next = !(realmRef.current?.sound ?? sound)
-    realmRef.current?.setSound(next)
-    setSound(next)
-  }
+  const toggleSound = () => setSound(pressSound(realmRef.current))
 
   // M switches the sound too; held keys and shortcuts with modifiers do not
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key.toLowerCase() !== 'm') return
-      const next = !(realmRef.current?.sound ?? false)
-      realmRef.current?.setSound(next)
-      setSound(next)
+      setSound(pressSound(realmRef.current))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
