@@ -284,8 +284,8 @@ export class Realm {
     }
   }
 
-  // a phone short of memory may take the GPU away; three.js uploads
-  // everything again once it is back, and if it stays gone the page builds
+  // a phone short of memory may take the GPU away; once it is back the
+  // scene is uploaded and drawn again, and if it stays gone the page builds
   // the scene anew rather than leave an empty canvas
   private onContextLost = (e: Event) => {
     e.preventDefault()
@@ -304,7 +304,14 @@ export class Realm {
     // queries of the lost context never answer
     this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
     this.costs = []
-    if (this.shown && !this.disposed) this.raf = requestAnimationFrame(this.tick)
+    if (this.disposed) return
+    // three.js uploads what it holds a copy of; what the GPU drew itself is gone and is drawn again
+    this.renderer.shadowMap.needsUpdate = true
+    if (this.sky) {
+      this.sky.relight()
+      this.scene.environment = this.sky.environment
+    }
+    if (this.shown) this.raf = requestAnimationFrame(this.tick)
   }
 
   private onPointerMove = (e: PointerEvent) => {
