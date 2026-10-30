@@ -82,6 +82,8 @@ export interface SkyResult {
   panorama: THREE.Texture
   k: number
   shift: number
+  // draws the image light again after the GPU came back; environment is then the new one
+  relight(): void
   dispose(): void
 }
 
@@ -176,7 +178,8 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
   env.mapping = THREE.EquirectangularReflectionMapping
   env.colorSpace = THREE.LinearSRGBColorSpace
   env.needsUpdate = true
-  const environment = pmrem.fromEquirectangular(env).texture
+  // the light is drawn on the GPU, so the panorama stays in memory to draw it again if the GPU drops it
+  let light = pmrem.fromEquirectangular(env)
   pmrem.dispose()
   env.dispose()
   hdr.dispose()
@@ -208,17 +211,27 @@ export async function buildSky(renderer: THREE.WebGLRenderer, tier: Tier, sunCol
     mesh.updateMatrixWorld()
   }
 
-  return {
+  const sky: SkyResult = {
     mesh,
-    environment,
+    environment: light.texture,
     panorama: bg,
     k: info.k,
     shift,
+    relight() {
+      const again = new THREE.PMREMGenerator(renderer)
+      const drawn = again.fromEquirectangular(env)
+      again.dispose()
+      env.dispose()
+      light.dispose()
+      light = drawn
+      sky.environment = light.texture
+    },
     dispose() {
       mesh.geometry.dispose()
       mat.dispose()
       bg.dispose()
-      environment.dispose()
+      light.dispose()
     },
   }
+  return sky
 }
