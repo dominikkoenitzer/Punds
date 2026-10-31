@@ -172,7 +172,11 @@ export class Realm {
   // environment is set, so each is built for it only once
   private pendingCompile: RealmPart[] | null = null
   private skyResolve: (sky: SkyResult) => void = () => {}
-  readonly skyReady = new Promise<SkyResult>((resolve) => (this.skyResolve = resolve))
+  private skyReject: (error: unknown) => void = () => {}
+  readonly skyReady = new Promise<SkyResult>((resolve, reject) => {
+    this.skyResolve = resolve
+    this.skyReject = reject
+  })
   private warming = false
   private lidColor = new THREE.Color()
   private mouse = false
@@ -594,6 +598,11 @@ export class Realm {
       const pending = this.pendingCompile ?? []
       this.pendingCompile = null
       for (const p of pending) this.prepare(p)
+    }).catch((error: unknown) => {
+      // a build step waiting for the sky fails with it; start reports it below, also when no step waits
+      this.skyReady.catch(() => {})
+      this.skyReject(error)
+      throw error
     })
     await Promise.race([sunKnown, sky])
     if (this.disposed) return
