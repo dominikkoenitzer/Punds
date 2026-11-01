@@ -494,12 +494,15 @@ export class Realm {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
     const budget = NO_BUDGET ? Infinity : Math.sqrt(PIXEL_BUDGET[this.tier] / Math.max(1, w * h))
-    this.dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP[this.tier], budget) * this.dprScale
-    this.renderer.setPixelRatio(this.dpr)
+    // the canvas at the screen's own density; the scene at the tier's share
+    // of it, less what this device measured, scaled up in the last pass
+    const native = window.devicePixelRatio || 1
+    this.dpr = Math.min(native, DPR_CAP[this.tier], budget) * this.dprScale
+    this.renderer.setPixelRatio(native)
     this.renderer.setSize(w, h, false)
     this.renderer.domElement.style.width = '100%'
     this.renderer.domElement.style.height = '100%'
-    this.pipeline.setSize(w, h, this.dpr)
+    this.pipeline.setSize(w, h, this.dpr, this.dpr / native)
     this.camera.aspect = w / h
     // keep a minimum horizontal field on tall phone screens
     const vMin = 40

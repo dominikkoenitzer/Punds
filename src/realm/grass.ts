@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Frame, RealmPart, Tier } from './types'
 import { ISLAND_RX, ISLAND_RZ, AZALEAS, CHERRY, LANTERNS, MAPLES, fbm2, groundHeight, islandSdf, lawnWeight, pondSdf, rng } from './layout'
-import { WIND_GLSL, realmUniforms } from './atmosphere'
+import { WIND_GLSL, realmUniforms, sceneSize } from './atmosphere'
 import { dressFor } from './season'
 import { surfaceHeight } from './surface'
 import type { GrassDress } from './halloween/props-pumpkins'
@@ -364,7 +364,6 @@ export class Grass implements RealmPart {
   private readonly pointer = { value: new THREE.Vector4(0, -100, 0, 0) }
   private readonly fade: { value: THREE.Vector2 }
   private readonly viewHeight = { value: 1080 }
-  private readonly bufferSize = new THREE.Vector2()
   private readonly pointerTarget = new THREE.Vector3()
   private pointerActive = 0
   private pointerSeen = false
@@ -410,10 +409,9 @@ export class Grass implements RealmPart {
     }
   }
 
-  // blade size in pixels needs the drawing buffer height, which only the
-  // renderer knows
-  private readonly readViewHeight = (renderer: THREE.WebGLRenderer) => {
-    this.viewHeight.value = renderer.getDrawingBufferSize(this.bufferSize).y
+  // blade size in pixels needs the height the scene is drawn at
+  private readonly readViewHeight = () => {
+    this.viewHeight.value = sceneSize.y
   }
 
   dispose(): void {
