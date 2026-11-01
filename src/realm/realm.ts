@@ -8,7 +8,7 @@ import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { FrameTimer, GpuTimer } from './gpuTimer'
-import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, stepScale, type ScaleState } from './quality'
+import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, rememberedLevel, stepScale, type ScaleState } from './quality'
 import { dress } from './season'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
@@ -26,8 +26,9 @@ export interface RealmOptions {
   // what the pointer is over: the page draws its own small cursor, which
   // grows over anything that can be clicked and carries a name where one fits
   onCursor?: (state: CursorState) => void
-  // the device cannot carry the scene even at the lowest step: the page
-  // should drop it for the still picture and the written links
+  // the device cannot carry this much garden even at the lowest resolution:
+  // the page builds a lighter one, or shows the still picture and the
+  // written links when it is already the lightest
   onTooSlow?: () => void
   // the GPU took the scene away and has not given it back: the page should
   // build it again
@@ -66,6 +67,9 @@ export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number }
   if (nav.connection?.saveData) return 'phone'
   if ((nav.deviceMemory ?? 8) <= 4 || (nav.hardwareConcurrency || 8) <= 4) return 'phone'
+  // a lighter level this device fell back to before (see quality.ts)
+  const remembered = rememberedLevel()
+  if (remembered) return remembered
   if (/RTX|RX [67]\d{3}|Radeon Pro|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra'
   return 'high'
 }
@@ -987,10 +991,12 @@ export class Realm {
     this.lastWindow = { p75: Math.round(p75 * 100) / 100, budget: Math.round(budget * 100) / 100, timed }
     const next = stepScale(this.quality, this.lastWindow)
     // still far too slow at the lowest scale in the first half minute: this
-    // device should not be asked to carry the scene at all
+    // device should not be asked to carry this much garden
     if (next.scale <= MIN_SCALE + 1e-9 && this.quality.scale <= MIN_SCALE + 1e-9 && p75 > 1000 / 14 && now - this.readyAt < 30000) {
       this.tooSlow++
       if (this.tooSlow >= 2) this.opts.onTooSlow?.()
+    } else {
+      this.tooSlow = 0
     }
     if (next.scale !== this.quality.scale) {
       // the steps only scale the resolution; the look stays the same
