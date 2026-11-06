@@ -29,9 +29,10 @@ export function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 }
 
-export function write(cwd, file, body) {
+export function write(cwd, file, body, mode) {
   fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true })
   fs.writeFileSync(path.join(cwd, file), body)
+  if (mode !== undefined) fs.chmodSync(path.join(cwd, file), mode)
 }
 
 // writes, or with null removes, each file, and commits them

@@ -90,9 +90,10 @@ describe('syncSeasons', { timeout: 30_000 }, () => {
     git(theirs, 'checkout', '--quiet', 'halloween')
     const raced = commit(theirs, { 'src/realm/seasons/halloween/late.ts': 'late\n' }, 'late')
     // someone pushes to the season while the sync is merging: a pre-push hook
-    // in the sync's checkout stands in for that moment
+    // in the sync's checkout stands in for that moment (outside Windows, git
+    // skips a hook that is not executable)
     const to = theirs.replace(/\\/g, '/')
-    write(clone, '.git/hooks/pre-push', `#!/bin/sh\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\ngit -C "${to}" push --quiet origin halloween\n`)
+    write(clone, '.git/hooks/pre-push', `#!/bin/sh\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\ngit -C "${to}" push --quiet origin halloween\n`, 0o755)
     const results = syncSeasons({ cwd: clone, branches: ['halloween'] })
     expect(results[0].status).toBe('failed')
     expect(tip(remote, 'halloween')).toBe(raced)
