@@ -16,7 +16,7 @@ export const light: LightDress = {
   shaftColor: new THREE.Color(0.8, 0.62, 0.55),
   shafts: 0.06,
   bloom: 0.28,
-  saturation: 0.9,
+  saturation: 0.8,
   // haze that hangs low over the lawn and thins quickly above head height
   fogDensity: 0.016,
   fogHeight: 0,
