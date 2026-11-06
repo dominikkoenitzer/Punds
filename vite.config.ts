@@ -6,6 +6,9 @@ export default defineConfig({
   plugins: [react(), seasons()],
   // the bake worker shares the core parts, and with them season.ts
   worker: {
+    // a module worker, as bake.ts starts it: season.ts loads each season's
+    // code as its own chunk, which a classic worker bundle cannot split
+    format: 'es',
     plugins: () => [seasons()],
   },
   server: {
