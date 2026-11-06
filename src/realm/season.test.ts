@@ -243,7 +243,7 @@ describe('the clock it reads', () => {
     const instant = new Date(Date.UTC(2026, 10, 11, 23, 30))
     expect(new Intl.DateTimeFormat('en', { timeZone: tz, day: 'numeric' }).format(instant)).toBe(String(instant.getDate()))
     expect(pickSeason(instant, '')).toBe(expected)
-    expect(posterSeason(instant, '')).toBe(expected)
+    expect(poster(instant, '', SEASONS).season).toBe(expected ?? 'none')
   })
 })
 
