@@ -29,7 +29,8 @@ function other(remote) {
   return dir
 }
 
-describe('syncSeasons', () => {
+// each test builds real repositories; git starts slowly on some systems
+describe('syncSeasons', { timeout: 30_000 }, () => {
   it('merges a fix on main into every season and pushes it', () => {
     const { remote, clone } = setUp()
     const fix = commit(clone, { 'src/realm/pond.ts': 'pond, fixed\n' }, 'fix')

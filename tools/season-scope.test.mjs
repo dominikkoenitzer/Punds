@@ -70,7 +70,8 @@ describe('parseRaw', () => {
   })
 })
 
-describe('checkScope', () => {
+// each test builds a real repository; git starts slowly on some systems
+describe('checkScope', { timeout: 30_000 }, () => {
   function seasonBranch() {
     const { clone } = remoteAndClone()
     git(clone, 'checkout', '--quiet', '-b', 'halloween')
