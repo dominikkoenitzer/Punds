@@ -6,6 +6,9 @@ import { seasons as seasonsPlugin } from '../../tools/seasons.mjs'
 import { type Calendar, type Dress, SEASONS, fetchDress, pickSeason, posterFolder, wornSeason } from './season'
 
 const day = (month: number, date: number, hour = 12, minute = 0, second = 0, ms = 0) => new Date(2026, month, date, hour, minute, second, ms)
+// Halloween alone, for the checks of its own days: they must hold however
+// many seasons join it
+const HALLOWEEN = { halloween: SEASONS.halloween }
 
 // a made-up set that covers what a calendar can say: a range over the new
 // year, a holiday on top of it, one day long, two seasons tied
@@ -71,12 +74,12 @@ describe('pickSeason', () => {
   })
 
   it('wears nothing on the days around it', () => {
-    expect(pickSeason(day(9, 26, 23), '')).toBeNull()
-    expect(pickSeason(new Date(2026, 10, 12, 0, 0, 0), '')).toBeNull()
-    expect(pickSeason(day(10, 12, 0), '')).toBeNull()
-    expect(pickSeason(day(0, 1), '')).toBeNull()
-    expect(pickSeason(day(11, 31), '')).toBeNull()
-    expect(pickSeason(day(8, 30), '')).toBeNull()
+    expect(pickSeason(day(9, 26, 23), '', HALLOWEEN)).toBeNull()
+    expect(pickSeason(new Date(2026, 10, 12, 0, 0, 0), '', HALLOWEEN)).toBeNull()
+    expect(pickSeason(day(10, 12, 0), '', HALLOWEEN)).toBeNull()
+    expect(pickSeason(day(0, 1), '', HALLOWEEN)).toBeNull()
+    expect(pickSeason(day(11, 31), '', HALLOWEEN)).toBeNull()
+    expect(pickSeason(day(8, 30), '', HALLOWEEN)).toBeNull()
   })
 
   it('turns over at the stroke of midnight', () => {
@@ -89,13 +92,13 @@ describe('pickSeason', () => {
   it('lets the address override the date both ways', () => {
     expect(pickSeason(day(5, 1), '?season=halloween')).toBe('halloween')
     expect(pickSeason(day(9, 30), '?season=none')).toBeNull()
-    expect(pickSeason(day(9, 30), '?season=spring')).toBe('halloween')
+    expect(pickSeason(day(9, 30), '?season=spring', HALLOWEEN)).toBe('halloween')
   })
 
   it('goes by the date for a name it does not know, however odd', () => {
     for (const odd of ['', 'Halloween', 'constructor', '__proto__', 'hasOwnProperty', 'toString', '../halloween', 'none ']) {
-      expect(pickSeason(day(9, 30), `?season=${encodeURIComponent(odd)}`)).toBe('halloween')
-      expect(pickSeason(day(5, 1), `?season=${encodeURIComponent(odd)}`)).toBeNull()
+      expect(pickSeason(day(9, 30), `?season=${encodeURIComponent(odd)}`, HALLOWEEN)).toBe('halloween')
+      expect(pickSeason(day(5, 1), `?season=${encodeURIComponent(odd)}`, HALLOWEEN)).toBeNull()
     }
   })
 
@@ -175,11 +178,11 @@ describe('wornSeason', () => {
   })
 
   it('decides itself when the script left nothing it knows', () => {
-    expect(wornSeason(undefined, day(9, 30), '')).toBe('halloween')
-    expect(wornSeason(undefined, day(5, 1), '')).toBeNull()
+    expect(wornSeason(undefined, day(9, 30), '', HALLOWEEN)).toBe('halloween')
+    expect(wornSeason(undefined, day(5, 1), '', HALLOWEEN)).toBeNull()
     for (const odd of ['', 'spring', 'constructor', '__proto__', 'Halloween']) {
-      expect(wornSeason(odd, day(9, 30), '')).toBe('halloween')
-      expect(wornSeason(odd, day(5, 1), '')).toBeNull()
+      expect(wornSeason(odd, day(9, 30), '', HALLOWEEN)).toBe('halloween')
+      expect(wornSeason(odd, day(5, 1), '', HALLOWEEN)).toBeNull()
     }
   })
 })
