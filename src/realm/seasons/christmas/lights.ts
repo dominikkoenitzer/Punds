@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { EMA_RACK, TORII_SPAN, TORII_Z, groundHeight } from '../../layout'
-import type { Frame, RealmPart, Tier } from '../../types'
+import type { RealmPart, Tier } from '../../types'
 
 // A string of small warm bulbs, the plain kind a caretaker puts up for the
 // holidays: along the front eave of the plaque rack in three short loops, and
@@ -93,7 +93,7 @@ class Lights implements RealmPart {
     }
   }
 
-  update(_frame: Frame): void {}
+  update(): void {}
 
   dispose(): void {
     for (const d of this.disposables) d.dispose()
