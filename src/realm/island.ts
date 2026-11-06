@@ -141,7 +141,7 @@ export async function buildIsland(realm: Realm): Promise<void> {
   const hiddenFromPond: THREE.Object3D[] = []
   let sky = realm.skyInfo
   if (sky) hiddenFromClouds.push(sky.mesh)
-  const steps: (() => Promise<RealmPart> | RealmPart)[] = [
+  const steps: (() => Promise<RealmPart | null> | RealmPart | null)[] = [
     async () => {
       // first, so the clouds' programs build and warm up (see Skyscape.warm)
       // while the ground's textures load; the sky itself arrives first
@@ -199,8 +199,16 @@ export async function buildIsland(realm: Realm): Promise<void> {
       hiddenFromPond.push(...cascade.unreflected)
       return cascade
     },
-    // what the season adds
-    ...(dress()?.parts ?? []).map((make) => () => make(tier)),
+    // what the season adds; a part of it that fails to build is left out
+    // rather than taking the garden with it
+    ...(dress()?.parts ?? []).map((make, n) => async () => {
+      try {
+        return await make(tier)
+      } catch (err) {
+        console.warn(`season ${dress()?.name}: part ${n} did not build`, err)
+        return null
+      }
+    }),
   ]
   // ?debug&skip=2,7 leaves build steps out, to measure what each one costs
   const params = new URLSearchParams(location.search)
@@ -210,6 +218,7 @@ export async function buildIsland(realm: Realm): Promise<void> {
     await yieldToMain()
     const t0 = performance.now()
     const part = await make()
+    if (!part) continue
     const t1 = performance.now()
     realm.add(part)
     realm.buildTimes.push([`${index} ${part.constructor.name}`, Math.round(t1 - t0)])

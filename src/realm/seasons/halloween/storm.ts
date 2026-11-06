@@ -1,6 +1,7 @@
 import * as THREE from 'three'
-import { dress } from '../season'
-import type { Frame, RealmPart, Tier } from '../types'
+import { dress } from '../../season'
+import type { Frame, RealmPart, Tier } from '../../types'
+import type { CloudDress } from '../../skyscape'
 import { MOON_RADIUS } from './sky'
 import { announceFlash, hallow } from './state'
 
@@ -37,21 +38,6 @@ const BANKS: readonly [number, number, number][] = [
 // What Skyscape takes from the storm: rewrites of its programs' sources (only
 // when the season is worn), the uniforms they add, and the night's colours
 // for the cloud light (the moon on the tops, the violet of the shade).
-export interface CloudDress {
-  sky(src: string): string
-  march(src: string): string
-  wisp(src: string): string
-  uniforms(): Record<string, THREE.IUniform>
-  sunColor: THREE.Color
-  shadowColor: THREE.Color
-  // the share of the garden's light the distant islands and ranges take: the
-  // garden's key is lifted so it reads at night, the far world keeps the
-  // moon's own dimmer light
-  farLight: number
-  // how sudden the clouds' light is right now, 0..1: the trace's history
-  // is let go by that much, so lightning shows at once
-  sudden?(): number
-}
 
 const stormUniforms = {
   uStormFlash: hallow.uFlash,

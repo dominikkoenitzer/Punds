@@ -3,7 +3,23 @@ import { SUN_DIRECTION, realmUniforms } from './atmosphere'
 import { POND_BOUNDS, POND_LEVEL, groundHeight, islandSdf, noise2, pondSdf, rng } from './layout'
 import type { Frame, RealmPart, Tier } from './types'
 import { dressFor } from './season'
-import type { PondDress } from './halloween/pond'
+
+// What a season may do to the pond: rewrite its programs, change its
+// materials before they compile, and move with the frame.
+export interface PondDress {
+  // the ripple simulation's fragment shader, rewritten
+  sim(fragment: string): string
+  // the water's material, before it first compiles
+  water(material: THREE.ShaderMaterial): void
+  // the wet ring on the banks
+  wet(fragment: string): string
+  // the koi's program, after the living koi's own changes, and their mesh
+  koi(shader: THREE.WebGLProgramParametersWithUniforms): void
+  koiMesh(mesh: THREE.InstancedMesh): void
+  koiKey: string
+  // each frame: the moon's light on the pond and the rain on it
+  update(frame: Frame, tier: Tier, drop: (x: number, z: number, radius: number, strength: number) => void): void
+}
 
 // The koi pond: the water surface with its planar reflection and ripple
 // simulation and the koi. The host's terrain draws the bed; everything wet is here.

@@ -1,7 +1,8 @@
 import * as THREE from 'three'
-import { lawnWeight, rng } from '../layout'
-import { realmUniforms } from '../atmosphere'
-import type { Frame, RealmPart, Tier } from '../types'
+import { lawnWeight, rng } from '../../layout'
+import { realmUniforms } from '../../atmosphere'
+import type { Frame, RealmPart, Tier } from '../../types'
+import type { GrassDress } from '../../grass'
 import { PUMPKINS, surfaceY, type PumpkinSpot } from './props-place'
 
 // Carved pumpkins with a candle inside. Each shell is a ribbed, slightly
@@ -53,13 +54,6 @@ export const candleUniforms = {
 // What the lawn takes from the candles: each blade near a pumpkin is lit by
 // its flame, per vertex, so the pool of light climbs the blades instead of
 // lying flat under them. The same breath as the painted pool.
-export interface GrassDress {
-  uniforms: Record<string, THREE.IUniform>
-  vertexPars: string
-  vertex: string
-  fragmentPars: string
-  fragment: string
-}
 
 const POOL_SLOTS = 7
 

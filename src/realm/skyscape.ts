@@ -4,8 +4,25 @@ import { loadPbr, pbrMaterial } from './assets'
 import { SUN_DIRECTION, realmUniforms } from './atmosphere'
 import { fbm2, rng } from './layout'
 import { dressFor } from './season'
-import type { CloudDress } from './halloween/storm'
 import type { Frame, RealmPart, Tier } from './types'
+
+// What a season may give the clouds: rewrites of their programs' sources,
+// the uniforms those add, and the colours of the cloud light.
+export interface CloudDress {
+  sky(src: string): string
+  march(src: string): string
+  wisp(src: string): string
+  uniforms(): Record<string, THREE.IUniform>
+  sunColor: THREE.Color
+  shadowColor: THREE.Color
+  // the share of the garden's light the distant islands and ranges take: the
+  // garden's key is lifted so it reads at night, the far world keeps the
+  // moon's own dimmer light
+  farLight: number
+  // how sudden the clouds' light is right now, 0..1: the trace's history
+  // is let go by that much, so lightning shows at once
+  sudden?(): number
+}
 
 // The sky world around the island: a raymarched sea of cumulus far below,
 // towering banks on the horizon, thin wisps past the rim and a few small
