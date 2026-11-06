@@ -1525,14 +1525,16 @@ export class Shrine implements RealmPart {
     return mat
   }
 
-  // a pull on the bell rope
-  ring(motion: number): void {
-    this.swing.ring(motion)
+  // a pull on the bell rope toward one side, -1 to 1
+  ring(push: number, motion: number): void {
+    this.swing.ring(push, motion)
   }
 
   update(frame: Frame): void {
     if (!this.swing.moving) return
     this.swing.step(frame.dt)
+    const blow = this.swing.takeStrike()
+    if (blow > 0) frame.sound.bell(blow)
     this.ringer.rotation.z = this.swing.bell
     this.ropeArm.rotation.z = this.swing.rope - this.swing.bell
   }

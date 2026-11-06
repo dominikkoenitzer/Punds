@@ -111,6 +111,8 @@ export class Realm {
   private drag: { x: number; y: number; moved: boolean } | null = null
   private hoveredPlace: Place | null = null
   private lastX = 0
+  private lastT = 0
+  private dragVx = 0 // the pointer's sideways speed in pixels a millisecond
   private baseFov = 50
   private cursorKey = ''
   private lastY = 0
@@ -170,7 +172,11 @@ export class Realm {
   // environment is set, so each is built for it only once
   private pendingCompile: RealmPart[] | null = null
   private skyResolve: (sky: SkyResult) => void = () => {}
-  readonly skyReady = new Promise<SkyResult>((resolve) => (this.skyResolve = resolve))
+  private skyReject: (error: unknown) => void = () => {}
+  readonly skyReady = new Promise<SkyResult>((resolve, reject) => {
+    this.skyResolve = resolve
+    this.skyReject = reject
+  })
   private warming = false
   private lidColor = new THREE.Color()
   private mouse = false
@@ -282,8 +288,8 @@ export class Realm {
     }
   }
 
-  // a phone short of memory may take the GPU away; three.js uploads
-  // everything again once it is back, and if it stays gone the page builds
+  // a phone short of memory may take the GPU away; once it is back the
+  // scene is uploaded and drawn again, and if it stays gone the page builds
   // the scene anew rather than leave an empty canvas
   private onContextLost = (e: Event) => {
     e.preventDefault()
@@ -302,7 +308,14 @@ export class Realm {
     // queries of the lost context never answer
     this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
     this.costs = []
-    if (this.shown && !this.disposed) this.raf = requestAnimationFrame(this.tick)
+    if (this.disposed) return
+    // three.js uploads what it holds a copy of; what the GPU drew itself is gone and is drawn again
+    this.renderer.shadowMap.needsUpdate = true
+    if (this.sky) {
+      this.sky.relight()
+      this.scene.environment = this.sky.environment
+    }
+    if (this.shown) this.raf = requestAnimationFrame(this.tick)
   }
 
   private onPointerMove = (e: PointerEvent) => {
@@ -322,6 +335,9 @@ export class Realm {
       this.look.setAim(this.pointerNdc.x, this.pointerNdc.y)
       if (Math.abs(this.pointerNdc.x) > 0.3) this.opts.onMove?.()
     }
+    const span = e.timeStamp - this.lastT
+    if (span > 0) this.dragVx = this.dragVx * 0.5 + ((e.clientX - this.lastX) / span) * 0.5
+    this.lastT = e.timeStamp
     this.lastX = e.clientX
     this.lastY = e.clientY
   }
@@ -337,7 +353,11 @@ export class Realm {
   private onPointerUp = (e: PointerEvent) => {
     const d = this.drag
     this.drag = null
-    if (!d || d.moved) return
+    if (d?.moved) {
+      this.pullByDrag(d, e)
+      return
+    }
+    if (!d) return
     if (!this.ready) {
       this.pendingTap = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' }
       return
@@ -345,6 +365,17 @@ export class Realm {
     this.onPointerMove(e)
     this.raycaster.setFromCamera(this.pointerNdc, this.camera)
     this.click(this.raycaster.ray, e.pointerType !== 'mouse')
+  }
+
+  // a drag that began at the bell rope and lets go while still moving pulls it
+  // to that side, as hard as the hand was going
+  private pullByDrag(d: { x: number; y: number }, e: PointerEvent): void {
+    if (this.look.place !== 'shrine' || !this.ready || e.timeStamp - this.lastT > 80) return
+    const r = this.renderer.domElement.getBoundingClientRect()
+    const x = ((d.x - r.left) / r.width) * 2 - 1
+    const y = -((d.y - r.top) / r.height) * 2 + 1
+    if (Math.abs(x) >= 0.22 || y <= -0.45) return
+    this.findPart<{ ring(push: number, motion: number): void }>('Shrine')?.ring(this.dragVx / 1.5, this.frame.motion)
   }
 
   private click(ray: THREE.Ray, touch: boolean): void {
@@ -366,10 +397,12 @@ export class Realm {
       }
     }
     // at the shrine a click by the bell rope, in the middle of the hall's
-    // front, rings the bell (heard with sound on); anywhere else goes home
+    // front, pulls the rope toward that side and the bell sounds as it strikes
+    // (heard with sound on); anywhere else goes home
     if (at === 'shrine' && Math.abs(this.pointerNdc.x) < 0.22 && this.pointerNdc.y > -0.45) {
-      this.ambience.bell()
-      this.findPart<{ ring(motion: number): void }>('Shrine')?.ring(this.frame.motion)
+      const side = this.pointerNdc.x / 0.22
+      const push = side < 0 ? Math.min(-0.35, side) : Math.max(0.35, side)
+      this.findPart<{ ring(push: number, motion: number): void }>('Shrine')?.ring(push, this.frame.motion)
       return
     }
     // any other click in a close view goes home
@@ -565,6 +598,11 @@ export class Realm {
       const pending = this.pendingCompile ?? []
       this.pendingCompile = null
       for (const p of pending) this.prepare(p)
+    }).catch((error: unknown) => {
+      // a build step waiting for the sky fails with it; start reports it below, also when no step waits
+      this.skyReady.catch(() => {})
+      this.skyReject(error)
+      throw error
     })
     await Promise.race([sunKnown, sky])
     if (this.disposed) return

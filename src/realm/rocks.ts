@@ -3,6 +3,7 @@ import { getMaxAnisotropy, inTurn, SCANS_RANK } from './assets'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { cascadeLocal, cascadePoint, groundHeight, pondSdf, rimScale, rng, ISLAND_RX, ISLAND_RZ, POND_LEVEL, TORII_Z, LANDING, islandSdf, CASCADE } from './layout'
+import { surfaceHeight } from './surface'
 import type { RealmPart, Tier } from './types'
 
 // Scanned rocks: groups set a third into the ground at the pond's shore and
@@ -15,7 +16,13 @@ interface Scan {
   size: THREE.Vector3 // after baking, base at y = 0, centred in x and z
 }
 
-interface Placement {
+// a scan's shape, as far as setting it into the ground goes
+export interface ScanShape {
+  size: THREE.Vector3
+  points: Float32Array // x y z, base at y = 0
+}
+
+export interface Placement {
   scan: string
   x: number
   y: number
@@ -28,6 +35,8 @@ interface Placement {
   tone: number // albedo multiplier, for weathering
   top?: number // set the top here instead of burying (the cascade's steps)
   squash?: number // height scale, for flat-topped steps
+  keep?: boolean // the water runs over it: it stays where it is put
+  bank?: boolean // set on the cascade's bank: it may reach out over the cut
 }
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
@@ -52,6 +61,28 @@ export function prefetchScans(tier: Tier): void {
   for (const name of scanNames(tier)) void fetchScan(name).catch(() => {})
 }
 
+// the scan in metres, its base at y = 0 and centred in x and z
+export function bakeScan(source: THREE.BufferGeometry, matrix: THREE.Matrix4): { geometry: THREE.BufferGeometry; size: THREE.Vector3 } {
+  const geometry = source.clone()
+  // the files keep positions and normals as normalized integers; moved in
+  // place they would be stored back as integers and clip at one metre
+  for (const name of ['position', 'normal']) {
+    const a = geometry.getAttribute(name)
+    if (!a?.normalized) continue
+    const out = new Float32Array(a.count * 3)
+    for (let i = 0; i < a.count; i++) out.set([a.getX(i), a.getY(i), a.getZ(i)], i * 3)
+    geometry.setAttribute(name, new THREE.Float32BufferAttribute(out, 3))
+  }
+  geometry.applyMatrix4(matrix)
+  geometry.computeBoundingBox()
+  const box = geometry.boundingBox!
+  const c = box.getCenter(new THREE.Vector3())
+  geometry.translate(-c.x, -box.min.y, -c.z)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return { geometry, size: geometry.boundingBox!.getSize(new THREE.Vector3()) }
+}
+
 async function loadScan(name: string): Promise<Scan> {
   const gltf = await fetchScan(name)
   let found: THREE.Mesh | null = null
@@ -61,15 +92,7 @@ async function loadScan(name: string): Promise<Scan> {
   })
   if (!found) throw new Error(`no mesh in ${name}`)
   const mesh = found as THREE.Mesh
-  const geometry = mesh.geometry.clone()
-  geometry.applyMatrix4(mesh.matrixWorld)
-  geometry.computeBoundingBox()
-  const box = geometry.boundingBox!
-  const c = box.getCenter(new THREE.Vector3())
-  geometry.translate(-c.x, -box.min.y, -c.z)
-  geometry.computeBoundingBox()
-  geometry.computeBoundingSphere()
-  const size = geometry.boundingBox!.getSize(new THREE.Vector3())
+  const { geometry, size } = bakeScan(mesh.geometry, mesh.matrixWorld)
   const material = mesh.material as THREE.MeshStandardMaterial
   material.side = THREE.FrontSide
   // the scans' own maps come in unfiltered: seen at a slant they blur
@@ -77,6 +100,12 @@ async function loadScan(name: string): Promise<Scan> {
     if (t) t.anisotropy = getMaxAnisotropy()
   }
   return { geometry, material, size }
+}
+
+export function scanShape(position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, size: THREE.Vector3): ScanShape {
+  const points = new Float32Array(position.count * 3)
+  for (let i = 0; i < position.count; i++) points.set([position.getX(i), position.getY(i), position.getZ(i)], i * 3)
+  return { size, points }
 }
 
 // rocks around the pond: walk the shore, drop a group of three to five every
@@ -132,13 +161,13 @@ function shoreRocks(rand: () => number, out: Placement[]): void {
 // darker.
 function cascadeRocks(out: Placement[]): void {
   const { upper, ledge, lip1, lip2 } = CASCADE
-  type Stone = [scan: string, f: number, s: number, top: number, size: number, squash: number, yaw: number, tone: number]
+  type Stone = [scan: string, f: number, s: number, top: number, size: number, squash: number, yaw: number, tone: number, water?: boolean]
   const set: Stone[] = [
     // the stone the spring wells up behind, and the run's floor
     ['boulder_01', -2.3, 0.25, upper + 0.5, 1.2, 0.9, 0.4, 0.62],
-    ['rock_09', lip1 - 0.42, 0, upper - 0.02, 0.95, 0.45, 1.3, 0.5],
+    ['rock_09', lip1 - 0.42, 0, upper - 0.02, 0.95, 0.45, 1.3, 0.5, true],
     // the ledge
-    ['stone_01', lip2 - 0.38, 0.05, ledge - 0.02, 0.85, 0.5, 0.7, 0.48],
+    ['stone_01', lip2 - 0.38, 0.05, ledge - 0.02, 0.85, 0.5, 0.7, 0.48, true],
     // the cut's faces: tall stones either side of each fall, set just
     // clear of the sheet, so no bare earth shows beside the water
     ['rock_07', -1.08, -0.66, upper - 0.25, 0.6, 1.5, 2.2, 0.5],
@@ -150,7 +179,7 @@ function cascadeRocks(out: Placement[]): void {
     ['rock_09', -0.44, 0.72, 0.5, 0.75, 1.1, 3.6, 0.44],
     // in and around the plunge pool
     ['stone_01', 0.5, 0.75, 0.1, 0.45, 0.7, 2.6, 0.62],
-    ['rock_09', 0.35, -0.85, 0.12, 0.5, 0.7, 5.6, 0.62],
+    ['rock_09', 0.35, -0.6, 0.12, 0.5, 0.7, 5.6, 0.62],
   ]
   const bedded: Stone[] = [
     // the walls of the run above the upper fall
@@ -172,10 +201,10 @@ function cascadeRocks(out: Placement[]): void {
   ]
   const at = { x: 0, y: 0, z: 0 }
   for (const [list, onGround] of [[set, false], [bedded, true]] as const) {
-    for (const [scan, f, side, top, size, squash, yaw, tone] of list) {
+    for (const [scan, f, side, top, size, squash, yaw, tone, water] of list) {
       cascadePoint(f, side, onGround ? 0 : top, at)
       const y = onGround ? groundHeight(at.x, at.z) + top : at.y
-      out.push({ scan, x: at.x, y: 0, z: at.z, size, yaw, tiltX: 0, tiltZ: 0, bury: 0, tone, top: y, squash })
+      out.push({ scan, x: at.x, y: 0, z: at.z, size, yaw, tiltX: 0, tiltZ: 0, bury: 0, tone, top: y, squash, keep: water ?? false, bank: Math.abs(side) >= 0.45 })
     }
   }
 }
@@ -237,6 +266,140 @@ function rimRocks(rand: () => number, out: Placement[]): void {
   }
 }
 
+// every stone, in the order they are drawn
+export function rockPlacements(): Placement[] {
+  const rand = rng(53)
+  const places: Placement[] = []
+  shoreRocks(rand, places)
+  gardenRocks(rand, places)
+  rimRocks(rand, places)
+  cascadeRocks(places)
+  return places
+}
+
+// the share of a stone's height that must be in the ground all round it,
+// and how far below the drawn ground its foot goes at the least; the share
+// of its surface kept in sight, and the widest crack left under it, which
+// reads as its own shadow
+const FOOT = 0.25
+const SINK = 0.02
+const SHOW = 0.3
+const GAP = 0.02
+// steeper than angular rock's angle of repose a stone would slide
+const MAX_TILT = (45 * Math.PI) / 180
+// ground steeper than 45 degrees is a cliff; slopes are read over 10 cm
+const CLIFF = Math.tan((45 * Math.PI) / 180)
+const D = 0.05
+const UP = new THREE.Vector3(0, 1, 0)
+const _q = new THREE.Quaternion()
+const _tilt = new THREE.Quaternion()
+const _normal = new THREE.Vector3()
+const _at = new THREE.Vector3()
+const _w = new THREE.Vector3()
+const _slope = new THREE.Vector3()
+
+// A stone's matrix: placed as its group asks, leant with the ground under it
+// and lowered until the lower part of it is in the ground wherever it meets
+// it. The groups place by groundHeight at the stone's centre; on a slope the
+// downhill side would stand clear, and on the mound and in the cascade's cut
+// the drawn ground sits below groundHeight's own.
+export function placeRock(p: Placement, shape: ScanShape, index: number, tier: Tier, out: THREE.Matrix4): THREE.Matrix4 {
+  const extent = Math.max(shape.size.x, shape.size.z)
+  const k = p.size / extent
+  const s = new THREE.Vector3(k, k * (p.squash ?? 0.85 + ((index * 37) % 10) / 30), k)
+  _q.setFromEuler(new THREE.Euler(p.tiltX, p.yaw, p.tiltZ, 'YXZ'))
+  const y = p.top === undefined ? p.y - shape.size.y * s.y * p.bury : p.top - shape.size.y * s.y
+  _at.set(p.x, y, p.z)
+  out.compose(_at, _q, s)
+  // the stones the water runs over keep the height the falls are built on
+  if (p.keep) return out
+  seat(p, shape.points, new Float32Array(shape.points.length), tier, s, y, out)
+  return out
+}
+
+// the stone leant with the ground under its foot and lowered into it
+function seat(p: Placement, points: Float32Array, world: Float32Array, tier: Tier, s: THREE.Vector3, y: number, out: THREE.Matrix4): void {
+  const { x, z } = p
+  _at.set(x, y, z)
+  out.compose(_at, _q, s)
+  let band = toWorld(points, world, out)
+  // the slope under the foot, as the mean of the ground's own slope there:
+  // a stone across a step stays level instead of leaning from one tread to
+  // the next
+  let n = 0
+  _normal.set(0, 0, 0)
+  for (let i = 0; i < world.length; i += 3) {
+    if (world[i + 1] > band || !footed(p, tier, world[i], world[i + 2], _slope)) continue
+    _normal.x -= _slope.x
+    _normal.z -= _slope.y
+    n++
+  }
+  if (n > 0) {
+    _normal.set(_normal.x / n, 1, _normal.z / n).normalize()
+    _tilt.setFromUnitVectors(UP, _normal)
+    const angle = Math.acos(Math.min(1, _normal.y))
+    if (angle > MAX_TILT) _tilt.slerp(new THREE.Quaternion(), 1 - MAX_TILT / angle)
+    out.compose(_at, _tilt.multiply(_q), s)
+    band = toWorld(points, world, out)
+  }
+  // how far down its foot is all in the ground; a bank stone with nothing
+  // under its foot comes down onto whatever it meets first
+  let rest = -Infinity
+  let meet = Infinity
+  const heights: number[] = []
+  for (let i = 0; i < world.length; i += 3) {
+    const g = surfaceHeight(tier, world[i], world[i + 2])
+    heights.push(Number.isNaN(g) ? Infinity : world[i + 1] - g)
+    if (!Number.isNaN(g)) meet = Math.min(meet, world[i + 1] - g)
+    if (world[i + 1] > band || !footed(p, tier, world[i], world[i + 2], _slope)) continue
+    rest = Math.max(rest, world[i + 1] - _slope.z + SINK)
+  }
+  if (rest === -Infinity && meet < Infinity) rest = meet + SINK
+  let drop = Math.max(0, rest)
+  // on a crest or a steep bank that would bury it, it keeps SHOW of its
+  // surface above the ground and stands out of the slope like an outcrop,
+  // and one set under the drawn ground comes up to that; water may cover it.
+  // Neither opens more than GAP under its foot.
+  heights.sort((a, b) => a - b)
+  drop = Math.min(drop, heights[Math.floor((1 - SHOW) * (heights.length - 1))])
+  drop = Math.max(drop, rest - SINK - GAP)
+  out.elements[13] -= drop
+}
+
+// the ground as drawn, or the pond's surface over it
+function drawn(tier: Tier, x: number, z: number): number {
+  const g = surfaceHeight(tier, x, z)
+  return pondSdf(x, z) < 0 ? Math.max(g, POND_LEVEL) : g
+}
+
+// over the cascade's bed or its walls (layout.groundHeight's cut)
+export function overCut(x: number, z: number): boolean {
+  const [f, side] = cascadeLocal(x, z)
+  return f > -2.6 && f < 0.6 && Math.abs(side) < 0.75
+}
+
+// world positions of a stone's points; returns the top of its foot band
+function toWorld(points: Float32Array, world: Float32Array, m: THREE.Matrix4): number {
+  let low = Infinity
+  let high = -Infinity
+  for (let i = 0; i < points.length; i += 3) {
+    _w.fromArray(points, i).applyMatrix4(m).toArray(world, i)
+    low = Math.min(low, _w.y)
+    high = Math.max(high, _w.y)
+  }
+  return low + FOOT * (high - low)
+}
+
+// whether a stone can stand at (x, z), and if so the ground there and its
+// slope (in out's z, x and y). A cliff, such as the rim's lip or the cascade's walls, carries nothing:
+// a stone reaching over one overhangs it. Over the cascade's cut and its
+// walls a bank stone stands on nothing.
+function footed(p: Placement, tier: Tier, x: number, z: number, out: THREE.Vector3): boolean {
+  if (p.bank && overCut(x, z)) return false
+  out.set((drawn(tier, x + D, z) - drawn(tier, x - D, z)) / (2 * D), (drawn(tier, x, z + D) - drawn(tier, x, z - D)) / (2 * D), drawn(tier, x, z))
+  return Math.hypot(out.x, out.y) < CLIFF
+}
+
 export class Rocks implements RealmPart {
   readonly object = new THREE.Group()
   private disposables: { dispose(): void }[] = []
@@ -251,16 +414,13 @@ export class Rocks implements RealmPart {
       map.set('boulder_01', map.get('rock_07')!)
       map.set('stone_01', map.get('rock_09')!)
     }
-    return new Rocks(map)
+    return new Rocks(map, tier)
   }
 
-  private constructor(scans: Map<string, Scan>) {
-    const rand = rng(53)
-    const places: Placement[] = []
-    shoreRocks(rand, places)
-    gardenRocks(rand, places)
-    rimRocks(rand, places)
-    cascadeRocks(places)
+  private constructor(scans: Map<string, Scan>, tier: Tier) {
+    const places = rockPlacements()
+    const shapes = new Map<Scan, ScanShape>()
+    for (const scan of scans.values()) if (!shapes.has(scan)) shapes.set(scan, scanShape(scan.geometry.getAttribute('position'), scan.size))
 
     const byScan = new Map<string, Placement[]>()
     for (const p of places) {
@@ -269,21 +429,13 @@ export class Rocks implements RealmPart {
       byScan.set(p.scan, list)
     }
     const m = new THREE.Matrix4()
-    const q = new THREE.Quaternion()
-    const e = new THREE.Euler()
-    const s = new THREE.Vector3()
-    const v = new THREE.Vector3()
     const tone = new THREE.Color()
     for (const [name, list] of byScan) {
       const scan = scans.get(name)!
       const mesh = new THREE.InstancedMesh(scan.geometry, scan.material, list.length)
-      const extent = Math.max(scan.size.x, scan.size.z)
+      const shape = shapes.get(scan)!
       list.forEach((p, i) => {
-        const k = p.size / extent
-        s.set(k, k * (p.squash ?? 0.85 + ((i * 37) % 10) / 30), k)
-        q.setFromEuler(e.set(p.tiltX, p.yaw, p.tiltZ, 'YXZ'))
-        v.set(p.x, p.top === undefined ? p.y - scan.size.y * s.y * p.bury : p.top - scan.size.y * s.y, p.z)
-        mesh.setMatrixAt(i, m.compose(v, q, s))
+        mesh.setMatrixAt(i, placeRock(p, shape, i, tier, m))
         // a touch of lichen green in the weathered ones
         mesh.setColorAt(i, tone.setRGB(p.tone * 0.97, p.tone, p.tone * 0.93))
       })

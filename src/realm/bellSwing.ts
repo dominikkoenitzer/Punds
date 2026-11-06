@@ -10,6 +10,8 @@ const BELL_DAMP = 0.07
 const BELL_FOLLOW = 0.3 // how far the bell leans after the rope
 const PULL = 0.5 // the rope's speed from one pull
 const LIMIT = 0.5
+const STRIKE_MIN = 0.02 // slower than this the clapper only touches
+const STRIKE_FULL = 0.45 // the bell's speed for the loudest blow
 const REST = 2e-3 // a few millimetres at the tail: still to the eye
 
 export class BellSwing {
@@ -17,10 +19,21 @@ export class BellSwing {
   bell = 0
   private ropeV = 0
   private bellV = 0
+  private peak = 0
+  private strike = 0
 
-  // one shake of the rope; with reduced motion only a small sway
-  ring(motion = 1): void {
-    this.ropeV -= PULL * (motion > 0 ? 1 : 0.35)
+  // a pull on the rope toward one side, -1 to 1 (positive swings to +x), as
+  // hard as the push; it adds to the swing already there. With reduced motion
+  // only a small sway.
+  ring(push: number, motion = 1): void {
+    this.ropeV += PULL * Math.max(-1, Math.min(1, push)) * (motion > 0 ? 1 : 0.35)
+  }
+
+  // the loudest unheard blow of the clapper, 0 to 1, and forgets it
+  takeStrike(): number {
+    const s = this.strike
+    this.strike = 0
+    return s
   }
 
   get moving(): boolean {
@@ -39,8 +52,15 @@ export class BellSwing {
       this.ropeV += (-ROPE_RATE * ROPE_RATE * this.rope - 2 * ROPE_DAMP * ROPE_RATE * this.ropeV) * h
       this.rope += this.ropeV * h
       const target = this.rope * BELL_FOLLOW
+      const before = this.bellV
       this.bellV += (-BELL_RATE * BELL_RATE * (this.bell - target) - 2 * BELL_DAMP * BELL_RATE * this.bellV) * h
       this.bell += this.bellV * h
+      // the clapper hits where the bell turns, as hard as it was going
+      this.peak = Math.max(this.peak, Math.abs(this.bellV))
+      if (before * this.bellV < 0) {
+        if (this.peak > STRIKE_MIN) this.strike = Math.max(this.strike, Math.min(1, this.peak / STRIKE_FULL))
+        this.peak = 0
+      }
     }
     // pulls in quick turn swing it higher, never over the hanger
     this.rope = Math.max(-LIMIT, Math.min(LIMIT, this.rope))

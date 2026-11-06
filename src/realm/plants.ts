@@ -692,7 +692,8 @@ export class Plants implements RealmPart {
         const roll = (rand() - 0.5) * 0.5
         const phase = rand() * 6.28
         d.set(Math.cos(yaw), 0, Math.sin(yaw))
-        p.set(f.x + d.x * 0.03, gy + 0.02, f.z + d.z * 0.03)
+        // the stipe comes up out of the soil, not from just above it
+        p.set(f.x + d.x * 0.03, gy - 0.01, f.z + d.z * 0.03)
         const base = positions.length / 3
         for (let i = 0; i <= seg; i++) {
           const t = i / seg

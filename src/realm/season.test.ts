@@ -10,7 +10,7 @@ const day = (month: number, date: number, hour = 12, minute = 0, second = 0, ms 
 // a made-up set that covers what a calendar can say: a range over the new
 // year, a holiday on top of it, one day long, two seasons tied
 const MADE_UP: Record<string, Calendar> = {
-  halloween: { from: [10, 27], to: [11, 1], priority: 0, poster: true },
+  halloween: { from: [10, 27], to: [11, 11], priority: 0, poster: true },
   winter: { from: [12, 1], to: [2, 29], priority: 0, poster: true },
   christmas: { from: [12, 20], to: [1, 6], priority: 1, poster: false },
   eve: { from: [12, 31], to: [12, 31], priority: 2, poster: false },
@@ -63,15 +63,17 @@ const everyDay = function* (year: number) {
 const asPage = (date: Date, search: string, registry: Record<string, Calendar>) => wornSeason(poster(date, search, registry).season, date, search, registry)
 
 describe('pickSeason', () => {
-  it('wears Halloween from the 27th of October to the 1st of November', () => {
+  it('wears Halloween from the 27th of October to the 11th of November', () => {
     expect(pickSeason(day(9, 27, 0), '')).toBe('halloween')
     expect(pickSeason(day(9, 31, 23), '')).toBe('halloween')
     expect(pickSeason(day(10, 1, 23), '')).toBe('halloween')
+    expect(pickSeason(new Date(2026, 10, 11, 23, 59, 59), '')).toBe('halloween')
   })
 
   it('wears nothing on the days around it', () => {
     expect(pickSeason(day(9, 26, 23), '')).toBeNull()
-    expect(pickSeason(day(10, 2, 0), '')).toBeNull()
+    expect(pickSeason(new Date(2026, 10, 12, 0, 0, 0), '')).toBeNull()
+    expect(pickSeason(day(10, 12, 0), '')).toBeNull()
     expect(pickSeason(day(0, 1), '')).toBeNull()
     expect(pickSeason(day(11, 31), '')).toBeNull()
     expect(pickSeason(day(8, 30), '')).toBeNull()
@@ -80,8 +82,8 @@ describe('pickSeason', () => {
   it('turns over at the stroke of midnight', () => {
     expect(pickSeason(day(9, 26, 23, 59, 59, 999), '')).toBeNull()
     expect(pickSeason(day(9, 27, 0, 0, 0, 0), '')).toBe('halloween')
-    expect(pickSeason(day(10, 1, 23, 59, 59, 999), '')).toBe('halloween')
-    expect(pickSeason(day(10, 2, 0, 0, 0, 0), '')).toBeNull()
+    expect(pickSeason(day(10, 11, 23, 59, 59, 999), '')).toBe('halloween')
+    expect(pickSeason(day(10, 12, 0, 0, 0, 0), '')).toBeNull()
   })
 
   it('lets the address override the date both ways', () => {
@@ -168,8 +170,8 @@ describe('wornSeason', () => {
     // the poster script ran a moment before midnight, the module a moment after
     const before = poster(day(9, 26, 23, 59, 59, 999), '', SEASONS).season
     expect(wornSeason(before, day(9, 27, 0, 0, 0, 1), '')).toBeNull()
-    const lastNight = poster(day(10, 1, 23, 59, 59, 999), '', SEASONS).season
-    expect(wornSeason(lastNight, day(10, 2, 0, 0, 0, 1), '')).toBe('halloween')
+    const lastNight = poster(day(10, 11, 23, 59, 59, 999), '', SEASONS).season
+    expect(wornSeason(lastNight, day(10, 12, 0, 0, 0, 1), '')).toBe('halloween')
   })
 
   it('decides itself when the script left nothing it knows', () => {
@@ -226,6 +228,25 @@ describe('fetchDress', () => {
   })
 })
 
+describe('the clock it reads', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  // the visitor's own date counts: the same instant is the 12th in Zurich
+  // and still the 11th in New York
+  it.each([
+    ['Europe/Zurich', null],
+    ['America/New_York', 'halloween'],
+  ])('ends at midnight of the visitor in %s', (tz, expected) => {
+    vi.stubEnv('TZ', tz)
+    const instant = new Date(Date.UTC(2026, 10, 11, 23, 30))
+    expect(new Intl.DateTimeFormat('en', { timeZone: tz, day: 'numeric' }).format(instant)).toBe(String(instant.getDate()))
+    expect(pickSeason(instant, '')).toBe(expected)
+    expect(posterSeason(instant, '')).toBe(expected)
+  })
+})
+
 describe('the start picture script in index.html', () => {
   it('picks the same season as season.ts on every day, with the real calendars', () => {
     for (const year of [2026, 2028]) {
@@ -268,13 +289,13 @@ describe('the start picture script in index.html', () => {
 
   it('is given every season by the build, safe inside the page', () => {
     expect(JSON.parse(dataBlock(built))).toEqual(SEASONS)
-    expect(SEASONS.halloween).toEqual({ from: [10, 27], to: [11, 1], priority: 0, poster: true })
+    expect(SEASONS.halloween).toEqual({ from: [10, 27], to: [11, 11], priority: 0, poster: true })
     expect(built.match(/id="seasons"/g)).toHaveLength(1)
   })
 
   it('is allowed by its hash in the content policy', async () => {
-    // the site is built from a checkout with plain line ends
-    const body = new TextEncoder().encode(inline.replace(/\r\n/g, '\n'))
+    // browsers hash the script after the parser turns CRLF into LF
+    const body = new TextEncoder().encode(inline.replace(/\r\n?/g, '\n'))
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', body))
     const hash = `'sha256-${btoa(String.fromCharCode(...digest))}'`
     const policy = (JSON.parse(vercel) as { headers: { headers: { key: string; value: string }[] }[] }).headers

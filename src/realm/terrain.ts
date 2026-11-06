@@ -22,6 +22,7 @@ import {
 import { loadPbr, type PbrSet } from './assets'
 import { LAWN_FLOOR_TINT } from './grass'
 import { realmUniforms } from './atmosphere'
+import { RIM_DROP, topGrid } from './surface'
 import type { RealmPart, Tier } from './types'
 
 // The island itself: a ground surface that follows layout.groundHeight out to
@@ -30,7 +31,6 @@ import type { RealmPart, Tier } from './types'
 // pond's pebbles) per pixel, weighted by the layout and sharpened by height so
 // the borders read as material meeting material, not as a cross-fade.
 
-const RIM_DROP = 0.4 // how far the lip rounds down before the cliff starts
 const UNDERSIDE_DEPTH = 34
 
 function smooth(a: number, b: number, v: number): number {
@@ -297,25 +297,18 @@ function patchSplat(mat: THREE.MeshStandardMaterial, sets: PbrSet[], tier: Tier)
   mat.customProgramCacheKey = () => 'realm-terrain-splat'
 }
 
-function buildTop(tier: Tier): THREE.BufferGeometry {
-  const rings = tier === 'phone' ? 70 : 120
-  const segs = tier === 'phone' ? 180 : 300
-  const pos: number[] = []
+export function buildTop(tier: Tier): THREE.BufferGeometry {
+  const { rings, segs, pos } = topGrid(tier)
   const uv: number[] = []
   const splat: number[] = []
   const index: number[] = []
   for (let i = 0; i <= rings; i++) {
-    // denser towards the rim, where the lip curves
     const r = 1 - Math.pow(1 - i / rings, 1.35)
     for (let j = 0; j <= segs; j++) {
-      const a = (j / segs) * Math.PI * 2
-      const k = rimScale(a)
-      const x = Math.cos(a) * ISLAND_RX * k * r
-      const z = Math.sin(a) * ISLAND_RZ * k * r
-      let y = groundHeight(x, z)
+      const n = (i * (segs + 1) + j) * 3
+      const x = pos[n]
+      const z = pos[n + 2]
       const lip = smooth(0.965, 1, r)
-      y -= lip * lip * RIM_DROP
-      pos.push(x, y, z)
       uv.push(x, z)
       const g = gravelWeight(x, z)
       const p = smooth(0.1, -0.3, pondSdf(x, z))
@@ -333,7 +326,7 @@ function buildTop(tier: Tier): THREE.BufferGeometry {
     }
   }
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos.slice(), 3))
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
   geo.setAttribute('splat', new THREE.Float32BufferAttribute(splat, 4))
   geo.setIndex(index)
@@ -530,7 +523,7 @@ function buildUnderside(tier: Tier): THREE.BufferGeometry {
   }
   const geo = new THREE.BufferGeometry()
   buildFingers(tier, pos, uv, rock, index)
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos.slice(), 3))
   geo.setAttribute('aCliff', new THREE.Float32BufferAttribute(uv, 2))
   geo.setAttribute('aRock', new THREE.Float32BufferAttribute(rock, 3))
   geo.setIndex(index)

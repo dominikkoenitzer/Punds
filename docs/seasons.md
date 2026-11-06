@@ -18,7 +18,7 @@ The name is lowercase letters, digits and `-`, starting with a letter, and is ne
 `calendar.json` holds four keys:
 
 ```json
-{ "from": [10, 27], "to": [11, 1], "priority": 0, "poster": true }
+{ "from": [10, 27], "to": [11, 11], "priority": 0, "poster": true }
 ```
 
 - `from` and `to` are `[month, day]` with months 1 to 12. Both days are included. A range may run over the new year (`[12, 20]` to `[1, 6]`).
