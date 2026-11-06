@@ -12,7 +12,11 @@ const policy = vercel.headers.flatMap((h) => h.headers).find((h) => h.key === 'C
 const allowed = policy.match(/script-src [^;]*/)?.[0] ?? ''
 let blocked = 0
 for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)) {
-  if (/\bsrc=/.test(attrs) || /type="application\/ld\+json"/.test(attrs)) continue
+  // only a script that runs needs a hash: a data block (a type that is not
+  // javascript or module) never runs, and script-src does not apply to it
+  const type = attrs.match(/\btype=["']?([^"'\s>]*)/i)?.[1].trim().toLowerCase()
+  const runs = !type || type === 'module' || /^(text|application)\/(x-)?(java|ecma)script$/.test(type)
+  if (/\bsrc=/.test(attrs) || !runs) continue
   const hash = `'sha256-${createHash('sha256').update(body.replace(/\r\n?/g, '\n'), 'utf8').digest('base64')}'`
   if (!allowed.includes(hash)) {
     console.error(`inline script not allowed by vercel.json's script-src: ${hash}`)
