@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { lawnWeight, MAPLES, pondSdf, rng, STEPS } from '../layout'
-import type { RealmPart, Tier } from '../types'
+import { lawnWeight, MAPLES, pondSdf, rng, STEPS } from '../../layout'
+import type { RealmPart, Tier } from '../../types'
 import { surfaceY, tread } from './props-place'
 
 // A few maple leaves fallen on the path, the gravel and the steps: blown

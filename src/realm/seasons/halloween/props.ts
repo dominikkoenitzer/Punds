@@ -1,4 +1,4 @@
-import type { RealmPart, Tier } from '../types'
+import type { RealmPart, Tier } from '../../types'
 import { Graves } from './props-graves'
 import { Leaves } from './props-leaves'
 import { Pumpkins } from './props-pumpkins'

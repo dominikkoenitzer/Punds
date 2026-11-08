@@ -1,27 +1,13 @@
 import * as THREE from 'three'
-import { realmUniforms } from '../atmosphere'
-import { LANTERNS, POND_BOUNDS, POND_LEVEL, groundHeight, pondSdf } from '../layout'
-import type { Frame, Tier } from '../types'
-import type { CascadeDress } from '../cascade'
+import { realmUniforms } from '../../atmosphere'
+import { LANTERNS, POND_BOUNDS, POND_LEVEL, groundHeight, pondSdf } from '../../layout'
+import type { Frame, Tier } from '../../types'
+import type { CascadeDress } from '../../cascade'
+import type { PondDress } from '../../pond'
 import { light } from './light'
 import { hallow } from './state'
 
 // The pond at night: the water turned to blood, the koi to bone.
-
-export interface PondDress {
-  // the ripple simulation's fragment shader, rewritten
-  sim(fragment: string): string
-  // the water's material, before it first compiles
-  water(material: THREE.ShaderMaterial): void
-  // the wet ring on the banks
-  wet(fragment: string): string
-  // the koi's program, after the living koi's own changes, and their mesh
-  koi(shader: THREE.WebGLProgramParametersWithUniforms): void
-  koiMesh(mesh: THREE.InstancedMesh): void
-  koiKey: string
-  // each frame: the moon's light on the pond and the rain on it
-  update(frame: Frame, tier: Tier, drop: (x: number, z: number, radius: number, strength: number) => void): void
-}
 
 function patch(src: string, from: string, to: string): string {
   if (!src.includes(from)) throw new Error('pond dress: shader moved near ' + from.slice(0, 48))

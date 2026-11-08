@@ -47,7 +47,7 @@ vi.mock('./rocks', async (importOriginal) => ({ ...(await importOriginal<typeof 
 beforeEach(() => {
   vi.stubGlobal('location', { search: '' })
   vi.stubGlobal('window', Object.assign(fake.listeners(), { matchMedia: () => ({ matches: false }), innerWidth: 800, innerHeight: 600, devicePixelRatio: 1, setTimeout, clearTimeout }))
-  vi.stubGlobal('document', Object.assign(fake.listeners(), { hidden: false }))
+  vi.stubGlobal('document', Object.assign(fake.listeners(), { hidden: false, documentElement: { dataset: { season: 'none' } } }))
   vi.stubGlobal('screen', { width: 1920, height: 1080 })
   vi.stubGlobal('requestAnimationFrame', () => 1)
   vi.stubGlobal('cancelAnimationFrame', () => {})

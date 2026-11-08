@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { realmUniforms } from '../atmosphere'
-import type { SkyDress } from '../season'
+import { realmUniforms } from '../../atmosphere'
+import type { SkyDress } from '../../season'
 import { FACE, FACE_GLSL } from './face'
 import { hallow } from './state'
 
