@@ -38,7 +38,15 @@ function dataBlock(page: string): string {
   return found[1]
 }
 
-function runPoster(date: Date, search: string, block: string | null): { season: string | undefined; hrefs: string[] } {
+// a stand-in for matchMedia on a screen of this size, for the aspect-ratio queries the script asks
+const screenOf = (width: number, height: number) => (query: string) => ({
+  matches: [...query.matchAll(/(min|max)-aspect-ratio:\s*(\d+)\/(\d+)/g)].every(([, side, w, h]) =>
+    side === 'min' ? width * Number(h) >= height * Number(w) : width * Number(h) <= height * Number(w),
+  ),
+})
+const PHONE = screenOf(393, 852)
+
+function runPoster(date: Date, search: string, block: string | null, matchMedia = PHONE): { season: string | undefined; hrefs: string[] } {
   const links: { href: string }[] = []
   let season: string | undefined
   const FixedDate = class extends Date {
@@ -52,7 +60,7 @@ function runPoster(date: Date, search: string, block: string | null): { season: 
     createElement: () => ({ setAttribute() {} }) as unknown as { href: string },
     head: { append: (...items: { href: string }[]) => links.push(...items) },
   }
-  new Function('location', 'Date', 'document', inline)({ search }, FixedDate, document)
+  new Function('location', 'Date', 'document', 'matchMedia', inline)({ search }, FixedDate, document, matchMedia)
   return { season, hrefs: links.map((l) => l.href) }
 }
 
@@ -281,12 +289,21 @@ describe('the start picture script in index.html', () => {
 
   it('follows the address override', () => {
     expect(runPoster(day(5, 1), '?season=halloween', dataBlock(built)).season).toBe('halloween')
-    expect(runPoster(day(9, 30), '?season=none', dataBlock(built))).toEqual({ season: 'none', hrefs: ['/realm/poster-wide.webp', '/realm/poster-tall.webp'] })
+    expect(runPoster(day(9, 30), '?season=none', dataBlock(built))).toEqual({ season: 'none', hrefs: ['/realm/poster-tall.webp'] })
+  })
+
+  it('preloads only the picture the screen shows', () => {
+    const at = (width: number, height: number) => runPoster(day(9, 30), '?season=none', dataBlock(built), screenOf(width, height)).hrefs
+    expect(at(393, 852)).toEqual(['/realm/poster-tall.webp'])
+    expect(at(768, 1024)).toEqual(['/realm/poster-tall.webp'])
+    expect(at(1440, 900)).toEqual(['/realm/poster-wide.webp'])
+    expect(at(2560, 1440)).toEqual(['/realm/poster-wide.webp'])
+    expect(at(3840, 1080)).toEqual([])
   })
 
   it('wears nothing, and shows the plain pictures, without the calendars', () => {
     for (const block of [null, '', '{', dataBlock(html)]) {
-      expect(runPoster(day(9, 30), '', block)).toEqual({ season: 'none', hrefs: ['/realm/poster-wide.webp', '/realm/poster-tall.webp'] })
+      expect(runPoster(day(9, 30), '', block)).toEqual({ season: 'none', hrefs: ['/realm/poster-tall.webp'] })
     }
   })
 

@@ -74,7 +74,7 @@ jobs:
 
       - name: Browser checks
         run: |
-          if [ -d test/e2e/__screenshots__/linux ]; then bun run e2e; else bun run e2e --update-snapshots=all; fi
+          if [ -d test/e2e/__screenshots__/linux ]; then xvfb-run -a bun run e2e; else xvfb-run -a bun run e2e --update-snapshots=all; fi
 
       - name: Keep the pictures and failures
         if: always()

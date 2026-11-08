@@ -16,14 +16,16 @@ import './Sando.css'
 // carry the scene, they show over a still picture of the garden.
 
 // asked with the same flag as the scene's own context, so a computer without a
-// graphics chip gets the still page at once and no error in its console
+// graphics chip gets the still page at once and no error in its console. The
+// probe is one pixel and left to the collector: Firefox reports a context let go
+// through WEBGL_lose_context as lost in the console.
 function supportsWebGL2(): boolean {
   try {
     const refuse = refuseSoftware()
-    const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: refuse })
-    const usable = !!gl && !(refuse && softwareRenderer(gl))
-    gl?.getExtension('WEBGL_lose_context')?.loseContext()
-    return usable
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 1
+    const gl = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: refuse })
+    return !!gl && !(refuse && softwareRenderer(gl))
   } catch {
     return false
   }

@@ -77,7 +77,8 @@
         tall.href = dir + 'poster-tall.webp'
         tall.setAttribute('fetchpriority', 'high')
         tall.media = '(max-aspect-ratio: 17/18)'
-        document.head.append(wide, tall)
+        // only the picture this screen shows; Firefox warns about a preload whose media does not match
+        document.head.append.apply(document.head, [wide, tall].filter(function (link) { return matchMedia(link.media).matches }))
       })()
     </script>
     <link rel="icon" href="/favicon.ico" sizes="any" />

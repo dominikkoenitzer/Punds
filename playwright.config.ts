@@ -13,11 +13,13 @@ const SIZES = [
 ] as const
 const ENGINES = ['chromium', 'webkit', 'firefox'] as const
 
-// Firefox has no mobile mode; it gets the same size and touch without it.
+// Firefox has no mobile mode; it gets the same size and touch without it. Headless on Linux it finds no GL driver at
+// all, so there it runs headed on the display CI starts (xvfb-run) and draws through Mesa's software renderer.
+const FIREFOX = { headless: process.platform !== 'linux' }
 const projects: Project[] = ENGINES.flatMap((engine) =>
   SIZES.map(({ name, use: { mobile, ...use } }) => ({
     name: `${engine}-${name}`,
-    use: { browserName: engine, ...use, ...(mobile && engine !== 'firefox' ? { isMobile: true } : {}) },
+    use: { browserName: engine, ...use, ...(engine === 'firefox' ? FIREFOX : mobile ? { isMobile: true } : {}) },
   })),
 )
 
