@@ -10,6 +10,7 @@ import { Ambience } from './ambience'
 import { FrameTimer, GpuTimer } from './gpuTimer'
 import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, rememberedLevel, stepScale, type ScaleState } from './quality'
 import { dress } from './season'
+import { refuseSoftware, TEST, TEST_TIME } from './testMode'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
 // The realm host: renderer, camera, sun, the parts of the island, the look
@@ -34,6 +35,9 @@ export interface RealmOptions {
   // the GPU took the scene away and has not given it back: the page should
   // build it again
   onLost?: () => void
+  // the scene broke while it ran (an error in a frame): the page shows the
+  // still picture and the written links instead
+  onFail?: (error: unknown) => void
   // the page shows a picture of the start view while the scene loads: no
   // fade from dark, the picture fades out over the first frames instead
   instant?: boolean
@@ -60,12 +64,9 @@ function isInteractive(p: RealmPart): p is RealmPart & Interactive {
 // this device has measured (a lighter level it fell back to before, see
 // quality.ts) or the visitor's own wish to save data takes some away. How
 // sharp it is drawn is measured live instead (resize, calibrate, sampleFrame).
-export function detectTier(renderer: THREE.WebGLRenderer): Tier {
+export function detectTier(): Tier {
   const forced = new URLSearchParams(location.search).get('tier')
   if (forced === 'ultra' || forced === 'high' || forced === 'phone') return forced
-  const name = rendererName(renderer)
-  // no graphics chip at all: the scene would run on the processor
-  if (/SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(name)) throw new Error(`software renderer: ${name}`)
   const nav = navigator as Navigator & { connection?: { saveData?: boolean } }
   if (nav.connection?.saveData) return 'phone'
   const remembered = rememberedLevel()
@@ -74,12 +75,6 @@ export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   const coarse = window.matchMedia('(pointer: coarse)').matches
   if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
   return 'ultra'
-}
-
-function rendererName(renderer: THREE.WebGLRenderer): string {
-  const gl = renderer.getContext()
-  const info = gl.getExtension('WEBGL_debug_renderer_info')
-  return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : ''
 }
 
 // Frame rates: never above 60, even on fast screens; 30 when the screen holds
@@ -91,7 +86,7 @@ const CALM_FPS = 30
 const IDLE_AFTER_MS = 12000
 const ASLEEP_AFTER_MS = 60000
 // headless cost checks measure the frame without the caps
-const UNCAPPED = new URLSearchParams(location.search).has('uncapped')
+const UNCAPPED = new URLSearchParams(location.search).has('uncapped') || TEST
 
 // the low afternoon sun
 const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
@@ -123,6 +118,7 @@ export class Realm {
   private clock = new THREE.Timer()
   private raf = 0
   private disposed = false
+  private failed = false
   private ready = false
   // a tap on the start view's picture while the scene loads
   private pendingTap: { x: number; y: number; touch: boolean } | null = null
@@ -184,8 +180,8 @@ export class Realm {
   constructor(container: HTMLElement, opts: RealmOptions) {
     this.container = container
     this.opts = opts
-    this.reduced = opts.reducedMotion
-    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', alpha: false })
+    this.reduced = opts.reducedMotion || TEST
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', alpha: false, failIfMajorPerformanceCaveat: refuseSoftware() })
     this.renderer.debug.checkShaderErrors = import.meta.env.DEV
     this.renderer.toneMapping = THREE.AgXToneMapping
     this.renderer.toneMappingExposure = 1
@@ -193,7 +189,7 @@ export class Realm {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.shadowMap.autoUpdate = false
-    this.tier = opts.tier ?? detectTier(this.renderer)
+    this.tier = opts.tier ?? detectTier()
     this.frameTimer = new FrameTimer(this.renderer.getContext() as WebGL2RenderingContext)
     setMaxAnisotropy(Math.min(this.renderer.capabilities.getMaxAnisotropy(), this.tier === 'phone' ? 4 : 16))
     setUploader((texture) => {
@@ -654,7 +650,8 @@ export class Realm {
       this.raycaster.setFromCamera(this.pointerNdc, this.camera)
       this.click(this.raycaster.ray, tap.touch)
     }
-    // the 2k close-up textures, one upload per frame, now that it shows
+    // the 2k close-up textures, one upload per frame, now that it shows (never under ?test: the frame stays the same)
+    if (TEST) return
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     void upgradeTextures(this.tier, frame).then(() => this.buildTimes.push(['2k done at', Math.round(performance.now())]))
   }
@@ -675,7 +672,7 @@ export class Realm {
     // clock still rising says less about this device than the quick ones
     const cost = percentile(ms, 0.25)
     const budget = this.frameBudget(true)
-    const scale = initialScale(cost, budget)
+    const scale = TEST ? 1 : initialScale(cost, budget)
     this.calibration = { ms: Math.round(cost * 10) / 10, scale }
     this.buildTimes.push(['frame at scale 1', this.calibration.ms], ['scale', Math.round(scale * 1000) / 1000])
     this.quality = initialScaleState(scale)
@@ -799,14 +796,31 @@ export class Realm {
 
   // a short fade up from dark once the island is there to see
   private wake(dt: number): number {
-    if (this.reduced || this.opts.instant) return this.ready ? 1 : 0
+    if (this.reduced || this.opts.instant || TEST) return this.ready ? 1 : 0
     if (!this.ready) return 0
     this.wakeT += dt
     return THREE.MathUtils.smoothstep(this.wakeT, 0, 0.7)
   }
 
   private tick = () => {
-    if (this.disposed || this.lost) return
+    try {
+      this.drawFrame()
+    } catch (error) {
+      this.fail(error)
+    }
+  }
+
+  // one error in a frame would throw again in every frame after it
+  private fail(error: unknown): void {
+    if (this.failed || this.disposed) return
+    this.failed = true
+    cancelAnimationFrame(this.raf)
+    console.error(error)
+    this.opts.onFail?.(error)
+  }
+
+  private drawFrame(): void {
+    if (this.disposed || this.lost || this.failed) return
     this.raf = requestAnimationFrame(this.tick)
     const now = performance.now()
     if (this.ready && !UNCAPPED) {
@@ -822,8 +836,9 @@ export class Realm {
     }
     this.clock.update()
     const raw = this.clock.getDelta()
-    const dt = Math.min(raw, 1 / 20)
-    const t = this.clock.getElapsed()
+    // `?test` holds the clock: the same moment in every frame
+    const dt = TEST ? 0 : Math.min(raw, 1 / 20)
+    const t = TEST ? TEST_TIME : this.clock.getElapsed()
     this.sampleFrame(raw)
 
     // Until the island is built and its programs compiled draw only a warm

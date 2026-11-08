@@ -1,4 +1,3 @@
-import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Tier } from './types'
 
@@ -30,7 +29,9 @@ const fake = vi.hoisted(() => {
     forceContextLoss = vi.fn()
     setPixelRatio = vi.fn()
     setSize = vi.fn()
-    constructor() {
+    params: Record<string, unknown>
+    constructor(params: Record<string, unknown> = {}) {
+      this.params = params
       state.renderers.push(this)
     }
     getContext() {
@@ -76,20 +77,35 @@ const wide = (w: number, h: number, dpr: number) => {
 }
 
 describe('what a device says about itself', () => {
-  it.each(['Apple GPU', 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', ''])(
+  it.each(['Apple GPU', 'Google SwiftShader', 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', ''])(
     'builds the whole garden on a computer reporting "%s" with 4 cores and 4 GB',
     async (name) => {
       fake.state.gpuName = name
       vi.stubGlobal('navigator', { hardwareConcurrency: 4, deviceMemory: 4 })
       const { detectTier } = await import('./realm')
-      expect(detectTier(new THREE.WebGLRenderer())).toBe('ultra')
+      expect(detectTier()).toBe('ultra')
     },
   )
 
   it('takes some away only for a visitor saving data', async () => {
     vi.stubGlobal('navigator', { hardwareConcurrency: 16, connection: { saveData: true } })
     const { detectTier } = await import('./realm')
-    expect(detectTier(new THREE.WebGLRenderer())).toBe('phone')
+    expect(detectTier()).toBe('phone')
+  })
+})
+
+describe('a computer without a graphics chip', () => {
+  it('is left to the browser, which gives no context where the drawing would run on the processor', async () => {
+    const { Realm } = await import('./realm')
+    new Realm(container(), { tier: 'ultra', reducedMotion: false }).dispose()
+    expect(fake.state.renderers[0]!.params.failIfMajorPerformanceCaveat).toBe(true)
+  })
+
+  it.each(['?test', '?tier=high'])('draws anyway under %s, for the headless checks', async (search) => {
+    vi.stubGlobal('location', { search })
+    const { Realm } = await import('./realm')
+    new Realm(container(), { reducedMotion: false }).dispose()
+    expect(fake.state.renderers[0]!.params.failIfMajorPerformanceCaveat).toBe(false)
   })
 })
 
