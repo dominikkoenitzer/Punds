@@ -1,5 +1,10 @@
-import Sando from './pages/Sando'
+import Sando, { StillPage } from './pages/Sando'
+import SceneBoundary from './pages/SceneBoundary'
 
 export default function App() {
-  return <Sando />
+  return (
+    <SceneBoundary fallback={<StillPage />}>
+      <Sando />
+    </SceneBoundary>
+  )
 }

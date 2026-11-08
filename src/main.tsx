@@ -1,3 +1,7 @@
+// first: the diagnostics keep errors and page timings from the start, and `?test` seeds the random numbers before
+// anything draws one
+import './diagBoot'
+import './realm/testMode'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'

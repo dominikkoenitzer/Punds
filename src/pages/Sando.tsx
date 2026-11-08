@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { CursorState, Realm } from '../realm/realm'
+import { diagLevel, startDiag } from '../diagBoot'
+import QualityOverlay from './QualityOverlay'
 import type { Tier } from '../realm/types'
 import { LINKS } from '../links'
 import { loadDress, posterFolder } from '../realm/season'
+import { refuseSoftware } from '../realm/testMode'
 import { pressSound } from '../realm/soundSwitch'
 import './Sando.css'
 
@@ -12,9 +15,13 @@ import './Sando.css'
 // screen readers and keyboards; without WebGL, or on a device too weak to
 // carry the scene, they show over a still picture of the garden.
 
+// asked with the same flag as the scene's own context, so a computer without a
+// graphics chip gets the still page at once and no error in its console
 function supportsWebGL2(): boolean {
   try {
-    return !!document.createElement('canvas').getContext('webgl2')
+    const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: refuseSoftware() })
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+    return !!gl
   } catch {
     return false
   }
@@ -50,6 +57,45 @@ function pictureShown(img: HTMLImageElement | null): Promise<void> {
     .then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
 }
 
+const DEBUG = typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')
+
+// the written page: the links for screen readers and keyboards below the
+// canvas, or over the still picture when there is no scene
+function Menu({ still, realm }: { still: boolean; realm?: RefObject<Realm | null> }) {
+  return (
+    <main className={still ? 'sando-fallback' : 'sando-menu'}>
+      <h1>Punds</h1>
+      <p className="sando-about">A quiet shrine garden on an island above the clouds.</p>
+      <nav>
+        {LINKS.map((l, i) => (
+          <a
+            key={l.href}
+            href={l.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onFocus={() => {
+              // a keyboard visitor is taken to the rack and sees the plaque turn
+              realm?.current?.focusLink(i)
+            }}
+            onBlur={() => realm?.current?.focusLink(null)}
+          >
+            {l.name}
+          </a>
+        ))}
+      </nav>
+    </main>
+  )
+}
+
+// what the page shows when the scene itself broke (SceneBoundary)
+export function StillPage() {
+  return (
+    <div className="sando-root">
+      <Menu still />
+    </div>
+  )
+}
+
 export default function Sando() {
   const containerRef = useRef<HTMLDivElement>(null)
   const realmRef = useRef<Realm | null>(null)
@@ -72,6 +118,27 @@ export default function Sando() {
   const dotRef = useRef<HTMLDivElement>(null)
   const [cursor, setCursor] = useState<CursorState>('idle')
 
+  // the diagnostic panel and the page measurements, when the build turns them on (diagBoot.ts)
+  useEffect(() => {
+    startDiag({
+      quality: () => {
+        const r = realmRef.current
+        if (!r) return { tier: 'still' }
+        const q = r.qualityInfo
+        return { tier: q.tier, scale: q.scale, dpr: q.dpr, p75: q.window.p75, budget: q.window.budget, cost: q.cost }
+      },
+      canvas: () => realmRef.current?.renderer.domElement ?? null,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (level) diagLevel(level)
+  }, [level])
+
+  useEffect(() => {
+    if (noScene) diagLevel('still')
+  }, [noScene])
+
   useEffect(() => {
     const el = containerRef.current
     const dot = dotRef.current
@@ -92,6 +159,7 @@ export default function Sando() {
     }
   }, [])
 
+  const [realmOf] = useState(() => () => realmRef.current)
   const toggleSound = () => setSound(pressSound(realmRef.current))
 
   // M switches the sound too; held keys and shortcuts with modifiers do not
@@ -130,6 +198,9 @@ export default function Sando() {
             } else {
               setNoScene(true)
             }
+          },
+          onFail: () => {
+            if (!cancelled) setNoScene(true)
           },
           onLost: () => {
             if (cancelled) return
@@ -182,27 +253,8 @@ export default function Sando() {
       {!noScene && (
         <div aria-hidden="true" className="sando-dot" ref={dotRef} data-state={cursor} data-on="false" />
       )}
-      <main className={noScene ? 'sando-fallback' : 'sando-menu'}>
-        <h1>Punds</h1>
-        <p className="sando-about">A quiet shrine garden on an island above the clouds.</p>
-        <nav>
-          {LINKS.map((l, i) => (
-            <a
-              key={l.href}
-              href={l.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              onFocus={() => {
-                // a keyboard visitor is taken to the rack and sees the plaque turn
-                realmRef.current?.focusLink(i)
-              }}
-              onBlur={() => realmRef.current?.focusLink(null)}
-            >
-              {l.name}
-            </a>
-          ))}
-        </nav>
-      </main>
+      {DEBUG && <QualityOverlay realm={realmOf} />}
+      <Menu still={noScene} realm={realmRef} />
     </div>
   )
 }
