@@ -102,7 +102,8 @@ test('under ?test the garden draws the same frame every time', async ({ page }, 
   info.annotations.push({ type: 'redraw', description: `${off.pixels} of ${off.total} pixels off, by at most ${off.most}` })
   expect(off.most, 'a pixel of the redrawn frame moved more than a rounding step').toBeLessThanOrEqual(2)
   expect(off.pixels / off.total, 'more pixels of the redrawn frame moved than rounding explains').toBeLessThan(1e-5)
-  await expect(canvas).toHaveScreenshot('garden.png')
+  // kept at page size so fifteen baselines stay small; the density is checked above
+  await expect(canvas).toHaveScreenshot('garden.png', { scale: 'css' })
   expect(seen).toEqual([])
 })
 
