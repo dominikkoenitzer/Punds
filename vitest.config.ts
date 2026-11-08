@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [seasons()],
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tools/**/*.test.mjs"],
+    include: ["src/**/*.test.ts", "tools/**/*.test.mjs", "scripts/**/*.test.mjs"],
   },
 });
