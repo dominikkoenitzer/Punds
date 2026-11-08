@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { compileAll } from './compile'
 import type { GpuTimer } from './gpuTimer'
 import type { Tier } from './types'
 import { sceneSize } from './atmosphere'
@@ -617,9 +618,9 @@ export class Pipeline {
     last.add(proxy(this.finalMat))
     const before = r.getRenderTarget()
     r.setRenderTarget(this.atmos)
-    const a = r.compileAsync(between, this.quadCam)
+    const a = compileAll(r, between, this.quadCam)
     r.setRenderTarget(null)
-    const b = r.compileAsync(last, this.quadCam)
+    const b = compileAll(r, last, this.quadCam)
     r.setRenderTarget(before)
     return Promise.all([a, b])
   }

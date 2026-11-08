@@ -18,6 +18,7 @@ const fake = vi.hoisted(() => {
       return null
     }
     setRenderTarget() {}
+    extensions = { has: () => true }
     compileAsync() {
       return Promise.resolve()
     }

@@ -3,8 +3,9 @@ import type { Tier } from './types'
 
 // A stand-in for the browser and the WebGL renderer, so the realm runs in node.
 // The garden on a fast laptop was once drawn at 39% of its pixels, by a level guessed from the GPU's name and the core
-// count and a cap on the density (Safari reports every Mac as "Apple GPU" with 4 or 8 cores). How sharp and how
-// much garden come from the frames this device measures, never from what it says it is.
+// count and a cap on the density (Safari reports every Mac as "Apple GPU" with 4 or 8 cores), and phones were picked by
+// their pointer and screen. How sharp and how much garden come from the frames this device measures, never from what
+// it says it is.
 const fake = vi.hoisted(() => {
   const listeners = () => {
     const on = new Map<string, Set<(e: Event) => void>>()
@@ -48,6 +49,12 @@ beforeEach(() => {
   fake.state.renderers.length = 0
   fake.state.gpuName = ''
   vi.stubGlobal('location', { search: '' })
+  const kept = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => kept.get(k) ?? null,
+    setItem: (k: string, v: string) => void kept.set(k, String(v)),
+    removeItem: (k: string) => void kept.delete(k),
+  })
   vi.stubGlobal('window', Object.assign(fake.listeners(), { matchMedia: () => ({ matches: false }), innerWidth: 800, innerHeight: 600, devicePixelRatio: 1, setTimeout, clearTimeout }))
   vi.stubGlobal('document', Object.assign(fake.listeners(), { hidden: false, documentElement: { dataset: { season: 'none' } } }))
   vi.stubGlobal('screen', { width: 1920, height: 1080 })
@@ -76,21 +83,120 @@ const wide = (w: number, h: number, dpr: number) => {
   return { appendChild: vi.fn(), clientWidth: w, clientHeight: h } as unknown as HTMLElement
 }
 
-describe('what a device says about itself', () => {
-  it.each(['Apple GPU', 'Google SwiftShader', 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', ''])(
-    'builds the whole garden on a computer reporting "%s" with 4 cores and 4 GB',
-    async (name) => {
-      fake.state.gpuName = name
-      vi.stubGlobal('navigator', { hardwareConcurrency: 4, deviceMemory: 4 })
-      const { detectTier } = await import('./realm')
-      expect(detectTier()).toBe('ultra')
-    },
-  )
+// what devices report about themselves, none of which may change the level
+const DEVICES = {
+  'a desktop reporting an RTX card': { gpu: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)', cores: 16, memory: 8, coarse: false, screen: [2560, 1440] },
+  'a MacBook in Safari': { gpu: 'Apple GPU', cores: 8, memory: undefined, coarse: false, screen: [1512, 982] },
+  'a laptop reporting 4 cores and 4 GB': { gpu: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)', cores: 4, memory: 4, coarse: false, screen: [1536, 864] },
+  'a phone': { gpu: 'Apple GPU', cores: 4, memory: undefined, coarse: true, screen: [393, 852] },
+  'a computer without a graphics chip': { gpu: 'Google SwiftShader', cores: 8, memory: 8, coarse: false, screen: [1440, 900] },
+} as const
+type Device = keyof typeof DEVICES
+const NAMES = Object.keys(DEVICES) as Device[]
 
-  it('takes some away only for a visitor saving data', async () => {
-    vi.stubGlobal('navigator', { hardwareConcurrency: 16, connection: { saveData: true } })
+function be(device: Device) {
+  const d = DEVICES[device]
+  fake.state.gpuName = d.gpu
+  vi.stubGlobal('navigator', { hardwareConcurrency: d.cores, deviceMemory: d.memory })
+  vi.stubGlobal('window', Object.assign(fake.listeners(), { matchMedia: (q: string) => ({ matches: d.coarse && q.includes('coarse') }), innerWidth: d.screen[0], innerHeight: d.screen[1], devicePixelRatio: 2, setTimeout, clearTimeout }))
+  vi.stubGlobal('screen', { width: d.screen[0], height: d.screen[1] })
+}
+
+// one window of frames at full resolution, timed, with plenty of room under a 60 a second budget
+const ROOMY = { p75: 4, budget: 1000 / 60, timed: true }
+
+describe('how much garden a visit builds', () => {
+  it.each(NAMES)('builds the base level on the first visit of %s', async (device) => {
+    be(device)
     const { detectTier } = await import('./realm')
     expect(detectTier()).toBe('phone')
+  })
+
+  it.each(NAMES)('builds one level more after a visit of %s had room at full resolution', async (device) => {
+    be(device)
+    const { detectTier } = await import('./realm')
+    const { levelAfter, rememberLevel } = await import('./quality')
+    // a visit runs its windows; the level for the next one is kept once there was room long enough
+    const visit = (tier: Tier) => {
+      let roomy = 0
+      for (let i = 0; i < 4; i++) {
+        const up = levelAfter(tier, roomy, 1, ROOMY)
+        roomy = up.roomy
+        if (up.next) rememberLevel(up.next)
+      }
+    }
+    expect(detectTier()).toBe('phone')
+    visit('phone')
+    expect(detectTier()).toBe('high')
+    visit('high')
+    expect(detectTier()).toBe('ultra')
+  })
+
+  it('does not build more after windows below full resolution or without room', async () => {
+    const { levelAfter } = await import('./quality')
+    let roomy = 0
+    for (let i = 0; i < 6; i++) {
+      const sharp = levelAfter('phone', roomy, 0.9, ROOMY)
+      expect(sharp.next).toBeNull()
+      roomy = sharp.roomy
+    }
+    const tight = levelAfter('phone', 2, 1, { ...ROOMY, p75: 15 })
+    expect(tight).toEqual({ roomy: 0, next: null })
+  })
+
+  it.each(NAMES)('builds one level less after %s measured too slow', async (device) => {
+    be(device)
+    const { detectTier } = await import('./realm')
+    const { lighterLevel, rememberLevel } = await import('./quality')
+    rememberLevel('ultra')
+    expect(detectTier()).toBe('ultra')
+    // what the page does when the realm says the lowest resolution is still far too slow (Sando.tsx onTooSlow)
+    rememberLevel(lighterLevel('ultra')!)
+    expect(detectTier()).toBe('high')
+  })
+
+  it.each(NAMES)('builds one level less on %s after a build that took the tab down', async (device) => {
+    be(device)
+    const { detectTier } = await import('./realm')
+    const { markBuild, rememberLevel } = await import('./quality')
+    rememberLevel('ultra')
+    markBuild('ultra')
+    // the tab is gone before the first frame; the next visit finds the mark
+    expect(detectTier()).toBe('high')
+    // and keeps the lighter level, also on the visit after
+    expect(detectTier()).toBe('high')
+  })
+
+  it('keeps the level when the visitor left during the build', async () => {
+    be('a desktop reporting an RTX card')
+    const { detectTier } = await import('./realm')
+    const { clearBuild, markBuild, rememberLevel } = await import('./quality')
+    rememberLevel('ultra')
+    markBuild('ultra')
+    clearBuild()
+    expect(detectTier()).toBe('ultra')
+  })
+
+  it('takes the base level for a visitor saving data, whatever was measured', async () => {
+    be('a desktop reporting an RTX card')
+    vi.stubGlobal('navigator', { hardwareConcurrency: 16, connection: { saveData: true } })
+    const { detectTier } = await import('./realm')
+    const { rememberLevel } = await import('./quality')
+    rememberLevel('ultra')
+    expect(detectTier()).toBe('phone')
+  })
+
+  it('runs at the calm rate only where the full rate is out of reach at the lowest resolution', async () => {
+    const { calmOnly } = await import('./quality')
+    const full = 1000 / 60
+    expect(calmOnly(12, full)).toBe(false)
+    expect(calmOnly(30, full)).toBe(false)
+    expect(calmOnly(80, full)).toBe(true)
+    // the base level alone does not hold a device to the calm rate
+    const { Realm } = await import('./realm')
+    const realm = new Realm(container(), { tier: 'phone', reducedMotion: false })
+    expect((realm as unknown as { frameBudget(timed: boolean): number }).frameBudget(true)).toBeCloseTo(full)
+    realm.dispose()
   })
 })
 

@@ -66,6 +66,20 @@ export async function inTurn<T>(rank: number, job: () => Promise<T>): Promise<T>
   }
 }
 
+/**
+ * Settles once every image asked for so far has arrived or failed, and the
+ * parts that put one on a material later (the barks, the far cliffs) have
+ * done so. `?test` waits for it, so the first frame it hashes is the last.
+ */
+export async function imagesSettled(): Promise<void> {
+  let seen = -1
+  while (seen !== cache.size) {
+    seen = cache.size
+    await Promise.allSettled(cache.values())
+    await new Promise<void>((resolve) => setTimeout(resolve))
+  }
+}
+
 // the sky's files first: every program waits for its light
 export const SKY_RANK = 0
 

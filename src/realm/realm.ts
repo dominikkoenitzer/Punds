@@ -3,14 +3,15 @@ import { Pipeline, type PostParams } from './post'
 import { buildSky, sunKnown, type SkyResult } from './sky'
 import { prefetchScans } from './rocks'
 import { realmUniforms, SUN_DIRECTION } from './atmosphere'
-import { prefetchSets, setMaxAnisotropy, setUploader, upgradeTextures } from './assets'
+import { compileAll } from './compile'
+import { imagesSettled, prefetchSets, setMaxAnisotropy, setUploader, upgradeTextures } from './assets'
 import { Look, PORTRAIT_TURN, heading, type Place } from './look'
 import { pondSdf, POND_LEVEL } from './layout'
 import { Ambience } from './ambience'
 import { FrameTimer, GpuTimer } from './gpuTimer'
-import { MIN_SCALE, WINDOW_SECONDS, initialScale, initialScaleState, percentile, rememberedLevel, stepScale, type ScaleState } from './quality'
+import { MIN_SCALE, WINDOW_SECONDS, calmOnly, clearBuild, initialScale, initialScaleState, levelAfter, markBuild, percentile, rememberLevel, startLevel, stepScale, type ScaleState } from './quality'
 import { dress } from './season'
-import { refuseSoftware, TEST, TEST_TIME } from './testMode'
+import { forcedVisit, refuseSoftware, TEST, TEST_TIME } from './testMode'
 import type { Frame, Interactive, RealmPart, Tier } from './types'
 
 // The realm host: renderer, camera, sun, the parts of the island, the look
@@ -60,21 +61,12 @@ function isInteractive(p: RealmPart): p is RealmPart & Interactive {
   return typeof (p as Partial<Interactive>).tap === 'function'
 }
 
-// How much garden to build. Every computer starts with all of it; only what
-// this device has measured (a lighter level it fell back to before, see
-// quality.ts) or the visitor's own wish to save data takes some away. How
-// sharp it is drawn is measured live instead (resize, calibrate, sampleFrame).
+// How much garden to build: the base level until this device has measured
+// more (quality.ts). How sharp it is drawn is measured live instead (resize,
+// calibrate, sampleFrame).
 export function detectTier(): Tier {
-  const forced = new URLSearchParams(location.search).get('tier')
-  if (forced === 'ultra' || forced === 'high' || forced === 'phone') return forced
   const nav = navigator as Navigator & { connection?: { saveData?: boolean } }
-  if (nav.connection?.saveData) return 'phone'
-  const remembered = rememberedLevel()
-  if (remembered) return remembered
-  // phones: fewer instances and smaller textures for their memory and data
-  const coarse = window.matchMedia('(pointer: coarse)').matches
-  if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
-  return 'ultra'
+  return startLevel(location.search, nav.connection?.saveData === true)
 }
 
 // Frame rates: never above 60, even on fast screens; 30 when the screen holds
@@ -147,6 +139,13 @@ export class Realm {
   private soundWhenShown = false
   private calm = false
   private tooSlow = 0
+  // measured in the warm-up: the full rate is out of reach here (quality.ts calmOnly)
+  private calmAlways = false
+  // windows in a row at full resolution with room for more garden
+  private roomy = 0
+  // what this visit measures counts for the next one (not under ?tier or ?test)
+  private readonly guarded = !forcedVisit()
+  private onPageHide = () => clearBuild()
   private lost = false
   private lostTimer = 0
   private visibleObs: IntersectionObserver
@@ -174,6 +173,9 @@ export class Realm {
     this.skyReject = reject
   })
   private warming = false
+  // `?test` draws a frame only when asked: a software renderer takes seconds for one, and a loop of them blocks the page
+  private testFrames = 0
+  private testDrawn = 0
   private lidColor = new THREE.Color()
   private mouse = false
 
@@ -505,6 +507,7 @@ export class Realm {
     // the same screens that get the tall poster (see POSTERS in Sando.tsx)
     this.look.centreTurn = this.camera.aspect < 17 / 18 ? PORTRAIT_TURN : 0
     this.look.tall = this.camera.aspect < 1
+    if (TEST) this.testFrames = Math.max(this.testFrames, 2)
   }
 
   // add a part and refresh the shadow map so it casts
@@ -550,7 +553,7 @@ export class Realm {
     const before = this.renderer.getRenderTarget()
     this.renderer.setRenderTarget(this.pipeline.main)
     const t0 = performance.now()
-    const done = this.renderer.compileAsync(object, this.camera, this.scene).catch(() => {})
+    const done = compileAll(this.renderer, object, this.camera, this.scene).catch(() => {})
     const ms = performance.now() - t0
     if (ms > 50) this.buildTimes.push([`compile ${object.type} at ${Math.round(t0)}`, Math.round(ms)])
     this.compiling.push(done)
@@ -578,6 +581,10 @@ export class Realm {
     this.raf = requestAnimationFrame(this.tick)
     const ts = performance.now()
     this.buildTimes.push(['start at', Math.round(ts)])
+    if (this.guarded) {
+      markBuild(this.tier)
+      window.addEventListener('pagehide', this.onPageHide)
+    }
     prefetchSets(this.tier)
     prefetchScans(this.tier)
     this.compiling.push(this.pipeline.precompile().catch(() => {}))
@@ -607,6 +614,8 @@ export class Realm {
     this.placeSun()
     await build(this)
     await sky
+    // `?test` hashes its first frames: every image is on its material by then
+    if (TEST) await imagesSettled()
     if (this.disposed) return
     let t0 = performance.now()
     // materials that changed after their part was added (the barks take
@@ -622,21 +631,29 @@ export class Realm {
     // their programs on first use, and the close views show things the centre
     // does not. Run a few frames at each while the screen is still dark, so
     // the hitches happen unseen.
-    this.warming = true
-    for (const place of ['rack', 'pond', 'shrine', null] as const) {
-      this.look.go(place, true)
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    // `?test` skips both: it measures nothing, and its first frame may hitch unseen by anyone
+    if (!TEST) {
+      this.warming = true
+      for (const place of ['rack', 'pond', 'shrine', null] as const) {
+        this.look.go(place, true)
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (this.disposed) return
+      }
+      await this.calibrate()
       if (this.disposed) return
+      this.warming = false
     }
-    await this.calibrate()
-    if (this.disposed) return
-    this.warming = false
     this.buildTimes.push(['warm-up', Math.round(performance.now() - t0)])
     this.buildTimes.push(['programs', this.renderer.info.programs?.length ?? 0])
     this.buildTimes.push(['ready at', Math.round(performance.now())])
     this.ready = true
+    if (TEST) this.testFrames = Math.max(this.testFrames, 2)
     this.readyAt = performance.now()
+    if (this.guarded) {
+      clearBuild()
+      window.removeEventListener('pagehide', this.onPageHide)
+    }
     this.windowStart = this.readyAt
     this.opts.onLoad?.(1)
     this.opts.onReady?.()
@@ -671,6 +688,7 @@ export class Realm {
     // the lower quarter: a frame that also waited on a late upload or a
     // clock still rising says less about this device than the quick ones
     const cost = percentile(ms, 0.25)
+    this.calmAlways = calmOnly(cost, 1000 / MAX_FPS)
     const budget = this.frameBudget(true)
     const scale = TEST ? 1 : initialScale(cost, budget)
     this.calibration = { ms: Math.round(cost * 10) / 10, scale }
@@ -686,7 +704,7 @@ export class Realm {
   // the GPU's own time is held to the full rate on a computer either way,
   // so it is ready the moment the visitor moves
   private frameBudget(timed: boolean): number {
-    return 1000 / (this.tier === 'phone' || (this.calm && !timed) ? CALM_FPS : MAX_FPS)
+    return 1000 / (this.calmAlways || (this.calm && !timed) ? CALM_FPS : MAX_FPS)
   }
 
   // how the frame cost is known: the GPU's timer, every fourth frame waited
@@ -784,6 +802,15 @@ export class Realm {
     return this.ready
   }
 
+  /** Under `?test`, how many frames of the garden were drawn; `redraw` asks for one more. */
+  get framesDrawn(): number {
+    return this.testDrawn
+  }
+
+  redraw(): void {
+    this.testFrames = Math.max(this.testFrames, 1)
+  }
+
   get progress(): number {
     return this.look.place === 'rack' ? this.look.closeness : 0
   }
@@ -822,12 +849,17 @@ export class Realm {
   private drawFrame(): void {
     if (this.disposed || this.lost || this.failed) return
     this.raf = requestAnimationFrame(this.tick)
+    if (TEST && this.ready) {
+      if (this.testFrames <= 0) return
+      this.testFrames--
+      this.testDrawn++
+    }
     const now = performance.now()
     if (this.ready && !UNCAPPED) {
       const quiet = now - this.lastInput
       const settled = quiet > IDLE_AFTER_MS && this.look.settled
       if (!document.hasFocus() && quiet > ASLEEP_AFTER_MS) return
-      this.calm = this.tier === 'phone' || settled
+      this.calm = this.calmAlways || settled
       // hold the beat: a 144 Hz screen alternates gaps of two and three
       // refreshes instead of dropping to 48 frames a second
       const interval = 1000 / (this.calm ? CALM_FPS : MAX_FPS)
@@ -989,7 +1021,7 @@ export class Realm {
     else if (source === 'gaps') this.costs.push(raw * 1000)
     const timed = source !== 'gaps'
     // frame gaps at the calm rate say nothing about the full rate
-    if (!timed && this.calm && this.tier !== 'phone') this.windowCalm = true
+    if (!timed && this.calm && !this.calmAlways) this.windowCalm = true
     const now = performance.now()
     // a slow device fences few frames: the window waits until it has enough
     if (now - this.windowStart < WINDOW_SECONDS * 1000 || this.costs.length < 8) return
@@ -1003,6 +1035,10 @@ export class Realm {
     const p75 = percentile(costs, 0.75)
     this.lastWindow = { p75: Math.round(p75 * 100) / 100, budget: Math.round(budget * 100) / 100, timed }
     const next = stepScale(this.quality, this.lastWindow)
+    // full resolution with room to spare, window after window: the next visit may build more
+    const up = levelAfter(this.tier, this.roomy, this.quality.scale, this.lastWindow)
+    this.roomy = up.roomy
+    if (up.next && this.guarded) rememberLevel(up.next)
     // still far too slow at the lowest scale in the first half minute: this
     // device should not be asked to carry this much garden
     if (next.scale <= MIN_SCALE + 1e-9 && this.quality.scale <= MIN_SCALE + 1e-9 && p75 > 1000 / 14 && now - this.readyAt < 30000) {
@@ -1028,6 +1064,7 @@ export class Realm {
     for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart']) window.removeEventListener(type, this.onInput)
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('popstate', this.onPopState)
+    window.removeEventListener('pagehide', this.onPageHide)
     this.ambience.dispose()
     setUploader(null)
     const el = this.renderer.domElement

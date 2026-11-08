@@ -5,7 +5,7 @@ import QualityOverlay from './QualityOverlay'
 import type { Tier } from '../realm/types'
 import { LINKS } from '../links'
 import { loadDress, posterFolder } from '../realm/season'
-import { refuseSoftware } from '../realm/testMode'
+import { refuseSoftware, softwareRenderer } from '../realm/testMode'
 import { pressSound } from '../realm/soundSwitch'
 import './Sando.css'
 
@@ -19,9 +19,11 @@ import './Sando.css'
 // graphics chip gets the still page at once and no error in its console
 function supportsWebGL2(): boolean {
   try {
-    const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: refuseSoftware() })
+    const refuse = refuseSoftware()
+    const gl = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: refuse })
+    const usable = !!gl && !(refuse && softwareRenderer(gl))
     gl?.getExtension('WEBGL_lose_context')?.loseContext()
-    return !!gl
+    return usable
   } catch {
     return false
   }

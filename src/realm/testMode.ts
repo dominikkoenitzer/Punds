@@ -24,8 +24,28 @@ export function seeded(seed: number): () => number {
 // picture. Headless checks with a forced level or `?test` draw there anyway.
 // Read at each call, not once, so the tests can set the address.
 export function refuseSoftware(): boolean {
+  return !forcedVisit()
+}
+
+// Some browsers hand out a software context even when asked to fail without a
+// graphics chip; their renderer's name gives them away. Chrome and Safari name
+// only "WebKit WebGL" until asked through the debug extension, which Firefox
+// warns about, and Firefox names the real renderer at once.
+const SOFTWARE = /SwiftShader|llvmpipe|softpipe|Basic Render|Software Adapter/i
+
+export function softwareRenderer(gl: WebGLRenderingContext | WebGL2RenderingContext): boolean {
+  let name = String(gl.getParameter(gl.RENDERER) ?? '')
+  if (/^WebKit WebGL$/i.test(name)) {
+    const info = gl.getExtension('WEBGL_debug_renderer_info')
+    if (info) name = String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) ?? '')
+  }
+  return SOFTWARE.test(name)
+}
+
+// a visit whose level or picture the address fixes: it measures nothing for the next visit
+export function forcedVisit(): boolean {
   const params = new URLSearchParams(location.search)
-  return !(params.has('test') || params.has('tier'))
+  return params.has('test') || params.has('tier')
 }
 
 // before any part of the garden is loaded (main.tsx imports this first)

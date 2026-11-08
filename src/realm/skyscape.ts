@@ -4,6 +4,7 @@ import { loadPbr, pbrMaterial } from './assets'
 import { SUN_DIRECTION, realmUniforms, sceneSize } from './atmosphere'
 import { fbm2, rng } from './layout'
 import { dressFor } from './season'
+import { TEST } from './testMode'
 import type { Frame, RealmPart, Tier } from './types'
 
 // What a season may give the clouds: rewrites of their programs' sources,
@@ -1886,7 +1887,8 @@ export class Skyscape implements RealmPart {
     if (this.noiseSlice < NOISE_SIZE) {
       const t0 = performance.now()
       if (!this.noiseTables) this.noiseTables = noiseTables()
-      while (this.noiseSlice < NOISE_SIZE && performance.now() - t0 < 4) {
+      // `?test` fills it in the first frame: its frames are few, and each must show the same sky
+      while (this.noiseSlice < NOISE_SIZE && (TEST || performance.now() - t0 < 4)) {
         fillNoiseSlice(this.noiseData, this.noiseSlice++, this.noiseTables)
       }
       if (this.noiseSlice === NOISE_SIZE) {
@@ -1994,7 +1996,7 @@ export class Skyscape implements RealmPart {
     // frames between look the last one up through their own view, which
     // its margin covers unless the view turned further than that.
     this.tick++
-    if (this.historyValid && (this.tick & 1) === 1 && this.traceCovers(camera)) {
+    if (!TEST && this.historyValid && (this.tick & 1) === 1 && this.traceCovers(camera)) {
       renderer.setClearColor(this.clearColor, prevAlpha)
       renderer.autoClear = prevAutoClear
       renderer.setRenderTarget(prevTarget)
@@ -2003,7 +2005,8 @@ export class Skyscape implements RealmPart {
     ;(u.uInvProj!.value as THREE.Matrix4).copy(this.traceProj).invert()
     renderer.setRenderTarget(this.cloudTarget)
     renderer.setClearColor(0x000000, 0)
-    u.uFrame!.value = this.frameIndex++
+    // `?test` keeps one noise pattern and no history, so every frame traces the same clouds
+    u.uFrame!.value = TEST ? 0 : this.frameIndex++
     renderer.render(this.marchScene, this.marchCamera)
 
     // resolve into the write history, then swap so the composite reads it
@@ -2013,7 +2016,7 @@ export class Skyscape implements RealmPart {
     // a season's sudden light (lightning) lets go of the history for its
     // moment, so the flash lands in a trace or two instead of fading in
     const sudden = dressFor<CloudDress>('Skyscape')?.sudden?.() ?? 0
-    ru.uBlend!.value = this.historyValid ? (this.settings.scale < 0.35 ? 0.7 : 0.8) * (1 - 0.75 * sudden) : 0
+    ru.uBlend!.value = this.historyValid && !TEST ? (this.settings.scale < 0.35 ? 0.7 : 0.8) * (1 - 0.75 * sudden) : 0
     renderer.setRenderTarget(this.historyWrite)
     renderer.render(this.resolveScene, this.marchCamera)
     this.compositeMaterial.uniforms.uCloud!.value = this.historyWrite.texture
