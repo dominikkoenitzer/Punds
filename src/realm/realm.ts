@@ -56,23 +56,24 @@ function isInteractive(p: RealmPart): p is RealmPart & Interactive {
   return typeof (p as Partial<Interactive>).tap === 'function'
 }
 
+// How much garden to build. Every computer starts with all of it; only what
+// this device has measured (a lighter level it fell back to before, see
+// quality.ts) or the visitor's own wish to save data takes some away. How
+// sharp it is drawn is measured live instead (resize, calibrate, sampleFrame).
 export function detectTier(renderer: THREE.WebGLRenderer): Tier {
   const forced = new URLSearchParams(location.search).get('tier')
   if (forced === 'ultra' || forced === 'high' || forced === 'phone') return forced
   const name = rendererName(renderer)
   // no graphics chip at all: the scene would run on the processor
   if (/SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(name)) throw new Error(`software renderer: ${name}`)
-  const coarse = window.matchMedia('(pointer: coarse)').matches
-  if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
-  // a visitor saving data, or a small machine, gets the light settings
-  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number }
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean } }
   if (nav.connection?.saveData) return 'phone'
-  if ((nav.deviceMemory ?? 8) <= 4 || (nav.hardwareConcurrency || 8) <= 4) return 'phone'
-  // a lighter level this device fell back to before (see quality.ts)
   const remembered = rememberedLevel()
   if (remembered) return remembered
-  if (/RTX|RX [67]\d{3}|Radeon Pro|Apple M\d (Pro|Max|Ultra)/i.test(name)) return 'ultra'
-  return 'high'
+  // phones: fewer instances and smaller textures for their memory and data
+  const coarse = window.matchMedia('(pointer: coarse)').matches
+  if (coarse && Math.min(screen.width, screen.height) < 900) return 'phone'
+  return 'ultra'
 }
 
 function rendererName(renderer: THREE.WebGLRenderer): string {
@@ -91,12 +92,6 @@ const IDLE_AFTER_MS = 12000
 const ASLEEP_AFTER_MS = 60000
 // headless cost checks measure the frame without the caps
 const UNCAPPED = new URLSearchParams(location.search).has('uncapped')
-const NO_BUDGET = new URLSearchParams(location.search).has('nobudget')
-
-const DPR_CAP: Record<Tier, number> = { ultra: 1.5, high: 1.25, phone: 1.6 }
-// and a budget of drawn pixels for the lighter tiers; a strong desktop draws
-// at its native resolution, and the frame cap below is what spares its GPU
-const PIXEL_BUDGET: Record<Tier, number> = { ultra: Infinity, high: 2560 * 1440, phone: 1300 * 600 }
 
 // the low afternoon sun
 const SUN_EARLY = new THREE.Color(1.0, 0.76, 0.5)
@@ -494,11 +489,10 @@ export class Realm {
   private resize(): void {
     const w = this.container.clientWidth || window.innerWidth
     const h = this.container.clientHeight || window.innerHeight
-    const budget = NO_BUDGET ? Infinity : Math.sqrt(PIXEL_BUDGET[this.tier] / Math.max(1, w * h))
-    // the canvas at the screen's own density; the scene at the tier's share
-    // of it, less what this device measured, scaled up in the last pass
+    // the canvas and the scene at the screen's own density, the scene less
+    // only what this device measured, scaled up in the last pass
     const native = window.devicePixelRatio || 1
-    this.dpr = Math.min(native, DPR_CAP[this.tier], budget) * this.dprScale
+    this.dpr = native * this.dprScale
     this.renderer.setPixelRatio(native)
     this.renderer.setSize(w, h, false)
     this.renderer.domElement.style.width = '100%'
