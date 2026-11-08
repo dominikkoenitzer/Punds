@@ -5,16 +5,20 @@ import { expect, test, type ConsoleMessage, type Page } from '@playwright/test'
 // Every page check listens for the console: an error or a warning on a clean load is a defect. Two are not the page's.
 // Chromium notes that a frame waited for the GPU, which the warm-up does on purpose to measure it (realm.ts). Firefox
 // notes once on every system that the soft shadows' filtered depth comparison is left to the driver by the spec, which
-// three.js's PCF shadows ask for.
-const BROWSER_NOTES = [
-  /GL Driver Message .*GPU stall due to ReadPixels/,
-  /WebGL warning: draw(Arrays|Elements)Instanced: Depth texture comparison requests \(e\.g\. `LINEAR`\) Filtering, but behavior is implementation-defined, and so on some systems will sometimes behave as `NEAREST`\. \(warns once\)/,
-]
+// three.js's PCF shadows ask for; that one is matched by its exact text.
+const DRIVER_NOTE = /GL Driver Message .*GPU stall due to ReadPixels/
+const SHADOW_NOTES = new Set(
+  ['drawArraysInstanced', 'drawElementsInstanced'].map(
+    (call) =>
+      `[JavaScript Warning: "WebGL warning: ${call}: Depth texture comparison requests (e.g. \`LINEAR\`) Filtering, but behavior is implementation-defined, and so on some systems will sometimes behave as \`NEAREST\`. (warns once)"]`,
+  ),
+)
 
 function watchConsole(page: Page): string[] {
   const seen: string[] = []
   page.on('console', (m: ConsoleMessage) => {
-    if ((m.type() === 'error' || m.type() === 'warning') && !BROWSER_NOTES.some((note) => note.test(m.text()))) seen.push(`${m.type()}: ${m.text()}`)
+    const text = m.text()
+    if ((m.type() === 'error' || m.type() === 'warning') && !DRIVER_NOTE.test(text) && !SHADOW_NOTES.has(text)) seen.push(`${m.type()}: ${text}`)
   })
   page.on('pageerror', (e) => seen.push(`pageerror: ${e.message}`))
   return seen
