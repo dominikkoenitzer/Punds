@@ -48,6 +48,80 @@ jobs:
       - name: Build
         run: bun run build
 
+  # The built site in Chromium, WebKit and Firefox at five screens (playwright.config.ts): the page, its accessibility,
+  # the still page where a frame throws, and a picture of the garden under ?test compared with the one kept for that
+  # engine. A runner without the pictures yet writes them and uploads them, to be read and committed.
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit firefox
+
+      - name: Build
+        run: bun run build
+
+      - name: Browser checks
+        run: |
+          if [ -d test/e2e/__screenshots__/linux ]; then bun run e2e; else bun run e2e --update-snapshots=all; fi
+
+      - name: Keep the pictures and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-checks
+          path: |
+            test/e2e/__screenshots__/linux
+            test-results
+          if-no-files-found: ignore
+
+  # Lighthouse budgets on the built site, the phone form and the desktop form (lighthouserc.cjs).
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        form: [mobile, desktop]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Budgets
+        env:
+          LHCI_FORM: ${{ matrix.form }}
+        run: npx --yes @lhci/cli@0.15.1 autorun --config=lighthouserc.cjs
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-${{ matrix.form }}
+          path: .lighthouseci
+          if-no-files-found: ignore
+
   # A season branch may change only its own folders (docs/seasons.md).
   scope:
     if: github.event_name == 'pull_request' || github.ref_name != 'main'
