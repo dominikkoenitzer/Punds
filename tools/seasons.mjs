@@ -83,7 +83,7 @@ export function seasons() {
   let root = process.cwd()
   const read = () => readSeasons(root)
   return {
-    name: 'punds-seasons',
+    name: 'shrine-seasons',
     configResolved(config) {
       root = config.root
     },

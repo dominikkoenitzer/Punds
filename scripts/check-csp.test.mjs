@@ -25,7 +25,7 @@ const outcome = (run) => {
 
 // runs the check in a working folder of its own, with dist/index.html and vercel.json written there
 const check = (html, hashes = []) => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'punds-csp-'))
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'shrine-csp-'))
   folders.push(folder)
   fs.mkdirSync(path.join(folder, 'dist'))
   fs.writeFileSync(path.join(folder, 'dist', 'index.html'), html)
@@ -40,7 +40,7 @@ const body = 'console.log(1)'
 
 describe('check-csp', () => {
   it('passes the page as it is today', () => {
-    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'punds-csp-'))
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'shrine-csp-'))
     folders.push(folder)
     fs.mkdirSync(path.join(folder, 'dist'))
     fs.copyFileSync(path.join(repo, 'index.html'), path.join(folder, 'dist', 'index.html'))
