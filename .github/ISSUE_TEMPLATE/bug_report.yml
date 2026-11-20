@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with the Shrine NAVI terminal landing page.
+description: Report a problem with Shrine.
 title: "[Bug]: "
 labels: [bug]
 body:

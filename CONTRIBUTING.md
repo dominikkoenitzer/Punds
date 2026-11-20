@@ -1,8 +1,7 @@
 # Contributing to Shrine
 
-Thanks for your interest in contributing! Shrine is a single-page personal landing page styled
-as Copland OS / the NAVI from *Serial Experiments Lain*: a navigable Three.js 3D world you
-boot into. This guide covers everything you need to get a change merged.
+Thanks for your interest in contributing! This guide covers everything you need to get a change
+merged.
 
 By participating in this project you agree to abide by our
 [Code of Conduct](CODE_OF_CONDUCT.md).
@@ -84,50 +83,12 @@ disabling the rule.
 ## Testing
 
 Unit tests run under **Vitest**: `bun run test` once, `bun run test:watch` while you work. The
-only suite today is [`src/scene/qualityStepper.test.ts`](src/scene/qualityStepper.test.ts),
-the adaptive quality stepper. The rest is visual, so manual verification in the browser is
-still expected: run `bun run dev`, then watch the full boot sequence (logo → boot log →
-"present day, present time" → desktop) and exercise the part you touched: drag to look around,
-scroll to fly, hover and click the floating panels. A WebGL-capable browser is required;
-without WebGL you get the accessible link fallback. For build-affecting changes, also
+rest is visual, so manual verification in the browser is still expected. A WebGL-capable browser
+is required; without WebGL you get the accessible link fallback. For build-affecting changes, also
 sanity-check `bun run preview` against the production bundle.
-
-## Code conventions
-
-The app is a thin **React layer** over a self-contained **Three.js scene engine**. Entry chain:
-[`src/main.tsx`](src/main.tsx) → [`src/App.tsx`](src/App.tsx) renders `<CoplandOS/>` →
-[`src/pages/CoplandOS.tsx`](src/pages/CoplandOS.tsx). There is no router, no global state, and no
-data layer. React state is local `useState` inside `CoplandOS`.
-
-- **Know which layer you're in.** [`CoplandOS.tsx`](src/pages/CoplandOS.tsx) drives the boot
-  phase machine (`logo` → `boot` → `welcome` → `desktop`) and the DOM overlays (CRT layers,
-  boot log, the accessible no-WebGL fallback). The desktop carries no HUD by design. The 3D
-  world lives in [`src/scene/coplandScene.ts`](src/scene/coplandScene.ts) (the `CoplandScene`
-  class) and its feature modules, so touch the scene there and not in React.
-- **Features implement a contract.** Each module in [`src/scene/features/`](src/scene/features)
-  implements `SceneFeature { group, update(ctx), dispose() }` (see
-  [`features/types.ts`](src/scene/features/types.ts)). To add one, implement the interface and
-  register it in `CoplandScene.buildFeatures()`. Always `dispose()` geometries/materials you
-  create. The scene tears itself down on unmount and must not leak GPU resources.
-- **Edit content/config data, not scene code.** The floating links live in
-  [`src/scene/panelData.ts`](src/scene/panelData.ts) (`PANEL_DATA`); the boot log and operator
-  name are constants at the top of [`CoplandOS.tsx`](src/pages/CoplandOS.tsx).
-- **Styling is 100% hand-written CSS.** No Tailwind, no CSS-in-JS. Global resets and the
-  `TrixieCyrG` `@font-face` live in [`src/index.css`](src/index.css); the scene colour-palette
-  `:root` variables (read back by the 3D engine via `getComputedStyle`) and all overlay and boot
-  styling live in [`src/pages/CoplandOS.css`](src/pages/CoplandOS.css). Retune the palette there
-  and the 3D follows.
-- **Every `useEffect` timer or event listener must return its own cleanup.** The scene
-  lifecycle, boot orchestration, NAVI whispers, and keyboard shortcuts each set up and
-  tear down their own interval or listener; follow that pattern when adding one.
-- **Add runtime dependencies deliberately.** The only runtime deps today are `react`,
-  `react-dom`, and `three`. Prefer reaching for those (or plain CSS/canvas) before adding
-  anything new to `package.json`.
 
 ## Licensing
 
 This project is licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
 By contributing, you agree that your contributions will be licensed under the same terms.
 
-*Serial Experiments Lain* and NAVI are the property of their respective rights holders; this
-project is an unaffiliated fan homage.
