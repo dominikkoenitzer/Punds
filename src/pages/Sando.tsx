@@ -170,7 +170,7 @@ export default function Sando() {
         <div aria-hidden="true" className="sando-dot" ref={dotRef} data-state={cursor} data-on="false" />
       )}
       <main className={noScene ? 'sando-fallback' : 'sando-menu'}>
-        <h1>Punds</h1>
+        <h1>Shrine</h1>
         <p className="sando-about">A quiet shrine garden on an island above the clouds.</p>
         <nav>
           {LINKS.map((l, i) => (
