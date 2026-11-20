@@ -1,6 +1,6 @@
-# Contributing to Punds
+# Contributing to Shrine
 
-Thanks for your interest in contributing! Punds is a single-page personal landing page styled
+Thanks for your interest in contributing! Shrine is a single-page personal landing page styled
 as Copland OS / the NAVI from *Serial Experiments Lain*: a navigable Three.js 3D world you
 boot into. This guide covers everything you need to get a change merged.
 
@@ -18,8 +18,8 @@ setup, though Node 22 also works.
 
 ```bash
 # 1. Fork the repo on GitHub, then clone your fork
-git clone https://github.com/<your-username>/Punds.git
-cd Punds
+git clone https://github.com/<your-username>/Shrine.git
+cd Shrine
 
 # 2. Install dependencies
 bun install

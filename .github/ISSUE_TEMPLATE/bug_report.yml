@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a problem with the Punds NAVI terminal landing page.
+description: Report a problem with the Shrine NAVI terminal landing page.
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug report for [Punds](https://punds.ch/).
+        Thanks for taking the time to file a bug report for [Shrine](https://punds.ch/).
         Please fill out the fields below so the issue can be reproduced and fixed quickly.
   - type: checkboxes
     id: search
