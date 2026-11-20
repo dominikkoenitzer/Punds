@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest an idea or improvement for the Punds NAVI terminal landing page.
+description: Suggest an idea or improvement for Shrine.
 title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting an idea for [Punds](https://punds.ch/).
+        Thanks for suggesting an idea for [Shrine](https://punds.ch/).
         Please describe your idea below so it can be understood and considered.
   - type: checkboxes
     id: search

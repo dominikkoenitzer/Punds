@@ -1,6 +1,6 @@
 # Security Policy
 
-Thanks for helping keep **Punds** safe. This is a small personal landing page,
+Thanks for helping keep **Shrine** safe. This is a small personal landing page,
 a single deployed static site at [punds.ch](https://punds.ch/) with no backend,
 no database, and no user accounts or user data. That keeps the attack surface
 small, but reports are still genuinely appreciated.
@@ -24,7 +24,7 @@ something exploitable.
 You can report through GitHub private security advisories:
 
 - **GitHub private security advisories.** Go to the
-  [Security tab](https://github.com/dominikkoenitzer/Punds/security/advisories)
+  [Security tab](https://github.com/dominikkoenitzer/Shrine/security/advisories)
   of the repository and click *Report a vulnerability*.
 
 ### What to include

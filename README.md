@@ -1,6 +1,6 @@
 <div align="center">
 
-# Punds
+# Shrine
 
 ### Everything I do, in one place.
 
@@ -8,7 +8,7 @@ A quiet shrine garden on an island above the clouds, rendered live in the browse
 
 [**punds.ch**](https://punds.ch/)
 
-[![CI](https://github.com/dominikkoenitzer/Punds/actions/workflows/ci.yml/badge.svg)](https://github.com/dominikkoenitzer/Punds/actions/workflows/ci.yml)
+[![CI](https://github.com/dominikkoenitzer/Shrine/actions/workflows/ci.yml/badge.svg)](https://github.com/dominikkoenitzer/Shrine/actions/workflows/ci.yml)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![Three.js](https://img.shields.io/badge/Three.js-r186-000000?logo=three.js&logoColor=white)](https://threejs.org/)
@@ -16,7 +16,7 @@ A quiet shrine garden on an island above the clouds, rendered live in the browse
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Bun](https://img.shields.io/badge/Bun-1.4.2-000000?logo=bun&logoColor=white)](https://bun.sh/)
 
-<img src="docs/screenshot.jpg" alt="Punds: a shrine garden on a floating island in the late afternoon sun" width="880" />
+<img src="docs/screenshot.jpg" alt="Shrine: a shrine garden on a floating island in the late afternoon sun" width="880" />
 
 </div>
 
@@ -24,7 +24,7 @@ A quiet shrine garden on an island above the clouds, rendered live in the browse
 
 ## About
 
-**Punds** is my personal hub: one page that points at everything I build. Instead of a list of links it is a place. You stand on the stone path of a small shrine garden, high above a sea of clouds in the late afternoon, and look around.
+**Shrine** is my personal hub: one page that points at everything I build. Instead of a list of links it is a place. You stand on the stone path of a small shrine garden, high above a sea of clouds in the late afternoon, and look around.
 
 - **Look around.** Move the pointer toward an edge of the screen, or drag (on a phone, swipe), and the view turns.
 - **Explore.** Click the plaque rack, the pond or the shrine and you walk up to it. Esc, the browser's back button or a click elsewhere takes you back to the path.
