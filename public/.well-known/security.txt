@@ -1,5 +1,5 @@
-Contact: https://github.com/dominikkoenitzer/Punds/security/advisories/new
+Contact: https://github.com/dominikkoenitzer/Shrine/security/advisories/new
 Expires: 2027-12-31T23:59:59.000Z
 Preferred-Languages: en, de, fr
 Canonical: https://punds.ch/.well-known/security.txt
-Policy: https://github.com/dominikkoenitzer/Punds/blob/main/SECURITY.md
+Policy: https://github.com/dominikkoenitzer/Shrine/blob/main/SECURITY.md

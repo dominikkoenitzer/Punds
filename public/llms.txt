@@ -1,6 +1,6 @@
-# Punds
+# Shrine
 
-> Punds is a personal hub: a single page linking to everything I build. It is
+> Shrine is a personal hub: a single page linking to everything I build. It is
 > rendered as a quiet shrine garden on an island above the clouds, in 3D. There
 > is no article content here beyond the links below.
 
